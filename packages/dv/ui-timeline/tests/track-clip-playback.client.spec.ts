@@ -1,16 +1,23 @@
 // @vitest-environment jsdom
-/** Preview playback of the video tracks under the 视频 track: each track clip's element follows the player. */
+/** Preview playback of the video tracks: each clip's element follows the player. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, renderHook } from '@testing-library/react'
-import { syncTrackClip, trackClipPreload, useTrackClipPlayback } from '../src/client/track-clip-playback.ts'
-import type { PlacedTrackClip } from '../src/client/timelines.ts'
+import { clipStalled, syncTrackClip, trackClipPreload, useTrackClipPlayback } from '../src/client/track-clip-playback.ts'
+import { coveredClips } from '../src/client/timelines.ts'
+import type { PlacedClip } from '../src/client/timelines.ts'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
-/** A clip that plays 1 s to 4 s of its asset from timeline time 2 s to 5 s. */
-const CLIP: PlacedTrackClip = {
-  clip: 'cl5', assetId: 'v.mp4', track: 0, rawIn: 1, rawOut: 4, inSec: 1, outSec: 4, assetSeconds: 6, seconds: 3, startSec: 2,
+/** A clip of video track 1 that plays 1 s to 4 s of its asset from timeline time 2 s to 5 s. */
+const CLIP: PlacedClip = {
+  clip: 'cl5', assetId: 'v.mp4', status: 'ready', track: 1, rawIn: 1, rawOut: 4, inSec: 1, outSec: 4, assetSeconds: 6, seconds: 3, startSec: 2,
   thumbnail: null, stale: false,
+}
+
+/** A ready clip of video track 0 from timeline time 0 s; the tests set its length. */
+const TOP: PlacedClip = {
+  clip: 'cl1', assetId: 'm.mp4', status: 'ready', track: 0, rawIn: null, rawOut: null, inSec: 0, outSec: 1, assetSeconds: 6,
+  seconds: 1, startSec: 0, thumbnail: null, stale: false,
 }
 
 /**
@@ -50,6 +57,16 @@ describe('syncTrackClip', () => {
     expect([after.pause.mock.calls.length, after.seeks, after.play.mock.calls.length]).toEqual([0, [], 0])
   })
 
+  it('shows the last frame of the clip the user still sees after its end, and leaves a clip that is not shown where it is', () => {
+    // The playhead jumped to the timeline's end, where the last clip stays shown: its element goes to its last frame.
+    const jumped = clipElement({ paused: false, currentTime: 1 })
+    syncTrackClip(jumped.element, CLIP, 5, false, 1, true)
+    expect([jumped.pause.mock.calls.length, jumped.seeks]).toEqual([1, [3.96]])
+    const hidden = clipElement({ paused: true, currentTime: 1 })
+    syncTrackClip(hidden.element, CLIP, 5, false, 1, false)
+    expect([hidden.pause.mock.calls.length, hidden.seeks]).toEqual([0, []])
+  })
+
   it('shows the playhead\'s frame while the player is paused', () => {
     const playing = clipElement({ paused: false, currentTime: 1 })
     syncTrackClip(playing.element, CLIP, 3, false, 1, true)
@@ -69,6 +86,25 @@ describe('syncTrackClip', () => {
     const drifted = clipElement({ paused: false, currentTime: 3 })
     syncTrackClip(drifted.element, CLIP, 3, true, 1, true)
     expect(drifted.seeks).toEqual([2])
+    // A drifted element that is already seeking is left to finish its seek.
+    const seeking = clipElement({ paused: false, currentTime: 3 })
+    Object.defineProperty(seeking.element, 'seeking', { configurable: true, value: true })
+    syncTrackClip(seeking.element, CLIP, 3, true, 1, true)
+    expect(seeking.seeks).toEqual([])
+  })
+
+  it('counts an element as stalled only while the browser is loading its file and has no data to play on', () => {
+    const state = (networkState: number, readyState: number): HTMLVideoElement => {
+      const element = document.createElement('video')
+      Object.defineProperties(element, { networkState: { value: networkState }, readyState: { value: readyState } })
+      return element
+    }
+    const { NETWORK_IDLE, NETWORK_LOADING, NETWORK_NO_SOURCE, HAVE_CURRENT_DATA, HAVE_FUTURE_DATA, HAVE_NOTHING } = HTMLMediaElement
+    expect([
+      clipStalled(state(NETWORK_LOADING, HAVE_CURRENT_DATA)), clipStalled(state(NETWORK_LOADING, HAVE_FUTURE_DATA)),
+      // A file that failed to load, or one that is all loaded, does not hold the playhead; nor does a gap or a placeholder.
+      clipStalled(state(NETWORK_NO_SOURCE, HAVE_NOTHING)), clipStalled(state(NETWORK_IDLE, HAVE_CURRENT_DATA)), clipStalled(null),
+    ]).toEqual([true, false, false, false, false])
   })
 
   it('leaves a file that ended just ahead of the playhead paused at its end, and replays a file that ended earlier from the playhead', () => {
@@ -105,13 +141,15 @@ describe('syncTrackClip', () => {
   })
 
   it('loads the whole file only of a clip that can show and plays now or within five seconds', () => {
-    // CLIP plays from 2 s to 5 s.
-    expect(trackClipPreload(CLIP, 0, 1)).toBe('auto')
-    expect(trackClipPreload(CLIP, 4, 1)).toBe('auto')
-    expect(trackClipPreload(CLIP, 5, 1)).toBe('metadata')
-    expect(trackClipPreload({ ...CLIP, startSec: 6 }, 0, 1)).toBe('metadata')
-    // A clip that ends before the 视频 track's end never shows.
-    expect(trackClipPreload(CLIP, 0, 6)).toBe('metadata')
+    // CLIP plays from 2 s to 5 s; a clip of track 0 from 0 s to 1 s leaves it uncovered.
+    const short = coveredClips([{ ...TOP, seconds: 1, outSec: 1 }, CLIP])
+    expect(trackClipPreload(CLIP, 0, short)).toBe('auto')
+    expect(trackClipPreload(CLIP, 4, short)).toBe('auto')
+    expect(trackClipPreload(CLIP, 5, short)).toBe('metadata')
+    expect(trackClipPreload({ ...CLIP, startSec: 6 }, 0, short)).toBe('metadata')
+    // A clip that track 0 covers all of never shows.
+    const long = coveredClips([{ ...TOP, seconds: 6, outSec: 6 }, CLIP])
+    expect([[...short], [...long], trackClipPreload(CLIP, 0, long)]).toEqual([[], ['cl5'], 'metadata'])
   })
 
   it('survives a refused start and a refused seek', async () => {
@@ -123,11 +161,11 @@ describe('syncTrackClip', () => {
 })
 
 describe('useTrackClipPlayback', () => {
-  it('syncs each clip element under the box on every playhead change, and skips a clip without an element', () => {
+  it('syncs each clip element under the box after every render, and skips a clip without an element', () => {
     const { element, play } = clipElement({ paused: true })
     const box = document.createElement('div')
     box.append(element)
-    const other: PlacedTrackClip = { ...CLIP, clip: 'cl9' }
+    const other: PlacedClip = { ...CLIP, clip: 'cl9' }
     const { rerender } = renderHook(({ position }: { position: number }) => {
       useTrackClipPlayback({ current: box }, [CLIP, other], position, true, 1, 'cl5')
     }, { initialProps: { position: 0 } })

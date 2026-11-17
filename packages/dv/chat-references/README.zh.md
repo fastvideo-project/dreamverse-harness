@@ -60,7 +60,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-新用户消息里有 `@[<label>](dv:<kind>/<id>)` 提及时，它后面跟一条来源为 `dv-mentions` 的上下文消息："The user referenced these project items:"，每个提及一行，写出素材、记录、引用种类的版本或片段，以及产生它的记录（工具、状态、prompt、时长、输入、输出）。在没有项目的对话中，每行以 "this conversation has no project yet; call dv_proj_create first" 结尾。导入的对话附件本身不加文字；它作为素材出现在 `@dv/project` 的项目摘要里。
+新用户消息里有 `@[<label>](dv:<kind>/<id>)` 提及时，它后面跟一条来源为 `dv-mentions` 的上下文消息："The user referenced these project items:"，每个提及一行，写出素材、记录、引用种类的版本或片段，以及产生它的记录（工具、状态、prompt、时长、输入、输出）。片段那一行给出它在所在视频轨上按开始时间排的序号，例如 "clip 2 by start time on video track 0 of timeline t1"，与提及菜单显示的序号相同。在没有项目的对话中，每行以 "this conversation has no project yet; call dv_proj_create first" 结尾。导入的对话附件本身不加文字；它作为素材出现在 `@dv/project` 的项目摘要里。
 
 #### Token 影响
 

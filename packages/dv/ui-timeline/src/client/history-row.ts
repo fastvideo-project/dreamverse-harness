@@ -22,7 +22,7 @@ function reportedIds(record: ProjectRecord, key: 'clips' | 'sounds'): string[] {
 
 /**
  * The timeline each clip and sound belongs to: the timeline of the record that assigned the clip or sound
- * (`timeline.create`, `update`, `clip_insert`, `sound_add` name it by `params.timeline`, a create without one makes
+ * (`timeline.create`, `update`, `clip_add`, `sound_add` name it by `params.timeline`, a create without one makes
  * `t1`; `clip_split` adds to the timeline of the split clip).
  * @param records - the records of the current state, oldest first.
  * @returns clip or sound ID → timeline ID.

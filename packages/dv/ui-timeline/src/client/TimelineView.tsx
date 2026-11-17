@@ -3,7 +3,7 @@
  * current state itself and refetches it after every project change and every write; the view's edits go after the
  * current position of the project's history. The view's selected timeline is the `timeline` field of the open project's
  * center fields, and a pick sets it. A request that the center hands the view selects a timeline and a clip in it, or
- * inserts an asset (插入片段) once the state is read.
+ * puts an asset on 视频 1 (插入片段) once the state is read.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -19,7 +19,7 @@ import { TimelineEditor } from './TimelineEditor.tsx'
 import { en, zh } from './locales.ts'
 import type { DvTimelineKey } from './locales.ts'
 import { readTimelineRequest } from './selection.ts'
-import { timelinesOf } from './timelines.ts'
+import { placeClips, timelinesOf } from './timelines.ts'
 
 /** What the plugin injects into the center view: the API client. */
 export interface TimelineCenterInjected {
@@ -42,8 +42,8 @@ export function copyFor(language: DvLanguage): Translate<DvTimelineKey> {
 }
 
 /**
- * The write that inserts an asset: a clip at the end of the selected timeline, else of the project's first timeline; in
- * a project without timelines, timeline `t1` holding the clip.
+ * The write that inserts an asset: a clip on 视频 1 of the selected timeline, else of the project's first timeline, where
+ * its last clip ends; in a project without timelines, timeline `t1` holding the clip.
  * @param project - the project.
  * @param session - the chat session the view sits beside; null for none.
  * @param state - the project's current state.
@@ -56,12 +56,13 @@ function insertRequest(
 ): OperationRequest {
   const timelines = timelinesOf(state)
   const timeline = timelines.find(item => item.id === selected) ?? timelines[0]
-  const at = (timeline?.clips.length ?? 0) + 1
+  const top = timeline === undefined ? [] : placeClips(state, timeline).clips.filter(clip => clip.track === 0)
+  const at = Math.round(Math.max(0, ...top.map(clip => clip.startSec + clip.seconds)) * 100) / 100
   const call = timeline === undefined
     ? { operation: 'timeline.create', params: { timeline: 't1', assets: [asset] }, intent: pickText('新建时间线', 'Create timeline') }
     : {
-      operation: 'timeline.clip_insert', params: { timeline: timeline.id, at, asset },
-      intent: pickText(`在位置 ${String(at)} 插入片段`, `Insert clip at position ${String(at)}`),
+      operation: 'timeline.clip_add', params: { timeline: timeline.id, asset, track: 0, start_sec: at },
+      intent: pickText(`把片段放到视频 1 的 ${String(at)} 秒`, `Put a clip on Video 1 at ${String(at)}s`),
     }
   return { project, ...call, surface: 'timeline', ...session === null ? {} : { session } }
 }

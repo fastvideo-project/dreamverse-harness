@@ -28,12 +28,12 @@ import DvTimeline from '../src/index.ts'
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvCanvasNodes, DvTimeline }
 
-/** The twenty-six operations in registration order: the twenty-five edits, then the export. */
+/** The twenty-two operations in registration order: the twenty-one edits, then the export. */
 const OPERATIONS = [
-  'timeline.create', 'timeline.update', 'timeline.rename', 'timeline.delete', 'timeline.clip_insert', 'timeline.clip_move', 'timeline.clip_remove',
+  'timeline.create', 'timeline.update', 'timeline.rename', 'timeline.delete', 'timeline.clip_add', 'timeline.clip_move', 'timeline.clip_remove',
   'timeline.clip_split', 'timeline.clip_trim', 'timeline.clip_replace', 'timeline.sound_add', 'timeline.sound_remove', 'timeline.sound_split', 'timeline.sound_move', 'timeline.sound_trim',
-  'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute', 'timeline.track_clip_add', 'timeline.track_clip_move',
-  'timeline.video_track_remove', 'timeline.video_track_move', 'timeline.main_track_remove', 'timeline.main_track_swap', 'timeline.track_add', 'timeline.export',
+  'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute', 'timeline.track_add', 'timeline.video_track_remove',
+  'timeline.video_track_move', 'timeline.export',
 ]
 
 interface Fixture {
@@ -120,8 +120,20 @@ function failure(result: ToolExecutionResult): string {
   return result.isError ? result.error.message : ''
 }
 
+/**
+ * Import a stand-in video into a fixture's project.
+ * @param fixture - the fixture.
+ * @param name - the file name.
+ * @param durationSec - its length, or none for a video whose length is not known.
+ * @returns the asset ID.
+ */
+function video(fixture: Fixture, name: string, durationSec?: number): string {
+  const meta = { mime: 'video/mp4', name, ...durationSec === undefined ? {} : { durationSec } }
+  return fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from(name), meta, null)
+}
+
 describe('dvTimeline', () => {
-  it('registers the twenty-six operations with their dv_timeline_* tools and removes them on disposal', async () => {
+  it('registers the twenty-two operations with their dv_timeline_* tools and removes them on disposal', async () => {
     const fixture = await start()
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'timeline')
     expect(specs.map(spec => spec.name)).toEqual(OPERATIONS)
@@ -141,46 +153,53 @@ describe('dvTimeline', () => {
     const created = value(await fixture.call('dv_timeline_create', { reason: 'lay out', name: '开场', assets: ['a1', 'a2', 'a3'] }))
     expect(created).toMatchObject({ status: 'done', summary: 'timeline of 3 clips', outputs: [], scheduled: [] })
     const record = fixture.ctx.dvProject.getRecord(fixture.project, brandString<RecordId>(created.record))
+    // The assets have no known length, so each plays 5 s, one after another on 视频 1.
     expect(record).toMatchObject({
-      actor: 'agent', component: 'timeline', operation: 'timeline.create', operation_version: '2', session: 's1',
-      params: { name: '开场', assets: ['a1', 'a2', 'a3'] }, inputs: [], outputs: [], status: 'done', report: { clips: ['cl1', 'cl2', 'cl3'] },
+      actor: 'agent', component: 'timeline', operation: 'timeline.create', operation_version: '3', session: 's1',
+      params: { name: '开场', assets: ['a1', 'a2', 'a3'] }, inputs: [], outputs: [], status: 'done',
+      report: { clips: ['cl1', 'cl2', 'cl3'], starts: [0, 5, 10] },
     })
-    const moved = value(await fixture.call('dv_timeline_clip_move', { reason: 'open on the kite', clip: 'cl3', to: 1 }))
-    expect(moved.summary).toBe('clip cl3 moved to 1')
+    expect(value(await fixture.call('dv_timeline_clip_move', { reason: 'end on the kite', clip: 'cl3', start_sec: 20 })).summary).toBe('clip cl3 moved to 20s')
     expect(value(await fixture.call('dv_timeline_clip_trim', { reason: 'tighten', clip: 'cl3', in_sec: 0.5, out_sec: 2 })).summary)
       .toBe('clip cl3 trimmed')
     const split = value(await fixture.call('dv_timeline_clip_split', { reason: 'cut', clip: 'cl1', at_sec: 1 }))
     expect([split.summary, split.report]).toEqual(['clip cl1 split at 1s', { clips: ['cl4'] }])
     expect(value(await fixture.call('dv_timeline_clip_remove', { reason: 'drop', clip: 'cl2' })).summary).toBe('clip cl2 removed')
-    expect(value(await fixture.call('dv_timeline_clip_replace', { reason: 'swap', clip: 'cl1', asset: 'b1' })).summary).toBe('clip cl1 replaced')
-    expect(value(await fixture.call('dv_timeline_clip_insert', { reason: 'add', at: 4, asset: 'b2' })).summary).toBe('clip cl5 inserted at 4')
+    const [b1, b2] = [video(fixture, 'b1.mp4'), video(fixture, 'b2.mp4')]
+    expect(value(await fixture.call('dv_timeline_clip_replace', { reason: 'swap', clip: 'cl4', asset: b1 })).summary).toBe('clip cl4 replaced')
+    const added = value(await fixture.call('dv_timeline_clip_add', { reason: 'layer', timeline: 't1', asset: b2, track: 1, start_sec: 0 }))
+    expect([added.summary, added.report]).toEqual(['t1 clip cl5 added to video track 1 at 0s', { clips: ['cl5'] }])
     expect(value(await fixture.call('dv_timeline_create', { reason: 'second', timeline: 't2', assets: [] })).summary).toBe('t2 timeline of 0 clips')
     expect(value(await fixture.call('dv_timeline_rename', { reason: 'name it', timeline: 't2', name: '片尾' })).summary).toBe('t2 renamed to 片尾')
     const timelines = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines
     expect(timelines.map(timeline => [timeline.id, timeline.name])).toEqual([['t1', '开场'], ['t2', '片尾']])
+    // The trim of cl3's in point moved its start along, the second part of cl1 starts where it played, and the removal of
+    // cl2 left its time empty.
     expect(timelines[0]?.clips).toEqual([
-      { id: 'cl3', asset: 'a3', source: null, in_sec: 0.5, out_sec: 2 }, { id: 'cl1', asset: 'b1', source: null, in_sec: null, out_sec: null },
-      { id: 'cl4', asset: 'a1', source: null, in_sec: 1, out_sec: null }, { id: 'cl5', asset: 'b2', source: null, in_sec: null, out_sec: null },
+      { id: 'cl1', asset: 'a1', source: null, in_sec: null, out_sec: 1, start_sec: 0, track: 0 },
+      { id: 'cl4', asset: b1, source: null, in_sec: null, out_sec: null, start_sec: 1, track: 0 },
+      { id: 'cl3', asset: 'a3', source: null, in_sec: 0.5, out_sec: 2, start_sec: 20.5, track: 0 },
+      { id: 'cl5', asset: b2, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 1 },
     ])
     expect(value(await fixture.call('dv_timeline_delete', { reason: 'not needed', timeline: 't2' })).summary).toBe('t2 deleted')
     expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines.map(timeline => timeline.id)).toEqual(['t1'])
   })
-
   it('records the human\'s edits, replaces clips with timeline.update, and assembles a create from clip inputs', async () => {
     const fixture = await start()
     const create = await fixture.run('timeline.create', { assets: ['a1'] })
     expect(create).toMatchObject({ actor: 'user', surface: 'timeline', operation: 'timeline.create', status: 'done' })
-    await fixture.run('timeline.clip_insert', { at: 1, asset: 'a0' })
+    const a0 = video(fixture, 'a0.mp4')
+    await fixture.run('timeline.clip_add', { timeline: 't1', asset: a0, track: 1, start_sec: 2 })
     const clips = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.clips
-      .map(clip => [clip.id, clip.asset])
-    expect(clips()).toEqual([['cl2', 'a0'], ['cl1', 'a1']])
-    // create only creates; update replaces every clip of an existing timeline with clips that get new IDs.
+      .map(clip => [clip.id, clip.asset, clip.track])
+    expect(clips()).toEqual([['cl1', 'a1', 0], ['cl2', a0, 1]])
+    // create only creates; update replaces the clips of 视频 1 with clips that get new IDs, and keeps the other tracks.
     expect(await fixture.run('timeline.create', { assets: ['b1'] })).toMatchObject({
       status: 'failed', error: { message: 'Timeline t1 exists; call dv_timeline_update to replace its clips.' },
     })
     const update = await fixture.run('timeline.update', { timeline: 't1', assets: ['b1', 'b2'] })
-    expect(update).toMatchObject({ status: 'done', report: { clips: ['cl3', 'cl4'] } })
-    expect(clips()).toEqual([['cl3', 'b1'], ['cl4', 'b2']])
+    expect(update).toMatchObject({ status: 'done', report: { clips: ['cl3', 'cl4'], starts: [0, 5] } })
+    expect(clips()).toEqual([['cl3', 'b1', 0], ['cl4', 'b2', 0], ['cl2', a0, 1]])
     expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.name).toBe('')
     expect(await fixture.run('timeline.update', { timeline: 't2', assets: [] })).toMatchObject({
       status: 'failed', error: { message: 'Timeline t2 does not exist.' },
@@ -197,10 +216,12 @@ describe('dvTimeline', () => {
     const cases: Array<[string, Record<string, unknown>, string]> = [
       ['timeline.rename', { timeline: 't9', name: 'x' }, 'Timeline t9 does not exist.'],
       ['timeline.delete', { timeline: 't9' }, 'Timeline t9 does not exist.'],
-      ['timeline.clip_insert', { at: 4, asset: 'a3' }, 'Timeline t1 has 2 clips; position 4 is not between 1 and 3.'],
-      ['timeline.clip_move', { clip: 'cl1', to: 3 }, 'Timeline t1 has 2 clips; position 3 is not between 1 and 2.'],
+      ['timeline.clip_add', { timeline: 't1', asset: 'a3', track: 2, start_sec: 0 }, 'Timeline t1 has no video track 2; it has 1.'],
+      ['timeline.clip_add', { timeline: 't1', asset: 'a3', track: 0, start_sec: 20 }, 'Asset \'a3\' is not in the asset pool.'],
+      ['timeline.clip_move', { clip: 'cl1', start_sec: -1 }, 'start_sec -1 is not a time of 0 seconds or more.'],
+      ['timeline.clip_move', { clip: 'cl1', start_sec: 3 }, 'Clip cl1 would overlap clip cl2 on video track 0 (5s to 10s); pick another start_sec or track.'],
       ['timeline.clip_remove', { clip: 'cl9' }, 'Clip cl9 does not exist.'],
-      ['timeline.clip_split', { clip: 'cl1', at_sec: 0 }, 'Clip cl1 of timeline t1 does not play 0s of its asset; split inside its in and out points.'],
+      ['timeline.clip_split', { clip: 'cl1', at_sec: 0 }, 'Clip cl1 does not play 0s of its asset; split inside its in and out points.'],
       ['timeline.clip_trim', { clip: 'cl2', in_sec: 3, out_sec: 1 }, 'The out point 1s is not after the in point 3s.'],
       ['timeline.clip_replace', { clip: 'cl3', asset: 'a3' }, 'Clip cl3 does not exist.'],
     ]
@@ -232,7 +253,7 @@ describe('dvTimeline', () => {
     const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
     expect(timeline()).toMatchObject({
       sounds: [{ id: 'sd1', asset: song, start_sec: 1.5, track: 0 }, { id: 'sd2', asset: voice, start_sec: 0, track: 1 }],
-      sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound', 'sound'],
+      sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound', 'sound'],
     })
     expect(value(await fixture.call('dv_timeline_sound_track_rename', { reason: 'label', timeline: 't1', track: 1, name: 'Voice' })).summary)
       .toBe('t1 sound track 1 renamed to Voice')
@@ -284,7 +305,7 @@ describe('dvTimeline', () => {
     expect(await call('dv_timeline_sound_trim', { sound: 'sd1', in_sec: 0.5, out_sec: 2 })).toBe('sound sd1 trimmed')
     const [timeline] = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines
     expect([timeline?.sounds, timeline?.track_order]).toEqual([
-      [{ id: 'sd1', asset: song, in_sec: 0.5, out_sec: 2, start_sec: 3.5, track: 1 }], ['sound', 'sound'],
+      [{ id: 'sd1', asset: song, in_sec: 0.5, out_sec: 2, start_sec: 3.5, track: 1 }], ['video', 'sound', 'sound'],
     ])
     expect(failure(await fixture.call('dv_timeline_sound_move', { reason: 'fit', sound: 'sd1', start_sec: 0, track: 3 })))
       .toContain('Timeline t1 has no sound track 3; it has 2.')
@@ -298,31 +319,31 @@ describe('dvTimeline', () => {
     ])
   })
 
-  it('mutes and unmutes the clips\' own audio and a sound track from the agent\'s calls, and refuses a mute that does not apply', async () => {
+  it('mutes and unmutes the own audio of a video track and a sound track from the agent\'s calls, and refuses a mute that does not apply', async () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1'] })
     const mute = async (args: Record<string, unknown>): Promise<string> =>
       value(await fixture.call('dv_timeline_mute', { reason: 'replace the music', timeline: 't1', ...args })).summary
-    expect(await mute({ target: 'video', muted: true })).toBe('t1 video audio muted')
+    expect(await mute({ target: 'video_track', track: 0, muted: true })).toBe('t1 video track 0 muted')
     expect(await mute({ target: 'sound', track: 1, muted: true })).toBe('t1 sound track 1 muted')
     const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
-    expect(timeline()).toMatchObject({ video_muted: true, muted_sound_tracks: [1] })
+    expect(timeline()).toMatchObject({ muted_video_tracks: [0], muted_sound_tracks: [1] })
     expect(await mute({ target: 'sound', track: 1, muted: false })).toBe('t1 sound track 1 unmuted')
-    expect(await mute({ target: 'video', muted: false })).toBe('t1 video audio unmuted')
+    expect(await mute({ target: 'video_track', track: 0, muted: false })).toBe('t1 video track 0 unmuted')
     // Sound track 1 stays after the unmute, empty, until a removal deletes it.
-    expect(timeline()).toMatchObject({ video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound', 'sound'] })
+    expect(timeline()).toMatchObject({ muted_video_tracks: [], muted_sound_tracks: [], track_order: ['video', 'sound', 'sound'] })
     const cases: Array<[Record<string, unknown>, string]> = [
       [{ timeline: 't1', target: 'sound', track: 3, muted: true }, 'Timeline t1 has no sound track 3; it has 2.'],
-      [{ timeline: 't1', target: 'sound', muted: true }, 'track undefined is not a track number of 0 or more.'],
-      [{ timeline: 't9', target: 'video', muted: true }, 'Timeline t9 does not exist.'],
+      [{ timeline: 't1', target: 'video_track', track: 2, muted: true }, 'Timeline t1 has no video track 2; it has 1.'],
+      [{ timeline: 't9', target: 'video_track', track: 0, muted: true }, 'Timeline t9 does not exist.'],
     ]
     for (const [params, message] of cases) {
       expect(await fixture.run('timeline.mute', params)).toMatchObject({ status: 'failed', error: { code: 'operation_failed', message } })
     }
-    await expect(fixture.run('timeline.mute', { timeline: 't1', target: 'audio', muted: true })).rejects.toMatchObject({ code: 'invalid_params' })
-    await expect(fixture.run('timeline.mute', { timeline: 't1', target: 'video' })).rejects.toMatchObject({ code: 'invalid_params' })
+    for (const params of [{ target: 'video', track: 0, muted: true }, { target: 'sound', muted: true }, { target: 'video_track', track: 0 }]) {
+      await expect(fixture.run('timeline.mute', { timeline: 't1', ...params })).rejects.toMatchObject({ code: 'invalid_params' })
+    }
   })
-
   it('puts a timeline on the canvas once with dv_timeline_place while the canvas is loaded, and an undo takes the node off', async () => {
     expect((await start()).ctx.tools.get('dv_timeline_place')).toBeUndefined()
     const fixture = await start({ canvas: true })
@@ -373,10 +394,10 @@ describe('dvTimeline', () => {
     expect(spec('timeline.sound_track_rename')?.description)
       .toBe('Name one sound track of a timeline: an existing track or the one after the last. An empty name clears the name.')
     expect(spec('timeline.mute')?.description).toBe(
-      'Mute or unmute audio of a timeline. Target `video` is the own audio of the main video track\'s clips, and target `video_track` '
-      + 'that of one video track under it: while it is muted, the user hears those clips silent when playing the timeline, and the '
-      + 'exported video leaves their audio out. Target `sound` is one sound track: while it is muted, the user does not hear its '
-      + 'sounds when playing the timeline (the exported video does not include sounds yet).',
+      'Mute or unmute audio of a timeline. Target `video_track` is the own audio of the clips of one video track: while it is '
+      + 'muted, the user hears those clips silent when playing the timeline, and the exported video leaves their audio out. Target '
+      + '`sound` is one sound track: while it is muted, the user does not hear its sounds when playing the timeline (the exported '
+      + 'video does not include sounds yet).',
     )
     expect(spec('timeline.mute')?.label).toEqual({ zh: '静音或取消静音', en: 'Mute or unmute' })
   })
@@ -387,7 +408,7 @@ describe('dvTimeline', () => {
     const add = async (kind: string): Promise<string> =>
       value(await fixture.call('dv_timeline_track_add', { reason: 'the user asked for a track', timeline: 't1', kind })).summary
     expect([await add('video'), await add('sound')]).toEqual(['t1 video track added', 't1 sound track added'])
-    expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.track_order).toEqual(['sound', 'video', 'sound'])
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.track_order).toEqual(['video', 'sound', 'video', 'sound'])
     const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.track_add')
     expect([spec?.label, spec?.description]).toEqual([
       { zh: '添加轨道', en: 'Add track' },
@@ -400,64 +421,51 @@ describe('dvTimeline', () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1'] })
     await fixture.call('dv_timeline_track_add', { reason: 'layers', timeline: 't1', kind: 'video' })
-    const clip = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('clip'), { mime: 'video/mp4', name: 'clip.mp4', durationSec: 2 }, null)
-    value(await fixture.call('dv_timeline_track_clip_add', { reason: 'layers', timeline: 't1', asset: clip, track: 1, start_sec: 0 }))
+    const clip = video(fixture, 'clip.mp4', 2)
+    value(await fixture.call('dv_timeline_clip_add', { reason: 'layers', timeline: 't1', asset: clip, track: 1, start_sec: 0 }))
     const moved = value(await fixture.call('dv_timeline_video_track_move', { reason: 'put it on top', timeline: 't1', track: 1, to: 0 }))
     expect(moved.summary).toBe('t1 video track 1 moved to 0')
     const [timeline] = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines
-    expect(timeline?.track_clips.map(clip => clip.track)).toEqual([0])
+    expect(timeline?.clips.map(each => `${each.id} ${String(each.track)}`)).toEqual(['cl1 1', 'cl2 0'])
     const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.video_track_move')
     expect([spec?.label, spec?.description]).toEqual([
       { zh: '移动视频轨', en: 'Move video track' },
-      'Move one video track under the main video track to another number, with its clips and its mute. A track with a lower number '
-      + 'covers the tracks with higher numbers after the main track ends; the tracks between the two numbers move one number toward '
-      + 'the old one. The main video track covers them all; dv_timeline_main_track_swap swaps it with track 0.',
+      'Move one video track to another number, with its clips and its mute. A track with a lower number covers the tracks with '
+      + 'higher numbers where it has a clip; the tracks between the two numbers move one number toward the old one.',
     ])
   })
-
-  it('swaps the main video track with video track 0 from the agent\'s call, placing its clips at the times they played', async () => {
+  it('leaves a gap where a removed clip played, and adds and moves clips at a time', async () => {
     const fixture = await start()
-    const clip = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('clip'), { mime: 'video/mp4', name: 'clip.mp4', durationSec: 2 }, null)
-    const other = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('other'), { mime: 'video/mp4', name: 'other.mp4' }, null)
-    await fixture.run('timeline.create', { assets: [clip, clip] })
-    value(await fixture.call('dv_timeline_track_clip_add', { reason: 'layers', timeline: 't1', asset: clip, track: 0, start_sec: 5 }))
-    const swapped = value(await fixture.call('dv_timeline_main_track_swap', { reason: 'put it on top', timeline: 't1' }))
-    expect([swapped.summary, swapped.report]).toEqual(['t1 main video track swapped with video track 0', { starts: [0, 2] }])
-    const [timeline] = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines
-    expect([timeline?.clips.map(each => each.id), timeline?.track_clips.map(each => `${each.id} ${String(each.start_sec)}`)]).toEqual([['cl3'], ['cl1 0', 'cl2 2']])
-    // A clip whose asset length is not known has no time on a video track.
-    await fixture.run('timeline.clip_insert', { timeline: 't1', at: 1, asset: other })
-    expect(failure(await fixture.call('dv_timeline_main_track_swap', { reason: 'again', timeline: 't1' })))
-      .toContain(`The length of asset ${other} is not known yet, so clip cl4 cannot go on a video track.`)
-    const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.main_track_swap')
-    expect([spec?.label, spec?.description]).toEqual([
-      { zh: '对调主视频轨', en: 'Swap main video track' },
-      'Swap the main video track with video track 0 under it, so the other one covers. The main track\'s clips go onto video track '
-      + '0 at the times they play now; the clips of video track 0 become the main track\'s clips, one after another in the order of '
-      + 'their start times, without the gaps between them. Both keep their clip IDs, and the two mutes swap. Refused while a clip of '
-      + 'the main track is still rendering.',
-    ])
+    const [two, three, one] = [video(fixture, 'two.mp4', 2), video(fixture, 'three.mp4', 3), video(fixture, 'one.mp4', 1)]
+    expect((await fixture.run('timeline.create', { assets: [two, three, two] })).report).toEqual({ clips: ['cl1', 'cl2', 'cl3'], starts: [0, 2, 5] })
+    const clips = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.clips
+      .map(clip => `${clip.id} ${String(clip.start_sec)}`)
+    // cl1 plays 0 s to 2 s, cl2 2 s to 5 s, cl3 5 s to 7 s; removing cl2 leaves 2 s to 5 s empty.
+    value(await fixture.call('dv_timeline_clip_remove', { reason: 'drop', clip: 'cl2' }))
+    expect(clips()).toEqual(['cl1 0', 'cl3 5'])
+    const added = value(await fixture.call('dv_timeline_clip_add', { reason: 'fill', timeline: 't1', asset: one, track: 0, start_sec: 3 }))
+    expect([added.summary, added.report]).toEqual(['t1 clip cl4 added to video track 0 at 3s', { clips: ['cl4'] }])
+    expect(failure(await fixture.call('dv_timeline_clip_move', { reason: 'later', clip: 'cl1', start_sec: 4 })))
+      .toContain('Clip cl1 would overlap clip cl3 on video track 0 (5s to 7s); pick another start_sec or track.')
+    expect(value(await fixture.call('dv_timeline_clip_move', { reason: 'later', clip: 'cl1', start_sec: 8 })).summary).toBe('clip cl1 moved to 8s')
+    expect(clips()).toEqual(['cl1 8', 'cl3 5', 'cl4 3'])
   })
-
-  it('deletes the main video track from the agent\'s call, so the first video track under it takes its place', async () => {
+  it('deletes 视频 1 from the agent\'s call, so the video track under it becomes the top track', async () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1'] })
-    const clip = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('clip'), { mime: 'video/mp4', name: 'clip.mp4', durationSec: 2 }, null)
-    value(await fixture.call('dv_timeline_track_clip_add', { reason: 'layers', timeline: 't1', asset: clip, track: 0, start_sec: 3 }))
-    const removed = value(await fixture.call('dv_timeline_main_track_remove', { reason: 'drop the original', timeline: 't1' }))
-    expect(removed.summary).toBe('t1 main video track deleted')
+    const clip = video(fixture, 'clip.mp4', 2)
+    value(await fixture.call('dv_timeline_clip_add', { reason: 'layers', timeline: 't1', asset: clip, track: 1, start_sec: 3 }))
+    const removed = value(await fixture.call('dv_timeline_video_track_remove', { reason: 'drop the original', timeline: 't1', track: 0 }))
+    expect(removed.summary).toBe('t1 video track 0 deleted')
     const [timeline] = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines
-    expect([timeline?.clips.map(each => each.asset), timeline?.track_clips]).toEqual([[clip], []])
-    const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.main_track_remove')
+    expect(timeline?.clips.map(each => [each.asset, each.track, each.start_sec])).toEqual([[clip, 0, 3]])
+    const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.video_track_remove')
     expect([spec?.label, spec?.description]).toEqual([
-      { zh: '删除主视频轨', en: 'Delete main video track' },
-      'Delete all clips of the main video track; video track 0 under it then becomes the main video track. Its clips play one '
-      + 'after another in the order of their start times, without the gaps between them, and keep their clip IDs; its mute '
-      + 'becomes the mute of the main track\'s own audio, and every other video track moves up one number. Without video tracks, '
-      + 'the main video track stays empty. The assets stay.',
+      { zh: '删除视频轨', en: 'Delete video track' },
+      'Delete one video track with all its clips; every video track with a higher number moves up one, so deleting track 0 makes '
+      + 'track 1 the top track. The assets stay.',
     ])
   })
-
   it('refuses a sound of an asset that is not audio, and a sound call that does not apply, before it changes the timeline', async () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1'] })
@@ -487,54 +495,47 @@ describe('dvTimeline', () => {
     expect(await fixture.run('timeline.sound_add', { timeline: 't1', asset: song, start_sec: 0 })).toMatchObject({ report: { sounds: ['sd1'] } })
   })
 
-  it('puts videos on the video tracks under the main one, and refuses a non-video added or swapped in, an unknown length and an overlap', async () => {
+  it('puts videos on any video track, and refuses a non-video added or swapped in and an overlap', async () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1'] })
     const pool = fixture.ctx.dvAssetPool
-    const video = (name: string, durationSec?: number): string => pool.importAsset(
-      fixture.project, Buffer.from(name), { mime: 'video/mp4', name, ...durationSec === undefined ? {} : { durationSec } }, null,
-    )
-    const four = video('four.mp4', 4)
-    const two = video('two.mp4', 2)
-    const unknown = video('unknown.mp4')
+    const four = video(fixture, 'four.mp4', 4)
+    const two = video(fixture, 'two.mp4', 2)
     const still = pool.importAsset(fixture.project, Buffer.from('still'), { mime: 'image/png', name: 'still.png' }, null)
-    const added = value(await fixture.call('dv_timeline_track_clip_add', { reason: 'cut in', timeline: 't1', asset: four, track: 0, start_sec: 1 }))
-    expect(added.summary).toBe('t1 clip cl2 added to video track 0 at 1s')
-    expect((await fixture.run('timeline.track_clip_add', { timeline: 't1', asset: two, track: 0, start_sec: 5 })).status).toBe('done')
+    const added = value(await fixture.call('dv_timeline_clip_add', { reason: 'cut in', timeline: 't1', asset: four, track: 1, start_sec: 1 }))
+    expect(added.summary).toBe('t1 clip cl2 added to video track 1 at 1s')
+    expect((await fixture.run('timeline.clip_add', { timeline: 't1', asset: two, track: 1, start_sec: 5 })).status).toBe('done')
     const cases: Array<[string, Record<string, unknown>, string]> = [
-      ['timeline.track_clip_add', { timeline: 't1', asset: still, track: 0, start_sec: 9 }, `Asset ${still} is not a video.`],
-      ['timeline.track_clip_add', { timeline: 't1', asset: unknown, track: 1, start_sec: 0 },
-        `The length of asset ${unknown} is not known yet, so the new clip cannot go on a video track.`],
-      ['timeline.track_clip_add', { timeline: 't1', asset: two, track: 0, start_sec: 4 },
-        'The new clip would overlap clip cl2 on video track 0 (1s to 5s); pick another start_sec or track.'],
-      ['timeline.track_clip_move', { clip: 'cl3', start_sec: 2 }, 'Clip cl3 would overlap clip cl2 on video track 0 (1s to 5s); pick another start_sec or track.'],
-      ['timeline.clip_trim', { clip: 'cl2', in_sec: 0, out_sec: 4.5 }, 'Clip cl2 would overlap clip cl3 on video track 0 (5s to 7s); pick another start_sec or track.'],
-      ['timeline.clip_replace', { clip: 'cl2', asset: unknown }, `The length of asset ${unknown} is not known yet, so clip cl2 cannot go on a video track.`],
+      ['timeline.clip_add', { timeline: 't1', asset: still, track: 1, start_sec: 9 }, `Asset ${still} is not a video.`],
+      ['timeline.clip_add', { timeline: 't1', asset: two, track: 1, start_sec: 4 },
+        'The new clip would overlap clip cl2 on video track 1 (1s to 5s); pick another start_sec or track.'],
+      ['timeline.clip_move', { clip: 'cl3', start_sec: 2 }, 'Clip cl3 would overlap clip cl2 on video track 1 (1s to 5s); pick another start_sec or track.'],
+      ['timeline.clip_trim', { clip: 'cl2', in_sec: 0, out_sec: 4.5 }, 'Clip cl2 would overlap clip cl3 on video track 1 (5s to 7s); pick another start_sec or track.'],
       ['timeline.clip_replace', { clip: 'cl2', asset: still }, `Asset ${still} is not a video.`],
-      ['timeline.track_clip_add', { timeline: 't1', asset: two, track: 2, start_sec: 0 }, 'Timeline t1 has no video track 2; it has 1 under the main video track.'],
+      ['timeline.clip_add', { timeline: 't1', asset: two, track: 3, start_sec: 0 }, 'Timeline t1 has no video track 3; it has 2.'],
     ]
     for (const [operation, params, message] of cases) {
       expect(await fixture.run(operation, params)).toMatchObject({ status: 'failed', error: { code: 'operation_failed', message } })
     }
-    // A move to another track and a trim that keeps clear of the next clip apply.
-    expect(value(await fixture.call('dv_timeline_track_clip_move', { reason: 'later', clip: 'cl3', start_sec: 6 })).summary).toBe('clip cl3 moved to 6s')
-    expect(value(await fixture.call('dv_timeline_track_clip_move', { reason: 'lower', clip: 'cl3', start_sec: 2, track: 1 })).summary)
-      .toBe('clip cl3 moved to 2s on video track 1')
+    // A move to another time or track and a trim that keeps clear of the next clip apply.
+    expect(value(await fixture.call('dv_timeline_clip_move', { reason: 'later', clip: 'cl3', start_sec: 6 })).summary).toBe('clip cl3 moved to 6s')
+    expect(value(await fixture.call('dv_timeline_clip_move', { reason: 'lower', clip: 'cl3', start_sec: 2, track: 2 })).summary)
+      .toBe('clip cl3 moved to 2s on video track 2')
     expect((await fixture.run('timeline.clip_trim', { clip: 'cl2', in_sec: 1, out_sec: 3 })).status).toBe('done')
-    expect(value(await fixture.call('dv_timeline_mute', { reason: 'quiet', timeline: 't1', target: 'video_track', track: 1, muted: true })).summary)
-      .toBe('t1 video track 1 muted')
+    expect(value(await fixture.call('dv_timeline_mute', { reason: 'quiet', timeline: 't1', target: 'video_track', track: 2, muted: true })).summary)
+      .toBe('t1 video track 2 muted')
     const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
     expect(timeline()).toMatchObject({
-      track_clips: [
-        { id: 'cl2', asset: four, track: 0, start_sec: 2, in_sec: 1, out_sec: 3 },
-        { id: 'cl3', asset: two, track: 1, start_sec: 2, in_sec: null, out_sec: null },
+      clips: [
+        { id: 'cl1', track: 0 },
+        { id: 'cl2', asset: four, track: 1, start_sec: 2, in_sec: 1, out_sec: 3 },
+        { id: 'cl3', asset: two, track: 2, start_sec: 2, in_sec: null, out_sec: null },
       ],
-      muted_video_tracks: [1],
+      muted_video_tracks: [2],
     })
-    expect(value(await fixture.call('dv_timeline_video_track_remove', { reason: 'drop', timeline: 't1', track: 0 })).summary).toBe('t1 video track 0 deleted')
-    expect(timeline()).toMatchObject({ track_clips: [{ id: 'cl3', track: 0 }], muted_video_tracks: [0] })
+    expect(value(await fixture.call('dv_timeline_video_track_remove', { reason: 'drop', timeline: 't1', track: 1 })).summary).toBe('t1 video track 1 deleted')
+    expect(timeline()).toMatchObject({ clips: [{ id: 'cl1', track: 0 }, { id: 'cl3', track: 1 }], muted_video_tracks: [1] })
   })
-
   it('keeps sound IDs unique across an undo and across calls that run at the same time', async () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1'] })
@@ -555,21 +556,23 @@ describe('dvTimeline', () => {
     })
     expect(await fixture.run('timeline.stand_in', {})).toMatchObject({ status: 'done', report: { sounds: ['sound-9'] } })
     expect(await fixture.run('timeline.sound_add', { timeline: 't1', asset: song, start_sec: 0 })).toMatchObject({ report: { sounds: ['sd5'] } })
-    expect(await fixture.run('timeline.clip_insert', { at: 1, asset: 'a2' })).toMatchObject({ report: { clips: ['cl2'] } })
+    expect(await fixture.run('timeline.clip_add', { timeline: 't1', asset: video(fixture, 'a2.mp4'), track: 0, start_sec: 10 }))
+      .toMatchObject({ report: { clips: ['cl2'] } })
   })
 
-  it('keeps clip IDs unique across an undo, and a discarded insert does not come back', async () => {
+  it('keeps clip IDs unique across an undo, and a discarded add does not come back', async () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1', 'a2'] })
+    const [d1, m1] = [video(fixture, 'd1.mp4'), video(fixture, 'm1.mp4')]
     // The agent adds a clip, the human undoes it and adds another; the project-wide numbering gives them different IDs.
-    const added = value(await fixture.call('dv_timeline_clip_insert', { reason: 'add', at: 3, asset: 'd1' }))
+    const added = value(await fixture.call('dv_timeline_clip_add', { reason: 'add', timeline: 't1', asset: d1, track: 0, start_sec: 10 }))
     expect(added.report).toEqual({ clips: ['cl3'] })
     await fixture.ctx.dvProject.undo(fixture.project)
-    expect(await fixture.run('timeline.clip_insert', { at: 3, asset: 'm1' })).toMatchObject({ report: { clips: ['cl4'] } })
+    expect(await fixture.run('timeline.clip_add', { timeline: 't1', asset: m1, track: 0, start_sec: 10 })).toMatchObject({ report: { clips: ['cl4'] } })
     const clips = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]?.clips
       .map(clip => [clip.id, clip.asset])
-    expect(clips()).toEqual([['cl1', 'a1'], ['cl2', 'a2'], ['cl4', 'm1']])
-    // The human's insert discarded the agent's insert, so the project cannot go back to it.
+    expect(clips()).toEqual([['cl1', 'a1'], ['cl2', 'a2'], ['cl4', m1]])
+    // The human's add discarded the agent's add, so the project cannot go back to it.
     await expect(fixture.ctx.dvProject.moveTo(fixture.project, brandString<RecordId>(added.record))).rejects.toMatchObject({ code: 'invalid_params' })
   })
 
@@ -647,7 +650,7 @@ describe('dvTimeline', () => {
     const timelines = (): Array<{ id: string; clips: unknown[] }> =>
       fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines
     const t1 = (): unknown => timelines().find(entry => entry.id === 't1')?.clips
-    expect(t1()).toEqual([{ id: 'cl1', asset: null, source: { record: render, output: 0 }, in_sec: null, out_sec: null }])
+    expect(t1()).toEqual([{ id: 'cl1', asset: null, source: { record: render, output: 0 }, in_sec: null, out_sec: null, start_sec: 0, track: 0 }])
     await fixture.ctx.dvProject.undo(fixture.project)
     expect(timelines()).toEqual([])
     await fixture.ctx.dvProject.redo(fixture.project)
@@ -655,7 +658,7 @@ describe('dvTimeline', () => {
     held.resolve()
     await running
     const [take] = fixture.ctx.dvProject.getRecord(fixture.project, render).outputs
-    expect(t1()).toEqual([{ id: 'cl1', asset: take, source: { record: render, output: 0 }, in_sec: null, out_sec: null }])
+    expect(t1()).toEqual([{ id: 'cl1', asset: take, source: { record: render, output: 0 }, in_sec: null, out_sec: null, start_sec: 0, track: 0 }])
     expect(timelines().map(entry => entry.id)).toEqual(['t1'])
   })
 })

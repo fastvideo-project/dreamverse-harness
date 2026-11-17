@@ -65,7 +65,7 @@ export async function mountWorkspace(hash: string): Promise<Workspace> {
   document.documentElement.lang = 'zh-CN'
   vi.resetModules()
   const state = fixtureState()
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', clips: [], sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', clips: [], sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'] })
   const { fetch } = scriptedFetch({ state, projects: PROJECTS })
   const summaries: Array<Record<string, string>> = []
   const json = (body: unknown): Promise<Response> => Promise.resolve(new Response(JSON.stringify(body), { status: 200 }))

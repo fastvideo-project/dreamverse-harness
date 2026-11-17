@@ -75,18 +75,20 @@ function versionText(state: ProjectState, kind: string, id: string, sources: Exp
 }
 
 /**
- * A clip of a timeline in the current state: its timeline (with its name when it has one), its 1-based position, its
- * asset, and the record that produced the asset. A placeholder clip names the render record it waits for, whose
+ * A clip of a timeline in the current state: its timeline (with its name when it has one), its 1-based place by start
+ * time among the clips of its video track, as the mention menu numbers it, its asset, and the record that produced the
+ * asset. A placeholder clip names the render record it waits for, whose
  * status tells whether the render is still running or failed.
  */
 function clipText(state: ProjectState, clipId: string, projectId: ProjectId, sources: ExpansionSources): string {
   for (const timeline of state.components.timeline.timelines) {
-    const index = timeline.clips.findIndex(clip => clip.id === clipId)
-    const clip = timeline.clips[index]
+    const clip = timeline.clips.find(each => each.id === clipId)
     if (clip === undefined) continue
+    // A tie keeps the order the timeline stores the clips in, as the mention menu does.
+    const place = timeline.clips.filter(each => each.track === clip.track).toSorted((a, b) => a.start_sec - b.start_sec).indexOf(clip) + 1
     const producer = clip.asset === null ? clip.source?.record : state.components.proj.created_by[clip.asset]
     const name = timeline.name === '' ? '' : ` "${timeline.name}"`
-    return `clip ${clipId}, clip ${String(index + 1)} of timeline ${timeline.id}${name}, `
+    return `clip ${clipId}, clip ${String(place)} by start time on video track ${String(clip.track)} of timeline ${timeline.id}${name}, `
       + `${clip.asset === null ? 'a placeholder clip (no asset until its render is done), its render' : `asset ${clip.asset}`}`
       + producerText(projectId, producer, sources)
   }

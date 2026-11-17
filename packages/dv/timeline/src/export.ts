@@ -1,11 +1,12 @@
 /**
  * The `timeline.export` operation of the Timeline component: it reads the timeline's clips from the `timeline` slice of
- * the project state, trims each clip that has an in or out point with `dvFfmpeg`, joins the clips of the 视频 track in
- * playback order (without their audio while the timeline's `video_muted` is on), adds after its end the clips of the
- * video tracks under it, and imports the result into the asset pool as the record's output. An export of a
- * timeline with a placeholder clip
- * (a clip whose render is not done, so it has no asset) is refused before its record. The `timeline` reducer ignores
- * export records: an export changes no project state besides the asset it creates.
+ * the project state, trims each clip that has an in or out point with `dvFfmpeg`, lays every video track out in time,
+ * the track with the lowest number on top, and imports the result into the asset pool as the record's output. When 视频 1
+ * (track 0) plays from 0 s without a gap, its clips are joined in playback order (without their audio while track 0 is
+ * muted) and the other tracks show after its end; any other timeline is drawn on black, which shows where no clip plays.
+ * An export of a timeline with a placeholder clip (a clip whose render is not done, so it has no asset) is refused
+ * before its record.
+ * The `timeline` reducer ignores export records: an export changes no project state besides the asset it creates.
  *
  * @module @dv/timeline/export
  */
@@ -14,7 +15,9 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@dv/asset-pool'
 import { FfmpegError } from '@dv/ffmpeg'
 import type { AssetId, OperationResult, OperationSpec, ProjectState } from '@dv/project'
-import type { Clip, Timeline, TrackClip } from './types.ts'
+import { clipLength, placeClips } from './reducer.ts'
+import type { PlacedClip } from './reducer.ts'
+import type { Clip, Timeline } from './types.ts'
 
 /** The name of the export operation, whose agent tool is `dv_timeline_export`. */
 export const EXPORT_OPERATION = 'timeline.export'
@@ -34,51 +37,85 @@ function exportedTimeline(state: ProjectState, id: unknown): Timeline | undefine
 }
 
 /**
- * Why a timeline cannot be exported yet: the 1-based positions of its placeholder clips, such as "Clips 3, 5 of
- * timeline t1 are not ready yet.".
+ * Why a timeline cannot be exported yet: the IDs of its placeholder clips, such as "Clips cl3, cl5 of timeline t1 are not
+ * ready yet.".
  * @param timeline - the timeline.
  * @returns the reason, or null when every clip has an asset.
  */
 function notReady(timeline: Timeline): string | null {
-  const positions = timeline.clips.flatMap((clip, index) => (clip.asset === null ? [index + 1] : []))
-  if (positions.length === 0) return null
-  return positions.length === 1
-    ? `Clip ${String(positions[0])} of timeline ${timeline.id} is not ready yet.`
-    : `Clips ${positions.join(', ')} of timeline ${timeline.id} are not ready yet.`
+  const waiting = timeline.clips.flatMap(clip => (clip.asset === null ? [clip.id] : []))
+  if (waiting.length === 0) return null
+  return waiting.length === 1
+    ? `Clip ${waiting[0] as string} of timeline ${timeline.id} is not ready yet.`
+    : `Clips ${waiting.join(', ')} of timeline ${timeline.id} are not ready yet.`
 }
 
 /**
- * Export a timeline to one MP4 file: trim each clip with an in or out point to that range, join the clips of the 视频
- * track in playback order, and add the clips of the video tracks under it after the joined video's end. The picture and
- * the audio at each time come from the 视频 track while it has a clip, else from the clip of the track with the lowest
- * number there; muted audio is silent. A timeline whose clips have no audio, or whose clips' audio is all muted, gives
- * a file without audio.
+ * Export a timeline to one MP4 file: trim each clip with an in or out point to that range and lay the clips out at their
+ * times. The picture and the audio at each time come from the clip of the track with the lowest number there, else black
+ * and silence; muted audio is silent. A timeline whose clips have no audio, or whose clips' audio is all muted, gives a
+ * file without audio.
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
- * @param timeline - the timeline with at least one clip on its 视频 track, each of which has an asset.
+ * @param timeline - the timeline with at least one clip, each of which has an asset.
  * @param dir - an existing directory for the trimmed clips and the joined file, usually the operation's `scratchDir`.
  * @returns the path of the exported file inside `dir`.
- * @throws Error for a timeline without clips on its 视频 track or with a placeholder clip; FfmpegError when ffmpeg
- *   cannot trim, join or draw the clips.
+ * @throws Error for a timeline without clips or with a placeholder clip; FfmpegError when ffmpeg cannot trim, join or
+ *   draw the clips.
  */
 export async function exportTimeline(ctx: Context, timeline: Timeline, dir: string): Promise<string> {
   if (timeline.clips.length === 0) throw new Error(`Timeline ${timeline.id} has no clips to export.`)
   const reason = notReady(timeline)
   if (reason !== null) throw new Error(reason)
+  const pool = ctx.dvAssetPool
+  // Every clip has an asset of the pool here, since a clip without one was refused above.
+  const durationOf = (asset: AssetId): number | null => pool.get(asset).duration_sec
+  const placed = placeClips(timeline.clips, clip => clipLength(clip, durationOf, []))
+  // 视频 1 playing from 0 s without a gap joins into one file; any other timeline is drawn on black.
+  const top = placed.filter(each => each.clip.track === 0).toSorted((a, b) => a.start - b.start)
+  const gapless = top.length > 0 && top.every((each, index) => Math.abs(each.start - (top[index - 1]?.end ?? 0)) < 0.01)
+  if (!gapless) return await drawOnBlack(ctx, timeline, placed, dir)
+  const muted = timeline.muted_video_tracks.includes(0)
   const paths: string[] = []
-  for (const [index, { asset, ...clip }] of timeline.clips.entries()) {
-    if (asset !== null) paths.push(await clipFile(ctx, { ...clip, asset }, `clip-${index + 1}.mp4`, dir, timeline.video_muted))
+  for (const [index, { clip: { asset, ...clip } }] of top.entries()) {
+    paths.push(await clipFile(ctx, { ...clip, asset: asset as AssetId }, `clip-${index + 1}.mp4`, dir, muted))
   }
-  const joined = await joinClips(ctx, paths, dir, timeline.video_muted)
-  return timeline.track_clips.length === 0 ? joined : await drawTracks(ctx, timeline, joined, dir)
+  const joined = await joinClips(ctx, paths, dir, muted)
+  const others = placed.filter(each => each.clip.track !== 0)
+  return others.length === 0 ? joined : await drawTracks(ctx, timeline, others, joined, dir)
 }
 
-/** One track clip ready to draw: its file, its timeline span, and whether its audio is heard. */
+/** One clip ready to draw: its layer (its video track; a lower layer covers a higher one), its file, its span, and whether it is heard. */
 interface DrawnClip {
-  clip: TrackClip
+  layer: number
   path: string
   start: number
   end: number
   audio: boolean
+}
+
+/**
+ * The picture and audio that the drawn clips go over: a file that covers the timeline from 0 s to `covers` seconds with
+ * its own picture and audio, or black of the drawing's whole length at a frame rate, which the result takes.
+ */
+type Base = { path: string; covers: number; audio: boolean } | { black: true; rate: string }
+
+/** The frame rate of the black base when ffprobe reports none for the first clip. */
+const FALLBACK_FRAME_RATE = '30'
+
+/**
+ * The frame rate of a file's first video stream.
+ * @param ctx - a context that injects `dvFfmpeg`.
+ * @param path - the file.
+ * @param dir - the directory the read runs in.
+ * @returns the rate as ffprobe prints it, such as `24/1` or `30000/1001`, or null when it reports none.
+ */
+async function frameRateOf(ctx: Context, path: string, dir: string): Promise<string | null> {
+  const read = await ctx.dvFfmpeg.run({
+    argv: ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=avg_frame_rate', '-of', 'csv=p=0', '{{in:0}}'],
+    inputs: [path], outputs: [], dir,
+  })
+  const rate = read.stdout.trim()
+  return /^[1-9]\d*\/[1-9]\d*$/.test(rate) ? rate : null
 }
 
 /**
@@ -106,62 +143,118 @@ function videoSeconds(probe: { videoDurationSec: number | null; durationSec: num
  * a lower number covers it. A clip's audio is silenced up to the joined video's end and where a clip of a track with a
  * lower number plays; the remaining audio is mixed.
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
- * @param timeline - the timeline with at least one track clip.
- * @param joined - the joined 视频 track.
+ * @param timeline - the timeline.
+ * @param others - where the clips of the tracks under 视频 1 play.
+ * @param joined - the joined 视频 1.
  * @param dir - the directory for the trimmed clips and the result.
  * @returns the path of the result.
  */
-async function drawTracks(ctx: Context, timeline: Timeline, joined: string, dir: string): Promise<string> {
+async function drawTracks(ctx: Context, timeline: Timeline, others: readonly PlacedClip[], joined: string, dir: string): Promise<string> {
   const ffmpeg = ctx.dvFfmpeg
   const base = await ffmpeg.probe(joined)
   if (base.width === null || base.height === null) throw new Error('The joined clips have no video frame size to draw the video tracks at.')
   const { width, height } = base
   const baseSeconds = videoSeconds(base)
   const drawn: DrawnClip[] = []
-  // The highest track number first, so each later overlay covers the earlier ones.
-  for (const clip of timeline.track_clips.toSorted((a, b) => b.track - a.track || a.start_sec - b.start_sec)) {
+  for (const { clip, start } of others) {
     // A clip whose asset's known length ends it clearly before the joined video's end stays covered, so it is neither
     // trimmed nor probed; a clip of unknown length or one that ends near that end is measured from its file.
-    const out = clip.out_sec ?? ctx.dvAssetPool.get(clip.asset).duration_sec
-    if (out !== null && clip.start_sec + out - (clip.in_sec ?? 0) < baseSeconds - 0.05) continue
+    const asset = clip.asset as AssetId
+    const out = clip.out_sec ?? ctx.dvAssetPool.get(asset).duration_sec
+    if (out !== null && start + out - (clip.in_sec ?? 0) < baseSeconds - 0.05) continue
     const muted = timeline.muted_video_tracks.includes(clip.track)
-    const path = await clipFile(ctx, clip, `track-${clip.id}.mp4`, dir, muted)
+    const path = await clipFile(ctx, { ...clip, asset }, `track-${clip.id}.mp4`, dir, muted)
     const probe = await ffmpeg.probe(path)
-    const end = clip.start_sec + videoSeconds(probe)
-    if (end > baseSeconds + 0.01) drawn.push({ clip, path, start: clip.start_sec, end, audio: probe.hasAudio && !muted })
+    const end = start + videoSeconds(probe)
+    if (end > baseSeconds + 0.01) drawn.push({ layer: clip.track, path, start, end, audio: probe.hasAudio && !muted })
   }
   if (drawn.length === 0) return joined
-  const total = Math.max(baseSeconds, ...drawn.map(each => each.end))
-  // Every drawn clip ends after the joined video, so the joined video always gets black frames up to the last clip's end.
-  const video = [`[0:v:0]setsar=1,tpad=stop_mode=add:stop_duration=${String(total - baseSeconds)}:color=black[b0]`]
+  const covered = { path: joined, covers: baseSeconds, audio: base.hasAudio && !timeline.muted_video_tracks.includes(0) }
+  return await layer(ctx, covered, drawn, { width, height }, dir)
+}
+
+/**
+ * Draw a timeline whose 视频 1 starts later than 0 s, has a gap, or has no clip: every clip at its time on black of the
+ * timeline's whole length, the track with the lowest number on top. The result has the frame size and the frame rate of
+ * 视频 1's first clip, else of the first clip below it, so clips of that rate keep their frames; `FALLBACK_FRAME_RATE`
+ * frames per second when ffprobe reports no rate for it.
+ * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
+ * @param timeline - the timeline, whose clips all have an asset.
+ * @param placed - where each of its clips plays.
+ * @param dir - the directory for the trimmed clips and the result.
+ * @returns the path of the result.
+ */
+async function drawOnBlack(ctx: Context, timeline: Timeline, placed: readonly PlacedClip[], dir: string): Promise<string> {
+  const ffmpeg = ctx.dvFfmpeg
+  const drawn: DrawnClip[] = []
+  const sizes: Array<{ width: number | null; height: number | null }> = []
+  // The clips of the top track first, so the frame size is that of 视频 1's first clip, else of the first clip below it.
+  for (const { clip, start } of placed.toSorted((a, b) => a.clip.track - b.clip.track || a.start - b.start)) {
+    const muted = timeline.muted_video_tracks.includes(clip.track)
+    const path = await clipFile(ctx, { ...clip, asset: clip.asset as AssetId }, `clip-${clip.id}.mp4`, dir, muted)
+    const probe = await ffmpeg.probe(path)
+    drawn.push({ layer: clip.track, path, start, end: start + videoSeconds(probe), audio: probe.hasAudio && !muted })
+    sizes.push(probe)
+  }
+  const lead = sizes[0] as { width: number | null; height: number | null }
+  if (lead.width === null || lead.height === null) throw new Error('The first clip has no video frame size to draw the timeline at.')
+  const rate = await frameRateOf(ctx, (drawn[0] as DrawnClip).path, dir) ?? FALLBACK_FRAME_RATE
+  return await layer(ctx, { black: true, rate }, drawn, { width: lead.width, height: lead.height }, dir)
+}
+
+/**
+ * Draw clips over a base into `tracks.mp4`. Each clip is scaled to fit the frame, with black bars, and shows during its
+ * span except where the base covers it; the clip with the highest layer is drawn first, so a lower layer covers it. A
+ * clip's audio is silenced where the base covers it and where a clip of a lower layer plays; the base's audio and the
+ * remaining audio are mixed. The result lasts to the end of the base or of the last clip, whichever is later.
+ * @param ctx - a context that injects `dvFfmpeg`.
+ * @param base - what the clips go over.
+ * @param clips - the clips to draw.
+ * @param frame - the frame size of the result.
+ * @param dir - the directory for the result.
+ * @returns the path of the result.
+ */
+async function layer(
+  ctx: Context, base: Base, clips: readonly DrawnClip[], frame: { width: number; height: number }, dir: string,
+): Promise<string> {
+  const { width, height } = frame
+  const covers = 'path' in base ? base.covers : 0
+  const total = Math.max(covers, ...clips.map(each => each.end))
+  const drawn = clips.toSorted((a, b) => b.layer - a.layer || a.start - b.start)
+  // A joined file gets black frames up to the last clip's end; a black base is generated at the frame size and rate for the whole length.
+  const video = ['path' in base
+    ? `[0:v:0]setsar=1,tpad=stop_mode=add:stop_duration=${String(total - covers)}:color=black[b0]`
+    : '[0:v:0]setsar=1[b0]']
   for (const [index, each] of drawn.entries()) {
     const input = index + 1
     video.push(
       `[${String(input)}:v:0]scale=${String(width)}:${String(height)}:force_original_aspect_ratio=decrease,`
       + `pad=${String(width)}:${String(height)}:(ow-iw)/2:(oh-ih)/2,setsar=1,setpts=PTS-STARTPTS+${String(each.start)}/TB[c${String(index)}]`,
-      `[b${String(index)}][c${String(index)}]overlay=enable='${during([{ start: Math.max(each.start, baseSeconds), end: each.end }])}':eof_action=pass[b${String(input)}]`,
+      `[b${String(index)}][c${String(index)}]overlay=enable='${during([{ start: Math.max(each.start, covers), end: each.end }])}':eof_action=pass[b${String(input)}]`,
     )
   }
-  // The 视频 track is heard to its end; a clip after that, where no clip of a track with a lower number plays.
   const audio: string[] = []
-  const silence = (cover: ReadonlyArray<{ start: number; end: number }>): string => `,volume=0:enable='${during(cover)}'`
-  if (base.hasAudio && !timeline.video_muted) audio.push('[0:a:0]asetpts=PTS-STARTPTS[a0]')
+  const silence = (cover: ReadonlyArray<{ start: number; end: number }>): string => cover.length === 0 ? '' : `,volume=0:enable='${during(cover)}'`
+  if ('path' in base && base.audio) audio.push('[0:a:0]asetpts=PTS-STARTPTS[a0]')
   for (const [index, each] of drawn.entries()) {
     if (!each.audio) continue
-    const cover = [{ start: 0, end: baseSeconds }, ...drawn.filter(other => other.clip.track < each.clip.track)]
+    const cover = [...covers > 0 ? [{ start: 0, end: covers }] : [], ...drawn.filter(other => other.layer < each.layer)]
     audio.push(`[${String(index + 1)}:a:0]asetpts=PTS-STARTPTS,adelay=delays=${String(Math.round(each.start * 1000))}:all=1${silence(cover)}[a${String(index + 1)}]`)
   }
   const labels = audio.map(chain => chain.slice(chain.lastIndexOf('[')))
   const mix = labels.length === 0 ? [] : [`${labels.join('')}amix=inputs=${String(labels.length)}:duration=longest:normalize=0[a]`]
   const filter = [...video, ...audio, ...mix].join(';')
-  const inputs = [joined, ...drawn.map(each => each.path)]
-  await ffmpeg.run({
+  const files = drawn.map(each => each.path)
+  const baseInput = 'path' in base
+    ? ['-i', `{{in:${String(files.length)}}}`]
+    : ['-f', 'lavfi', '-i', `color=c=black:s=${String(width)}x${String(height)}:r=${base.rate}:d=${String(total)}`]
+  await ctx.dvFfmpeg.run({
     argv: [
-      'ffmpeg', '-y', '-loglevel', 'error', ...inputs.flatMap((_path, index) => ['-i', `{{in:${index}}}`]), '-filter_complex', filter,
-      '-map', `[b${String(drawn.length)}]`, ...mix.length === 0 ? ['-an'] : ['-map', '[a]', '-c:a', 'aac'], ...ENCODE_ARGS,
-      '-t', String(total), '-movflags', '+faststart', '{{out:tracks.mp4}}',
+      'ffmpeg', '-y', '-loglevel', 'error', ...baseInput, ...files.flatMap((_path, index) => ['-i', `{{in:${String(index)}}}`]),
+      '-filter_complex', filter, '-map', `[b${String(drawn.length)}]`, ...mix.length === 0 ? ['-an'] : ['-map', '[a]', '-c:a', 'aac'],
+      ...ENCODE_ARGS, '-t', String(total), '-movflags', '+faststart', '{{out:tracks.mp4}}',
     ],
-    inputs, outputs: ['tracks.mp4'], dir,
+    inputs: 'path' in base ? [...files, base.path] : files, outputs: ['tracks.mp4'], dir,
   })
   return join(dir, 'tracks.mp4')
 }
@@ -246,9 +339,10 @@ export function exportOperation(ctx: Context): OperationSpec {
     component: 'timeline',
     version: '1',
     label: { zh: '导出时间线', en: 'Export timeline' },
-    description: 'Export a timeline to one video: each clip with an in or out point is trimmed to that range, the clips of the main '
-      + 'video track are joined in timeline order, and the clips of the video tracks under it play after its end, a track with a '
-      + 'lower number covering those with higher numbers, picture and audio. Muted audio (dv_timeline_mute) is left out. The sound tracks are not included yet.',
+    description: 'Export a timeline to one video: each clip with an in or out point is trimmed to that range and plays at its time. '
+      + 'Where clips of several video tracks play, the track with the lowest number covers the others, picture and audio; where '
+      + 'no clip plays, the video is black and silent. Muted audio (dv_timeline_mute) is left out. The sound tracks are not '
+      + 'included yet.',
     inputs: {},
     params: { timeline: { type: 'string', description: 'The ID of the timeline to export, such as `t1`; default: the first timeline.' } },
     outputs: [{ role: 'video', type: 'video' }],

@@ -1,30 +1,32 @@
 /**
  * The timeline editor: one tab per timeline of the project, a 16:9 preview that fills the free height and plays the
- * selected timeline across its clips (with skip, play, playback-speed, and full-screen controls under it), a toolbar, a
- * ruler, the 视频 track with filmstrip clips sized by duration, a display-only 原声 track with one block per clip that
- * shows the waveform of the clip's own audio once it decodes, and under it the video tracks with their clips at their
- * start times and the sound tracks, whose sound blocks play in step with the preview (`sound-playback.ts`). The 视频
- * track header's speaker button mutes the clips' own audio, and each sound track header's speaker button mutes that
- * track, through `timeline.mute`; the preview plays muted audio silent.
- * Each sound track header also has a delete button. A sound moves in time and to another sound track by a drag, its
- * edges trim it, and it splits at the playhead. A drag handle
- * above the track area sets the track area's height, which each browser remembers. Every edit is one
- * `/api/dv/operation` call of a `timeline.*` operation with `surface: 'timeline'`; the clip operations name the clip by
- * its clip ID, the sound operations name the sound by its sound ID or the sound track by its number, and every edit
- * goes after the current position of the project's history, the state the editor shows. A selected stale clip offers
- * "仍然保留", which keeps the record that made its asset (`proj.stale_accept`). A placeholder clip, whose render is still
- * running (渲染中…) or failed (渲染失败), keeps its place and its planned length on the track; it cannot be trimmed or split,
- * playback skips it, and export waits until every clip is ready.
+ * selected timeline (with skip, play, playback-speed, and full-screen controls under it), a toolbar, a ruler, the video
+ * tracks with filmstrip clips sized by duration at their start times, and the sound tracks, whose sound blocks play in
+ * step with the preview (`sound-playback.ts`). A video clip's own audio has no row of its own: it plays with the clip,
+ * and the clip's track header mutes it.
  *
- * Every track the toolbar's 添加轨道 menu adds, a video track or a sound track, goes at the bottom, and the rows under the
- * 原声 row keep the order the tracks were added in (the timeline's `track_order`). Once there is another video track, the
- * 视频 track is 视频 1 and the video tracks are 视频 2, 视频 3, … in the order they were added. The 视频 track covers them
- * while it has a clip; after its end, the preview shows and plays the clip of the video track with the lowest number
- * there. Each item of the 添加轨道 menu writes one `timeline.track_add`, which stores an empty track, so a new track stays
- * after a reload and the menu can add several in a row. A track clip moves in time by a drag, to another video track
- * by a drag up or down, and its edges trim it; each track header mutes or deletes its track, and deleting the 视频 track
- * makes video track 0 the 视频 track (`timeline.main_track_remove`). A right click in the track area opens a menu of
- * what the clip, header, row or free spot under it offers, each item writing what the matching button writes.
+ * Every video track works the same way. With one video track it is 视频; with more, they are 视频 1, 视频 2, … from the
+ * top. Where a track has a clip, it covers every track under it; a gap shows the track under it, and the preview shows
+ * and plays the clip of the track with the lowest number at the playhead. A clip moves in time by a drag, to another
+ * video track by a drag up or down, and its edges trim it; the other clips keep their times, so nothing closes a gap,
+ * and the server refuses a clip that would overlap another clip of its track. Each video track header mutes the own
+ * audio of its clips, deletes the track, adds a video after its last clip, and its 上移 / 下移 change which track covers
+ * which (`timeline.video_track_move`). Each sound track header mutes, renames or deletes its track. A sound moves in
+ * time and to another sound track by a drag, its edges trim it, and it splits at the playhead. The preview plays muted
+ * audio silent.
+ *
+ * Every track the toolbar's 添加轨道 menu adds, a video track or a sound track, goes at the bottom, and the rows keep the
+ * order the tracks were added in (the timeline's `track_order`). Each item of the menu writes one `timeline.track_add`,
+ * which stores an empty track, so a new track stays after a reload and the menu can add several in a row. A right click
+ * in the track area opens a menu of what the clip, header, row or free spot under it offers, each item writing what the
+ * matching button writes. A drag handle above the track area sets the track area's height, which each browser remembers.
+ *
+ * Every edit is one `/api/dv/operation` call of a `timeline.*` operation with `surface: 'timeline'`; the clip operations
+ * name the clip by its clip ID, the sound operations name the sound by its sound ID or the sound track by its number, and
+ * every edit goes after the current position of the project's history, the state the editor shows. A selected stale clip
+ * offers "仍然保留", which keeps the record that made its asset (`proj.stale_accept`). A placeholder clip, whose render
+ * is still running (渲染中…) or failed (渲染失败), keeps its place and its planned length on its track; it cannot be
+ * trimmed or split, the preview shows its status where it covers, and export waits until every clip is ready.
  */
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -43,12 +45,11 @@ import { useFilmstrips } from './filmstrip.ts'
 import { useTimelinePlayer } from './player.ts'
 import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
 import { useSoundPlayback } from './sound-playback.ts'
-import { trackClipPreload, useTrackClipPlayback } from './track-clip-playback.ts'
+import { clipStalled, trackClipPreload, useTrackClipPlayback } from './track-clip-playback.ts'
 import {
-  audioAssets, clipIndexAt, dropPosition, nextTimelineId, placeSounds, placeTimeline, placeTrackClips, timecode, timelinesOf,
-  topTrackClipAt, trackRows, videoAssets,
+  audioAssets, coveredClips, nextTimelineId, placeClips, placeSounds, timecode, timelinesOf, topClipAt, trackRows, videoAssets,
 } from './timelines.ts'
-import type { PlacedTrackClip, TrackClip, TrackSound } from './timelines.ts'
+import type { PlacedClip, TrackSound } from './timelines.ts'
 import type { DvTimelineKey } from './locales.ts'
 
 /** The editor's inputs: the project it shows, the chat session it writes for, the state, and the write runner. */
@@ -102,22 +103,9 @@ export function request(project: string, session: string | null, gesture: Gestur
   return { project, surface: 'timeline', ...session === null ? {} : { session }, ...gesture }
 }
 
-/** An edge or body drag on a clip of the 视频 track, in progress; a body drag of a ready clip also moves up or down. */
-interface ClipDrag {
-  kind: 'move' | 'trimStart' | 'trimEnd'
-  position: number
-  startX: number
-  startY: number
-  dx: number
-  dy: number
-}
-
-/**
- * An edge or body drag on a clip of a video track under the 视频 track or on a sound, in progress; a body drag also moves
- * up or down, to another video track or sound track.
- */
+/** An edge or body drag on a clip or a sound, in progress; a body drag also moves up or down, to another track of its kind. */
 interface BlockDrag {
-  kind: ClipDrag['kind']
+  kind: 'move' | 'trimStart' | 'trimEnd'
   /** The dragged clip's clip ID or the dragged sound's sound ID. */
   id: string
   startX: number
@@ -127,18 +115,15 @@ interface BlockDrag {
 }
 
 /**
- * What a right click in the track area opened its menu on: a sound, a clip of the 视频 track or of a video track under
- * it, a video track header (`main` for the 视频 track's), a sound track header, the 原声 row, or a free spot of a video
- * or sound lane at a time in seconds, with the point on screen where the click landed.
+ * What a right click in the track area opened its menu on: a sound, a clip, a video track header, a sound track header,
+ * or a free spot of a video or sound lane at a time in seconds, with the point on screen where the click landed.
  */
 type TrackMenu =
   | { kind: 'sound'; sound: TrackSound }
-  | { kind: 'clip'; clip: TrackClip }
-  | { kind: 'trackClip'; clip: PlacedTrackClip }
-  | { kind: 'videoTrack'; track: number | 'main' }
+  | { kind: 'clip'; clip: PlacedClip }
+  | { kind: 'videoTrack'; track: number }
   | { kind: 'soundTrack'; track: number }
-  | { kind: 'audio' }
-  | { kind: 'videoLane'; track: number | 'main'; atSec: number; clientX: number; clientY: number }
+  | { kind: 'videoLane'; track: number; atSec: number; clientX: number; clientY: number }
   | { kind: 'soundLane'; track: number; atSec: number; clientX: number; clientY: number }
 
 /** The widest the asset picker and the sound dialog usually draw, in pixels; they open that far from the area's right edge. */
@@ -151,12 +136,10 @@ const DEFAULT_PX = 40
 /** Height of the ruler, in pixels. */
 const RULER_HEIGHT = 26
 /**
- * Height of the 视频 track and of each sound track, in pixels; their headers hold the track's name with its buttons on a
+ * Height of each video track and each sound track, in pixels; their headers hold the track's name with its buttons on a
  * second line under it.
  */
 const ROW_HEIGHT = 56
-/** Height of the 原声 track, which has no buttons, in pixels. */
-const AUDIO_HEIGHT = 36
 /** Height of the file-name strip at the top of a sound block, in pixels. */
 const SOUND_NAME_HEIGHT = 14
 /** Vertical gap between the rows of the track area, in pixels. */
@@ -358,11 +341,11 @@ function useDismissOnOutsidePress(open: boolean, inside: ReadonlyArray<RefObject
 
 /**
  * The track area's height after a resize: the requested height, lowered so the preview keeps at least
- * `MIN_PREVIEW_HEIGHT`, and raised to the height the toolbar, the ruler and the 视频 track need. The track area's minimum
+ * `MIN_PREVIEW_HEIGHT`, and raised to the height the toolbar, the ruler and the first track row need. The track area's minimum
  * wins when the editor is too short for both.
  * @param requested - the height the drag or key press asks for, in pixels.
  * @param available - the height the preview and the track area share, in pixels.
- * @param minTrack - the height the toolbar, the ruler and the 视频 track need, in pixels.
+ * @param minTrack - the height the toolbar, the ruler and the first track row need, in pixels.
  * @returns the height to apply, in pixels.
  */
 export function clampTrackHeight(requested: number, available: number, minTrack: number): number {
@@ -404,8 +387,8 @@ function storePlaybackRate(rate: number): void {
 }
 
 /**
- * The waveform of one clip on the 原声 track: one bar per `WAVE_BAR + WAVE_GAP` pixels of the clip's width, each the
- * peak of the clip's audio over that slice of its played range. It draws nothing while the audio decodes or when the
+ * The waveform of one sound block: one bar per `WAVE_BAR + WAVE_GAP` pixels of the block's width, each the peak of the
+ * sound's audio over that slice of its played range. It draws nothing while the audio decodes or when the
  * asset has no decodable audio, so the block stays plain.
  * @param props - the clip's asset, its in and out points, and its width and height in pixels.
  * @returns the element, or null.
@@ -433,27 +416,12 @@ const AudioWaveform = memo(function AudioWaveform(
 })
 
 /**
- * The clip the user selected: its timeline, its position when selected, and its clip ID, so neither an edit elsewhere
- * nor a timeline switch can move the selection onto another clip, and a placeholder clip stays selected when its render
- * finishes.
+ * The clip the user selected: its timeline and its clip ID, so neither an edit elsewhere nor a timeline switch can move
+ * the selection onto another clip, and a placeholder clip stays selected when its render finishes.
  */
 interface SelectedClip {
   timelineId: string | null
-  position: number
   clip: string
-}
-
-/**
- * The position of the selected clip in the clips shown now: the position of the clip with the selected clip ID, else
- * none.
- * @param clips - the placed clips.
- * @param timelineId - the shown timeline.
- * @param chosen - the selected clip, or null.
- * @returns the position, or null.
- */
-function resolveSelection(clips: TrackClip[], timelineId: string | null, chosen: SelectedClip | null): number | null {
-  if (chosen === null || chosen.timelineId !== timelineId) return null
-  return clips.find(clip => clip.clip === chosen.clip)?.position ?? null
 }
 
 /**
@@ -497,31 +465,31 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const { client, t, project, session = null, state, run, selected: activeId, select, clipFocus = null, takeClipFocus, card } = props
   const timelines = useMemo(() => timelinesOf(state), [state])
   const timeline = timelines.find(entry => entry.id === activeId) ?? timelines[0] ?? null
-  const { clips, total } = useMemo(() => placeTimeline(state, timeline), [state, timeline])
+  const placed = useMemo(() => placeClips(state, timeline), [state, timeline])
+  const { clips, end: videoSpan } = placed
+  const covered = useMemo(() => coveredClips(clips), [clips])
   const assets = useMemo(() => assetIndex(state), [state])
-  const placedTracks = useMemo(() => placeTrackClips(state, timeline), [state, timeline])
   // Every ready clip shows its video's frames across its width once they are read (`clipPicture`).
-  const videoUrls = [...new Set(clips.flatMap(clip => clip.assetId === null ? [] : [assetUrl(clip.assetId)])
-    .concat(placedTracks.clips.map(clip => assetUrl(clip.assetId))))]
+  const videoUrls = [...new Set(clips.flatMap(clip => clip.assetId === null ? [] : [assetUrl(clip.assetId)]))]
   const strips = useFilmstrips(videoUrls)
   const candidates = useMemo(() => videoAssets(state), [state])
   const audioCandidates = useMemo(() => audioAssets(state), [state])
   // The lengths that the sound elements measured, for audio assets whose length the state does not know.
   const [measured, setMeasured] = useState<ReadonlyMap<string, number>>(new Map())
   const { sounds, end: soundsEnd } = useMemo(() => placeSounds(state, timeline, measured), [state, timeline, measured])
-  const { clips: trackClips, tracks: videoTrackCount, end: trackClipsEnd } = placedTracks
-  // The preview plays to the end of the longest video track; the lanes also reach the last sound.
-  const videoSpan = Math.max(total, trackClipsEnd)
+  // The preview plays to the end of the last clip; the lanes also reach the last sound.
   const span = Math.max(videoSpan, soundsEnd)
   const timelineId = timeline?.id ?? null
   const [playbackRate, setPlaybackRate] = useState(readPlaybackRate)
-  const player = useTimelinePlayer(timelineId, clips, total, playbackRate, videoSpan)
-  // The track clip the user sees at the playhead after the 视频 track's end, which hides the tracks with higher numbers.
-  const topClip = topTrackClipAt(trackClips, player.position, total)
-  // Past the 视频 track's last clip, while a track clip still follows, the 视频 track shows nothing.
-  const pastMain = player.position >= total && videoSpan > total + 0.05
+  const frame = useRef<HTMLDivElement | null>(null)
+  // Playback waits while the clip the user sees is still loading, so the playhead does not run ahead of the picture.
+  const shownClip = useRef<string | null>(null)
+  const player = useTimelinePlayer(timelineId, videoSpan, playbackRate, () => shownClip.current !== null
+    && clipStalled(frame.current?.querySelector<HTMLVideoElement>(`video[data-track-clip="${shownClip.current}"]`)))
+  // The clip the user sees and hears at the playhead: the clip of the track with the lowest number that plays there.
+  const topClip = topClipAt(clips, player.position)
+  shownClip.current = topClip?.clip ?? null
   // A card's preview mounts its video elements when the node is selected; they show the frame at the playhead then.
-  const cardViewer = card?.viewer ?? null
   const cardScale = card?.scale ?? 1
   // A press on the card preview's progress bar moves the playhead to the same share of the timeline.
   const seekAlong = (event: PointerEvent<HTMLElement>): void => {
@@ -530,20 +498,19 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   }
   // In a card, the elements that take their own presses carry the canvas's marks; a press anywhere else moves the node.
   const owned = card === undefined ? {} : { 'data-node-interactive': '' }
-  useEffect(() => { if (cardViewer !== null) player.seek(player.position) }, [cardViewer])
   const soundBox = useRef<HTMLDivElement | null>(null)
   useSoundPlayback(soundBox, sounds, player.position, player.playing, playbackRate)
-  const frame = useRef<HTMLDivElement | null>(null)
-  useTrackClipPlayback(frame, trackClips, player.position, player.playing, playbackRate, topClip?.clip ?? null)
+  useTrackClipPlayback(frame, clips, player.position, player.playing, playbackRate, topClip?.clip ?? null)
   const mutedVideoTracks = timeline?.muted_video_tracks ?? []
-  const videoTrackName = (track: number): string => t('track.videoN', { n: track + 2 })
-  const mainTrackName = videoTrackCount === 0 ? t('track.video') : t('track.videoN', { n: 1 })
-  const [chosenTrackClip, setChosenTrackClip] = useState<string | null>(null)
-  const selectedTrackClip = trackClips.find(clip => clip.clip === chosenTrackClip)
+  // The kinds of the stored tracks, top to bottom; without a timeline, one video track and one sound track.
+  const trackOrder = timeline?.track_order ?? ['video', 'sound']
+  const videoTrackCount = Math.max(placed.tracks, trackOrder.filter(kind => kind === 'video').length)
+  // One video track is 视频; with more, they are 视频 1, 视频 2, … from the top.
+  const videoTrackName = (track: number): string => videoTrackCount <= 1 ? t('track.video') : t('track.videoN', { n: track + 1 })
   const [trackDrag, setTrackDrag] = useState<BlockDrag | null>(null)
   const [soundDrag, setSoundDrag] = useState<BlockDrag | null>(null)
-  // The video track the asset picker adds to, or null for the 视频 track.
-  const [pickTrack, setPickTrack] = useState<number | null>(null)
+  // The video track the asset picker adds to.
+  const [pickTrack, setPickTrack] = useState(0)
   // The time a lane's right-click menu chose for the asset picker or the sound dialog to add at; null adds after the
   // track's last clip or sound, as its ＋ does.
   const [pickAt, setPickAt] = useState<number | null>(null)
@@ -552,27 +519,20 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const soundPickerRef = useRef<HTMLDivElement | null>(null)
   // The sound track ＋ that opened the sound dialog; each track has its own ＋.
   const soundAddRef = useRef<HTMLButtonElement | null>(null)
-  // The kinds of the stored tracks under the 原声 row, top to bottom; without a timeline, the one sound track it shows.
-  const trackOrder = timeline?.track_order ?? ['sound']
   // Sound tracks: the tracks the timeline stores, up to the last track with a sound, a name, or a mute, and the empty
   // tracks `track_order` lists; the same count as the reducer's `soundTrackCount`.
   const trackNames = timeline?.sound_track_names ?? []
   const mutedTracks = timeline?.muted_sound_tracks ?? []
-  const videoMuted = timeline?.video_muted ?? false
   const trackCount = Math.max(
     trackNames.length, ...sounds.map(sound => sound.track + 1), ...mutedTracks.map(track => track + 1),
     trackOrder.filter(kind => kind === 'sound').length,
   )
   const trackName = (track: number): string => trackNames[track] || t('track.soundN', { n: track + 1 })
   const [renamingTrack, setRenamingTrack] = useState<{ track: number; name: string } | null>(null)
-  // The tops of the rows under the 原声 row, in pixels from the 视频 track's top; the 原声 row is lower than a track row.
-  const rowTops = trackRows(trackOrder, videoTrackCount, trackCount)
-    .map((row, index) => ({ ...row, top: ROW_HEIGHT + AUDIO_HEIGHT + 2 * ROW_GAP + index * (ROW_HEIGHT + ROW_GAP) }))
-  // The tops of the 视频 track's row (`main`) and of each video track's row.
-  const videoRowTops: Array<{ track: number | 'main'; top: number }> = [
-    { track: 'main', top: 0 },
-    ...rowTops.flatMap(row => row.kind === 'video' ? [{ track: row.track, top: row.top }] : []),
-  ]
+  // The rows top to bottom, and the top of each in pixels from the first row's top.
+  const shownRows = trackRows(trackOrder, videoTrackCount, trackCount)
+  const rowTops = shownRows.map((row, index) => ({ ...row, top: index * (ROW_HEIGHT + ROW_GAP) }))
+  const videoRowTops = rowTops.filter(row => row.kind === 'video')
   const soundRowTops = rowTops.filter(row => row.kind === 'sound')
   /**
    * The row of a kind nearest where a vertical drag puts a block's row; on a tie, the one in the drag's direction.
@@ -587,8 +547,8 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     const nearer = (row: { top: number }, best: { top: number }): boolean => dy > 0 ? gap(row) <= gap(best) : gap(row) < gap(best)
     return tops.reduce((best, row) => nearer(row, best) ? row : best).track
   }
-  // A clip ends on the 视频 track's row (`main`) or a video track's, and a sound on a sound track's.
-  const nearestVideoRow = (track: number | 'main', dy: number): number | 'main' => nearestRow(videoRowTops, track, dy)
+  // A clip ends on a video track's row, and a sound on a sound track's.
+  const nearestVideoRow = (track: number, dy: number): number => nearestRow(videoRowTops, track, dy)
   const nearestSoundTrack = (track: number, dy: number): number => nearestRow(soundRowTops, track, dy)
   // The track the add dialog adds to, the selected sound, and the open right-click menu of the track area.
   const [soundTrack, setSoundTrack] = useState(0)
@@ -607,11 +567,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   }
   const [px, setPx] = useState(DEFAULT_PX)
   const [chosenClip, setChosenClip] = useState<SelectedClip | null>(null)
-  const selected = resolveSelection(clips, timelineId, chosenClip)
-  const setSelected = (position: number | null): void => {
-    if (position !== null) { setChosenSound(null); setChosenTrackClip(null) }
-    const clip = clips.find(placed => placed.position === position)
-    setChosenClip(position === null || clip === undefined ? null : { timelineId, position, clip: clip.clip })
+  const selectedClip = chosenClip?.timelineId === timelineId ? clips.find(clip => clip.clip === chosenClip.clip) : undefined
+  const chooseClip = (clip: string): void => {
+    setChosenSound(null)
+    setChosenClip({ timelineId, clip })
   }
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null)
   const [menu, setMenu] = useState<{ entry: Timeline; x: number; y: number } | null>(null)
@@ -623,7 +582,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // The notice of the latest drop the editor refused: a file, a non-video asset on the video track, or a non-audio asset
   // on a sound track. Each refusal sets a new object, so a repeated refusal restarts the notice's timer.
   const [dropNotice, setDropNotice] = useState<{ text: 'track.fileDrop' | 'track.videoDrop' | 'track.soundDrop' } | null>(null)
-  const [drag, setDrag] = useState<ClipDrag | null>(null)
   const [picking, setPicking] = useState(false)
   const pickerRef = useRef<HTMLDivElement | null>(null)
   const addRef = useRef<HTMLButtonElement | null>(null)
@@ -669,24 +627,17 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   useEffect(() => {
     setChosenClip(null); setPicking(false); setPickingSound(false); setExported(null); setMenu(null); setRenaming(null)
     setChosenSound(null); setTrackMenu(null); setRenamingTrack(null)
-    setChosenTrackClip(null); setPickTrack(null); setPickAt(null); setToolPopover(null)
+    setPickTrack(0); setPickAt(null); setToolPopover(null)
   }, [timelineId])
 
   useEffect(() => {
     if (clipFocus === null || clipFocus.timelineId !== timelineId) return
     takeClipFocus?.()
-    const clip = clips.find(placed => placed.clip === clipFocus.clipId)
+    const clip = clips.find(each => each.clip === clipFocus.clipId)
     if (clip === undefined) return
-    setChosenSound(null); setChosenTrackClip(null)
-    setChosenClip({ timelineId, position: clip.position, clip: clip.clip })
+    chooseClip(clip.clip)
     player.seek(clip.startSec)
   }, [clipFocus, timelineId, clips])
-
-  // Keep the stored selection on the position it resolved to after an edit elsewhere.
-  useEffect(() => {
-    if (chosenClip === null || selected === chosenClip.position) return
-    setChosenClip(selected === null ? null : { ...chosenClip, position: selected })
-  }, [chosenClip, selected])
 
   // The drop notice disappears after a few seconds.
   useEffect(() => {
@@ -795,12 +746,12 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const numbered = (n: number): string => t('tabs.defaultTitle', { n })
   const nameOf = (entry: Timeline): string => timelineName(entry, numbered)
   const shownName = timeline === null ? '' : nameOf(timeline)
-  // An insert names the shown timeline; the other clip operations name the clip by its clip ID, which names its timeline.
+  // An add or a track operation names the shown timeline; the other clip operations name the clip by its clip ID, which
+  // names its timeline.
   const runOperation = (operation: string, params: Record<string, unknown>, intent: string): Promise<boolean> => {
     const named = [
-      'timeline.clip_insert', 'timeline.sound_add', 'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute',
-      'timeline.track_clip_add', 'timeline.video_track_remove', 'timeline.track_add', 'timeline.video_track_move',
-      'timeline.main_track_remove', 'timeline.main_track_swap',
+      'timeline.clip_add', 'timeline.sound_add', 'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute',
+      'timeline.video_track_remove', 'timeline.track_add', 'timeline.video_track_move',
     ].includes(operation)
     const scoped = timeline === null || !named ? params : { timeline: timeline.id, ...params }
     return run(() => client.runOperation(request(project, session, { operation, params: scoped, intent })))
@@ -852,9 +803,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     headerWrite(runOperation('timeline.sound_track_remove', { track }, t('intent.trackRemove', { n: track + 1 })))
   }
   // A speaker button writes one `timeline.mute`; the button shows the new state once the refreshed state has it.
-  const toggleVideoMute = (): void => {
-    headerWrite(runOperation('timeline.mute', { target: 'video', muted: !videoMuted }, t(videoMuted ? 'intent.unmuteVideo' : 'intent.muteVideo')))
-  }
   const toggleTrackMute = (track: number): void => {
     const muted = !mutedTracks.includes(track)
     const name = trackName(track)
@@ -867,42 +815,25 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   }
   // A video track is deleted with its clips and its mute, and the tracks with higher numbers move up.
   const removeVideoTrack = (track: number): void => {
-    headerWrite(runOperation('timeline.video_track_remove', { track }, t('intent.videoTrackRemove', { n: track + 2 })))
-  }
-  // The 视频 track's delete button deletes its clips, and video track 0, if there is one, becomes the 视频 track.
-  const mainTrackRemovable = clips.length > 0 || videoTrackCount > 0
-  const removeMainTrack = (): void => {
-    headerWrite(runOperation('timeline.main_track_remove', {}, t('intent.mainTrackRemove', { name: mainTrackName })))
+    headerWrite(runOperation('timeline.video_track_remove', { track }, t('intent.videoTrackRemove', { name: videoTrackName(track) })))
   }
   // An arrow of the track layers list, or 上移 / 下移 in a video track header's menu, swaps a video track with the one
-  // above or below it, which swaps which of the two covers the other. Between the 视频 track and video track 0, the swap
-  // is `timeline.main_track_swap`, which needs every clip of the 视频 track rendered.
+  // above or below it, which swaps which of the two covers the other.
   const moveVideoTrack = (track: number, to: number): void => {
     const name = videoTrackName(track)
     headerWrite(runOperation('timeline.video_track_move', { track, to }, t(to < track ? 'intent.videoTrackUp' : 'intent.videoTrackDown', { name })))
   }
-  const swapMainTrack = (): void => {
-    headerWrite(runOperation('timeline.main_track_swap', {}, t('intent.mainTrackSwap', { name: mainTrackName, other: videoTrackName(0) })))
-  }
-  const mainTrackSwappable = videoTrackCount > 0 && clips.every(clip => clip.assetId !== null)
   /**
-   * @param track - a video track under the 视频 track, or null for the 视频 track.
+   * @param track - a video track.
    * @returns what moving the track one row up does, or null when it cannot move up now.
    */
-  const layerUp = (track: number | null): (() => void) | null => {
-    if (track === null || headerBusy) return null
-    if (track === 0) return mainTrackSwappable ? swapMainTrack : null
-    return () => { moveVideoTrack(track, track - 1) }
-  }
+  const layerUp = (track: number): (() => void) | null => headerBusy || track === 0 ? null : () => { moveVideoTrack(track, track - 1) }
   /**
-   * @param track - a video track under the 视频 track, or null for the 视频 track.
+   * @param track - a video track.
    * @returns what moving the track one row down does, or null when it cannot move down now.
    */
-  const layerDown = (track: number | null): (() => void) | null => {
-    if (headerBusy) return null
-    if (track === null) return mainTrackSwappable ? swapMainTrack : null
-    return track === videoTrackCount - 1 ? null : () => { moveVideoTrack(track, track + 1) }
-  }
+  const layerDown = (track: number): (() => void) | null =>
+    headerBusy || track >= videoTrackCount - 1 ? null : () => { moveVideoTrack(track, track + 1) }
   // Each item of the 添加轨道 menu writes one `timeline.track_add`, which adds an empty track at the bottom.
   const addTrack = (kind: TrackKind): void => {
     setToolPopover(null)
@@ -910,17 +841,18 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   }
   const addTrackDisabled = timeline === null || headerBusy
   // A video goes on a video track where it was dropped, or from the picker after the track's last clip, else at the playhead.
-  const addTrackClip = (asset: string, track: number, at: number): void => {
+  const addClip = (asset: string, track: number, at: number): void => {
     const startSec = round(Math.max(0, at))
-    void runOperation('timeline.track_clip_add', { asset, track, start_sec: startSec }, t('intent.trackClipAdd', { name: videoTrackName(track), at: timecode(startSec) }))
+    void runOperation('timeline.clip_add', { asset, track, start_sec: startSec }, t('intent.trackClipAdd', { name: videoTrackName(track), at: timecode(startSec) }))
   }
-  const trackClipEnd = (track: number): number | null => {
-    const ends = trackClips.filter(clip => clip.track === track).map(clip => clip.startSec + clip.seconds)
+  const trackEndOf = (track: number): number | null => {
+    const ends = clips.filter(clip => clip.track === track).map(clip => clip.startSec + clip.seconds)
     return ends.length === 0 ? null : Math.max(...ends)
   }
-  const removeTrackClip = (clip: PlacedTrackClip): void => {
+  // A removed clip leaves a gap: the other clips keep their times.
+  const removeClip = (clip: PlacedClip): void => {
     void runOperation('timeline.clip_remove', { clip: clip.clip }, t('intent.trackClipRemove', { name: videoTrackName(clip.track) }))
-      .then((ok) => { if (ok) setChosenTrackClip(null) })
+      .then((ok) => { if (ok) setChosenClip(null) })
   }
   // The asset that an asset tile drop carries and its media type, read from the drag data; the drop then belongs to the
   // track it landed on. Null for a drop that carries no asset, which the editor root handles.
@@ -944,15 +876,15 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     const at = round(Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px))
     addingSound(runOperation('timeline.sound_add', { asset: dropped.id, start_sec: at, track }, t('intent.soundAdd', { at: timecode(at) })))
   }
-  // A video tile dropped on a video track under the 视频 track goes on that track where it was dropped.
-  const dropTrackClip = (event: DragEvent<HTMLDivElement>, track: number): void => {
+  // A video tile dropped on a video track goes on that track where it was dropped.
+  const dropClip = (event: DragEvent<HTMLDivElement>, track: number): void => {
     const dropped = takeDrop(event)
     if (dropped === null) return
     if (dropped.type !== 'video') {
       setDropNotice({ text: 'track.videoDrop' })
       return
     }
-    addTrackClip(dropped.id, track, (event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px)
+    addClip(dropped.id, track, (event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px)
   }
   const uploadSound = (file: File): void => {
     setPickingSound(false)
@@ -996,30 +928,23 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const undo = (): void => { void run(() => client.undo(project)) }
   const redo = (): void => { void run(() => client.redo(project)) }
   const canRedo = state.head !== state.tip
-  const remove = (clip: TrackClip): void => {
-    void runOperation('timeline.clip_remove', { clip: clip.clip }, t('intent.remove', { position: clip.position })).then((ok) => { if (ok) setSelected(null) })
-  }
-  const insert = (at: number, asset: string): void => {
-    void runOperation('timeline.clip_insert', { at, asset }, t('intent.insert', { at }))
-  }
   // The record behind the selected clip's asset, while it is stale: the record "keep anyway" accepts.
-  const selectedClip = clips.find(placed => placed.position === selected)
   const staleRecord = selectedClip?.stale === true && selectedClip.assetId !== null
     ? state.components.proj.created_by[selectedClip.assetId]
     : undefined
   const keepStale = (record: string): void => {
     void run(() => client.acceptStale(project, record, 'timeline', session))
   }
-  // The clip under the playhead; a placeholder there blanks the viewer and cannot be split. A selected track clip under the
-  // playhead is the one the split button splits.
-  const playheadClip = clips[clipIndexAt(clips, player.position)]
-  const splitClip = playheadClip?.status === 'ready' && selectedTrackClip === undefined && selectedSound === undefined ? playheadClip : undefined
   // Whether the playhead is inside a clip or a sound, away from its edges, where a split leaves two parts.
   const playheadInside = (clip: { startSec: number; seconds: number }): boolean =>
     player.position > clip.startSec + 0.05 && player.position < clip.startSec + clip.seconds - 0.05
-  const splitTrack = selectedTrackClip !== undefined && playheadInside(selectedTrackClip) ? selectedTrackClip : undefined
+  // The split button splits the selected sound or clip, or with nothing selected the clip the user sees at the playhead;
+  // a placeholder cannot be split.
+  const splittable = (clip: PlacedClip | undefined): PlacedClip | undefined =>
+    clip?.status === 'ready' && playheadInside(clip) ? clip : undefined
+  const splitTarget = selectedSound !== undefined ? undefined : splittable(selectedClip ?? topClip)
   const splitSelectedSound = selectedSound !== undefined && playheadInside(selectedSound) ? selectedSound : undefined
-  const splitTrackClip = (clip: PlacedTrackClip): void => {
+  const splitClip = (clip: PlacedClip): void => {
     const atSec = round(clip.inSec + player.position - clip.startSec)
     void runOperation('timeline.clip_split', { clip: clip.clip, at_sec: atSec }, t('intent.trackClipSplit', { name: videoTrackName(clip.track), at: timecode(player.position) }))
   }
@@ -1028,16 +953,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     const atSec = round(sound.inSec + player.position - sound.startSec)
     void runOperation('timeline.sound_split', { sound: sound.sound, at_sec: atSec }, t('intent.soundSplit', { name: sound.name, at: timecode(player.position) }))
   }
-  const splitAtPlayhead = (clip: TrackClip): void => {
-    const atSec = round(clip.inSec + player.position - clip.startSec)
-    if (atSec <= clip.inSec + 0.05 || atSec >= clip.outSec - 0.05) return
-    void runOperation('timeline.clip_split', { clip: clip.clip, at_sec: atSec }, t('intent.split', { position: clip.position, at: atSec }))
-  }
-
-  // Export is one `timeline.export` call: it trims the clips with an in or out point and joins all clips.
-  // It waits while any clip is a placeholder; the toolbar names those clips.
-  const waiting = clips.filter(clip => clip.status !== 'ready').map(clip => clip.position)
-  const exportId = exporting || clips.length === 0 || waiting.length > 0 ? null : timelineId
+  // Export is one `timeline.export` call: it trims the clips with an in or out point and plays each at its time.
+  // It waits while any clip is a placeholder; the toolbar says how many.
+  const waiting = clips.filter(clip => clip.status !== 'ready').length
+  const exportId = exporting || clips.length === 0 || waiting > 0 ? null : timelineId
   const exportTimeline = (id: string): void => {
     setExporting(true)
     setExported(null)
@@ -1054,102 +973,37 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     player.seek((event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px)
   }
 
-  // A pointer-up ends a clip drag: a body drag reorders, or moves a ready clip to the video track nearest the row it
-  // ends on (or selects when it did not move); an edge drag trims.
-  const finishDrag = (clip: TrackClip, current: ClipDrag): void => {
-    setDrag(null)
-    const moved = Math.abs(current.dx) > 3 || Math.abs(current.dy) > 3
-    const deltaSec = current.dx / px
-    if (current.kind === 'move') {
-      if (!moved) {
-        setSelected(clip.position)
-        return
-      }
-      const row = clip.assetId === null ? 'main' : nearestVideoRow('main', current.dy)
-      if (row !== 'main') {
-        const startSec = round(Math.max(0, clip.startSec + deltaSec))
-        void runOperation('timeline.track_clip_move', { clip: clip.clip, start_sec: startSec, track: row }, t('intent.trackClipMove', { name: videoTrackName(row), at: timecode(startSec) }))
-        return
-      }
-      const to = dropPosition(clips, clip.startSec + clip.seconds / 2 + deltaSec, clip.position)
-      if (to !== clip.position) {
-        void runOperation('timeline.clip_move', { clip: clip.clip, to }, t('intent.move', { from: clip.position, to }))
-          .then((ok) => {
-            if (ok) { setChosenSound(null); setChosenTrackClip(null); setChosenClip({ timelineId, position: to, clip: clip.clip }) }
-          })
-      }
-      return
-    }
-    if (!moved) return
-    const inSec = current.kind === 'trimStart' ? round(Math.max(0, Math.min(clip.inSec + deltaSec, clip.outSec - 0.1))) : clip.rawIn
-    const outSec = current.kind === 'trimEnd' ? round(Math.max(clip.inSec + 0.1, Math.min(clip.outSec + deltaSec, clip.assetSeconds))) : clip.rawOut
-    // An unset end of the range is left out: the operation reads a missing in or out point as the asset's own end.
-    const range = { ...inSec === null ? {} : { in_sec: inSec }, ...outSec === null ? {} : { out_sec: outSec } }
-    void runOperation('timeline.clip_trim', { clip: clip.clip, ...range }, t('intent.trim', { position: clip.position }))
-  }
-
-  // A body drag of a ready clip also follows the pointer up and down; a placeholder and an edge drag stay in the row.
-  const dragOffset = (current: ClipDrag, event: PointerEvent<HTMLElement>): ClipDrag => {
-    const clip = clips.find(each => each.position === current.position)
-    const vertical = current.kind === 'move' && clip?.assetId !== null
-    const dy = vertical ? (event.clientY - current.startY) / screenScale() : 0
-    return { ...current, dx: (event.clientX - current.startX) / screenScale(), dy }
-  }
-  const clipHandlers = (clip: TrackClip, kind: ClipDrag['kind']) => ({
-    onPointerDown: (event: PointerEvent<HTMLElement>) => {
-      event.stopPropagation()
-      if (event.button !== 0) return
-      capture(event)
-      setDrag({ kind, position: clip.position, startX: event.clientX, startY: event.clientY, dx: 0, dy: 0 })
-    },
-    onPointerMove: (event: PointerEvent<HTMLElement>) => {
-      if (drag === null || drag.position !== clip.position || drag.kind !== kind) return
-      setDrag(dragOffset(drag, event))
-    },
-    onPointerUp: (event: PointerEvent<HTMLElement>) => {
-      if (drag === null || drag.position !== clip.position || drag.kind !== kind) return
-      event.stopPropagation()
-      finishDrag(clip, dragOffset(drag, event))
-    },
-  })
-
-  // A pointer-up ends a track clip drag: a body drag moves the clip in time and to the video track nearest the row it
-  // ends on, or into the 视频 track where its middle lands (or selects it when it did not move); an edge drag trims, and
-  // a start trim moves the clip's start by the same amount.
-  const finishTrackDrag = (clip: PlacedTrackClip, current: BlockDrag): void => {
+  // A pointer-up ends a clip drag: a body drag moves the clip in time and to the video track nearest the row it ends on
+  // (or selects it when it did not move); an edge drag trims, and a start trim moves the clip's start by the same amount.
+  const finishClipDrag = (clip: PlacedClip, current: BlockDrag): void => {
     setTrackDrag(null)
     const moved = Math.abs(current.dx) > 3 || Math.abs(current.dy) > 3
     if (!moved) {
-      if (current.kind === 'move') { setChosenClip(null); setChosenSound(null); setChosenTrackClip(clip.clip); root.current?.focus() }
+      if (current.kind === 'move') { chooseClip(clip.clip); root.current?.focus() }
       return
     }
     const deltaSec = current.dx / px
-    const name = videoTrackName(clip.track)
     if (current.kind === 'move') {
-      const row = nearestVideoRow(clip.track, current.dy)
-      // Dropped on the 视频 track, the clip goes in where its middle lands, as a dropped asset does.
-      if (row === 'main') {
-        const to = dropPosition(clips, clip.startSec + deltaSec + clip.seconds / 2, null)
-        void runOperation('timeline.clip_move', { clip: clip.clip, to }, t('intent.toMainTrack', { name: mainTrackName, position: to }))
-        return
-      }
       const startSec = round(Math.max(0, clip.startSec + deltaSec))
-      const track = row
+      const track = nearestVideoRow(clip.track, current.dy)
       // A drag that ends where it started, on the same row at the same time, writes nothing.
       if (track === clip.track && startSec === round(clip.startSec)) return
       const params = { clip: clip.clip, start_sec: startSec, ...track === clip.track ? {} : { track } }
-      void runOperation('timeline.track_clip_move', params, t('intent.trackClipMove', { name: videoTrackName(track), at: timecode(startSec) }))
+      // A moved clip is selected once the move is done, instead of a sound picked meanwhile.
+      void runOperation('timeline.clip_move', params, t('intent.trackClipMove', { name: videoTrackName(track), at: timecode(startSec) }))
+        .then((ok) => { if (ok) chooseClip(clip.clip) })
       return
     }
     const inSec = current.kind === 'trimStart'
       ? round(Math.max(0, clip.inSec - clip.startSec, Math.min(clip.inSec + deltaSec, clip.outSec - 0.1)))
       : clip.rawIn
     const outSec = current.kind === 'trimEnd' ? round(Math.max(clip.inSec + 0.1, Math.min(clip.outSec + deltaSec, clip.assetSeconds))) : clip.rawOut
+    // An unset end of the range is left out: the operation reads a missing in or out point as the asset's own end.
     const range = { ...inSec === null ? {} : { in_sec: inSec }, ...outSec === null ? {} : { out_sec: outSec } }
-    void runOperation('timeline.clip_trim', { clip: clip.clip, ...range }, t('intent.trackClipTrim', { name }))
+    void runOperation('timeline.clip_trim', { clip: clip.clip, ...range }, t('intent.trackClipTrim', { name: videoTrackName(clip.track) }))
   }
   /**
-   * The pointer handlers of a drag on a clip of a video track or on a sound: a primary press starts it, a move follows the
+   * The pointer handlers of a drag on a clip or on a sound: a primary press starts it, a move follows the
    * pointer (up and down too for a body drag), and the release finishes it.
    * @param id - the block's clip ID or sound ID.
    * @param kind - a body or an edge drag.
@@ -1182,12 +1036,12 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       },
     }
   }
-  const trackClipHandlers = (clip: PlacedTrackClip, kind: BlockDrag['kind']) =>
-    blockDragHandlers(clip.clip, kind, trackDrag, setTrackDrag, (drag) => { finishTrackDrag(clip, drag) })
+  const clipHandlers = (clip: PlacedClip, kind: BlockDrag['kind']) =>
+    blockDragHandlers(clip.clip, kind, trackDrag, setTrackDrag, (drag) => { finishClipDrag(clip, drag) })
   const soundHandlers = (sound: TrackSound, kind: BlockDrag['kind']) =>
     blockDragHandlers(sound.sound, kind, soundDrag, setSoundDrag, (drag) => { finishSoundDrag(sound, drag) })
   /**
-   * One clip block of a video track under the 视频 track, or one sound block, with the live offset of its drag applied: a
+   * One clip block or one sound block, with the live offset of its drag applied: a
    * body drag follows the pointer, a start trim stops at the asset's start and the timeline's start, and an end trim at the
    * asset's end.
    * @param block - the placed clip or sound.
@@ -1238,12 +1092,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     if ((event.key === 'Delete' || event.key === 'Backspace') && selectedSound !== undefined) {
       event.preventDefault()
       removeSound(selectedSound)
-    } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedTrackClip !== undefined) {
-      event.preventDefault()
-      removeTrackClip(selectedTrackClip)
     } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedClip !== undefined) {
       event.preventDefault()
-      remove(selectedClip)
+      removeClip(selectedClip)
     } else if (event.key === ' ' && event.target === event.currentTarget) {
       event.preventDefault()
       if (player.playing) player.pause()
@@ -1265,11 +1116,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const fitLatest = useRef(fit)
   fitLatest.current = fit
   useEffect(() => {
-    if (fittedTimeline.current === timelineId || total <= 0) return
+    if (fittedTimeline.current === timelineId || videoSpan <= 0) return
     fittedTimeline.current = timelineId
     autoFit.current = true
     fit()
-  }, [timelineId, total])
+  }, [timelineId, videoSpan])
   useEffect(() => {
     const observer = new ResizeObserver(() => { if (autoFit.current) fitLatest.current() })
     observer.observe(scroller.current as HTMLDivElement)
@@ -1278,7 +1129,8 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
 
   // The bounds of a track-area resize, read from the laid-out editor: the preview and the track area share the height
   // from the preview's top to the editor's bottom, less the 1 px drag handle; the track area needs its toolbar, its
-  // horizontal scrollbar, and the ruler and the 视频 track with the bottom padding, and scrolls to the rows under them.
+  // horizontal scrollbar, and the ruler and the first track row with the bottom padding, and scrolls to the rows under
+  // them.
   // Null before layout (or under jsdom, which lays out nothing).
   const resizeBounds = (): { available: number; minTrack: number } | null => {
     const panelElement = panel.current as HTMLDivElement
@@ -1340,7 +1192,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     />
   )
 
-  // The preview frame, with both video elements, goes full screen; a refused request leaves the preview inline.
+  // The preview frame, with the clips' video elements, goes full screen; a refused request leaves the preview inline.
   const toggleFullscreen = (): void => {
     const element = frame.current as HTMLDivElement
     const change = document.fullscreenElement === element ? document.exitFullscreen() : element.requestFullscreen()
@@ -1371,8 +1223,8 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // is high at the video's aspect ratio and showing the frame nearest the asset time at the tile's middle. They are built
   // again only when the clips, the strips or the zoom change, not on every frame of playback.
   const stripTiles = useMemo(() => {
-    const placed = [...clips.flatMap(clip => clip.assetId === null ? [] : [{ ...clip, assetId: clip.assetId }]), ...trackClips]
-    return new Map(placed.flatMap(({ clip, assetId, inSec, seconds }) => {
+    const ready = clips.flatMap(clip => clip.assetId === null ? [] : [{ ...clip, assetId: clip.assetId }])
+    return new Map(ready.flatMap(({ clip, assetId, inSec, seconds }) => {
       const strip = strips.get(assetUrl(assetId))
       if (strip === undefined || !strip.complete) return []
       const tileWidth = (ROW_HEIGHT - 2) * strip.aspect
@@ -1388,7 +1240,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       })
       return [[clip, tiles] as const]
     }))
-  }, [clips, trackClips, strips, px])
+  }, [clips, strips, px])
   /**
    * The picture of a ready clip block: its tiles once its video's strip is complete; until then, its still image or else
    * its video's first frame, which the block repeats across its width, and null while neither is read.
@@ -1402,19 +1254,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     if (tiles !== undefined) return { still: null, tiles }
     const first = strips.get(assetUrl(clip.assetId))?.frames[0] ?? null
     return { still: clip.thumbnail !== null ? assetUrl(clip.thumbnail) : first, tiles: null }
-  }
-
-  /** One clip block on V1 or A1, with the live offset of a drag applied. */
-  const blockGeometry = (clip: TrackClip): CSSProperties => {
-    let left = clip.startSec * px
-    let width = clip.seconds * px
-    let transform: string | undefined
-    if (drag !== null && drag.position === clip.position) {
-      if (drag.kind === 'move') transform = `translate(${String(drag.dx)}px, ${String(drag.dy)}px)`
-      if (drag.kind === 'trimStart') { const dx = Math.max(-clip.inSec * px, Math.min(drag.dx, width - 4)); left += dx; width -= dx }
-      if (drag.kind === 'trimEnd') width = Math.max(4, Math.min(width + drag.dx, (clip.assetSeconds - clip.inSec) * px))
-    }
-    return { position: 'absolute', top: 0, bottom: 0, left, width, ...transform === undefined ? {} : { transform, zIndex: 3, opacity: 0.85 } }
   }
 
   // A right click in the track area opens the menu of what it landed on at the pointer, instead of the browser's menu.
@@ -1450,7 +1289,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const pickFor = (on: Extract<TrackMenu, { kind: 'videoLane' }>): void => {
     addRef.current = null
     anchorPicker(on.clientX, on.clientY, on.clientY)
-    setPickingSound(false); setPickTrack(on.track === 'main' ? null : on.track); setPickAt(on.atSec); setPicking(true)
+    setPickingSound(false); setPickTrack(on.track); setPickAt(on.atSec); setPicking(true)
   }
   const pickSoundFor = (on: Extract<TrackMenu, { kind: 'soundLane' }>): void => {
     soundAddRef.current = null
@@ -1476,9 +1315,9 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const muteItem = (muted: boolean, toggle: () => void): ReactNode =>
     menuButton(t(muted ? 'menu.unmute' : 'menu.mute'), timeline === null || headerBusy ? null : toggle)
   /**
-   * The items of the right-click menu: a clip or a sound splits at the playhead or goes, a track header mutes, moves (a video track
-   * under the 视频 track) or renames (a sound track) or deletes its track, the 原声 row mutes, and a free spot of a lane
-   * adds a video or a sound there or adds a track at the bottom.
+   * The items of the right-click menu: a clip or a sound splits at the playhead or goes, a track header mutes, moves (a
+   * video track) or renames (a sound track) or deletes its track, and a free spot of a lane adds a video or a sound there
+   * or adds a track at the bottom.
    * @param on - what the menu was opened on.
    * @returns the menu's items.
    */
@@ -1497,27 +1336,17 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     if (on.kind === 'clip') {
       const { clip } = on
       return [
-        menuButton(t('menu.split'), clip.status === 'ready' && playheadInside(clip) ? () => { splitAtPlayhead(clip) } : null),
-        menuButton(t('menu.delete'), () => { remove(clip) }, true),
-      ]
-    }
-    if (on.kind === 'trackClip') {
-      const { clip } = on
-      return [
-        menuButton(t('menu.split'), playheadInside(clip) ? () => { splitTrackClip(clip) } : null),
-        menuButton(t('menu.delete'), () => { removeTrackClip(clip) }, true),
+        menuButton(t('menu.split'), splittable(clip) === undefined ? null : () => { splitClip(clip) }),
+        menuButton(t('menu.delete'), () => { removeClip(clip) }, true),
       ]
     }
     if (on.kind === 'videoTrack') {
       const { track } = on
-      const layer = track === 'main' ? null : track
       return [
-        track === 'main' ? muteItem(videoMuted, toggleVideoMute) : muteItem(mutedVideoTracks.includes(track), () => { toggleVideoTrackMute(track) }),
-        menuButton(t('menu.moveUp'), layerUp(layer)),
-        menuButton(t('menu.moveDown'), layerDown(layer)),
-        track === 'main'
-          ? menuButton(t('menu.deleteVideoTrack'), headerBusy || !mainTrackRemovable ? null : removeMainTrack, true)
-          : menuButton(t('menu.deleteVideoTrack'), headerBusy ? null : () => { removeVideoTrack(track) }, true),
+        muteItem(mutedVideoTracks.includes(track), () => { toggleVideoTrackMute(track) }),
+        menuButton(t('menu.moveUp'), layerUp(track)),
+        menuButton(t('menu.moveDown'), layerDown(track)),
+        menuButton(t('menu.deleteVideoTrack'), timeline === null || headerBusy ? null : () => { removeVideoTrack(track) }, true),
       ]
     }
     if (on.kind === 'soundTrack') {
@@ -1528,7 +1357,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         menuButton(t('menu.deleteTrack'), timeline === null || headerBusy ? null : () => { removeTrack(track) }, true),
       ]
     }
-    if (on.kind === 'audio') return [muteItem(videoMuted, toggleVideoMute)]
     if (on.kind === 'videoLane') return [menuButton(t('menu.addVideo'), () => { pickFor(on) }), ...addTracks]
     // The last kind left; a new kind fails to compile here until it gets its items above.
     const lane: Extract<TrackMenu, { kind: 'soundLane' }> = on
@@ -1581,9 +1409,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
 
   // The preview fills the height the tracks leave: a 16:9 frame at full height, narrowed to the available width, on the
   // media surround, with the play button, the timecode, and the full-screen button under it.
-  const canPlay = clips.some(clip => clip.status === 'ready') || trackClips.length > 0
-  // In a card the preview sits above the node: as wide as the node, its picture at the first ready clip's aspect ratio.
-  const firstReady = clips.find(clip => clip.assetId !== null)
+  const canPlay = clips.some(clip => clip.status === 'ready')
+  // In a card the preview sits above the node: as wide as the node, its picture at the aspect ratio of the first ready
+  // clip of the top track that has one.
+  const firstReady = clips.filter(clip => clip.assetId !== null).toSorted((a, b) => a.track - b.track || a.startSec - b.startSec)[0]
   const firstAsset = firstReady?.assetId === null || firstReady === undefined ? undefined : assets.get(firstReady.assetId)
   const cardRatio = firstAsset !== undefined && firstAsset.width !== null && firstAsset.height !== null && firstAsset.height > 0
     ? `${String(firstAsset.width)} / ${String(firstAsset.height)}`
@@ -1605,29 +1434,20 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           ref={frame} data-testid="dv-timeline-viewer"
           style={{ position: 'relative', ...frameStyle, borderRadius: 'var(--dv-radius-md)', overflow: 'hidden', background: palette.media, boxShadow: `0 0 0 1px ${palette.line}, var(--dv-shadow-1)` }}
         >
-          {[0, 1].map((which) => {
-            const shown = player.front === which && playheadClip?.status === 'ready' && topClip === undefined && !pastMain
-            return (
-              <video
-                key={which} ref={player.elements[which as 0 | 1]} muted={videoMuted || topClip !== undefined} playsInline preload="auto"
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', visibility: shown ? 'visible' : 'hidden' }}
-              />
-            )
-          })}
-          {/* Each track clip has its own element; only the clip of the highest track at the playhead shows, plays and is
-              heard, and only a clip that can show soon loads its whole file. */}
-          {trackClips.map(clip => (
+          {/* Each clip has its own element; only the clip of the top track at the playhead shows, plays and is heard, and
+              only a clip that can show soon loads its whole file. */}
+          {clips.flatMap(clip => clip.assetId === null ? [] : [(
             <video
               key={clip.clip} data-track-clip={clip.clip} src={assetUrl(clip.assetId)} playsInline
-              preload={trackClipPreload(clip, player.position, total)}
+              preload={trackClipPreload(clip, player.position, covered)}
               muted={clip.clip !== topClip?.clip || mutedVideoTracks.includes(clip.track)}
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', background: palette.media, visibility: clip.clip === topClip?.clip ? 'visible' : 'hidden' }}
             />
-          ))}
-          {clips.length === 0 && trackClips.length === 0 ? <p data-testid="dv-timeline-viewer-empty" style={viewerNote}>{t(timeline === null ? 'viewer.noTimelines' : 'viewer.empty')}</p> : null}
-          {playheadClip !== undefined && playheadClip.status !== 'ready' && topClip === undefined && !pastMain ? (
+          )])}
+          {clips.length === 0 ? <p data-testid="dv-timeline-viewer-empty" style={viewerNote}>{t(timeline === null ? 'viewer.noTimelines' : 'viewer.empty')}</p> : null}
+          {topClip !== undefined && topClip.status !== 'ready' ? (
             <p data-testid="dv-timeline-viewer-placeholder" style={viewerNote}>
-              {t('viewer.placeholder', { position: playheadClip.position, status: t(playheadClip.status === 'failed' ? 'track.renderFailed' : 'track.rendering') })}
+              {t('viewer.placeholder', { name: videoTrackName(topClip.track), status: t(topClip.status === 'failed' ? 'track.renderFailed' : 'track.rendering') })}
             </p>
           ) : null}
         </div>
@@ -1680,17 +1500,13 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       <span style={{ width: 1, height: 18, background: palette.lineStrong, margin: '0 6px' }} />
       <IconButton
         icon="split" label={t('tool.split')}
-        onClick={splitTrack !== undefined
-          ? () => { splitTrackClip(splitTrack) }
-          : splitSelectedSound !== undefined
-            ? () => { splitSound(splitSelectedSound) }
-            : splitClip === undefined ? null : () => { splitAtPlayhead(splitClip) }}
+        onClick={splitSelectedSound !== undefined
+          ? () => { splitSound(splitSelectedSound) }
+          : splitTarget === undefined ? null : () => { splitClip(splitTarget) }}
       />
       {selectedSound !== undefined
         ? <IconButton icon="delete" label={t('tool.deleteSound')} onClick={() => { removeSound(selectedSound) }} />
-        : selectedTrackClip !== undefined
-          ? <IconButton icon="delete" label={t('tool.delete')} onClick={() => { removeTrackClip(selectedTrackClip) }} />
-          : <IconButton icon="delete" label={t('tool.delete')} onClick={selectedClip === undefined ? null : () => { remove(selectedClip) }} />}
+        : <IconButton icon="delete" label={t('tool.delete')} onClick={selectedClip === undefined ? null : () => { removeClip(selectedClip) }} />}
       <span ref={toolButtons} style={{ position: 'relative', display: 'inline-flex', gap: 2 }}>
         <button
           type="button" className="dv-tl-btn" aria-label={t('track.addTrack')} title={t('track.addTrack')} aria-haspopup="menu" aria-expanded={toolPopover === 'add'}
@@ -1726,12 +1542,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
             {/* The video tracks in the order the picture stacks them: each track covers every track after it. Under each
                 name, the names of its clips' assets in play order show which track a move put where. */}
             <ol style={{ listStyle: 'none', margin: 0, padding: 6 }}>
-              {[null, ...Array.from({ length: videoTrackCount }, (_, track) => track)].map((track) => {
-                const name = track === null ? mainTrackName : videoTrackName(track)
-                const ids = (track === null
-                  ? clips.map(clip => clip.assetId)
-                  : trackClips.filter(clip => clip.track === track).sort((a, b) => a.startSec - b.startSec).map(clip => clip.assetId)
-                ).filter((id): id is string => id !== null)
+              {Array.from({ length: videoTrackCount }, (_, track) => track).map((track) => {
+                const name = videoTrackName(track)
+                const ids = clips.filter(clip => clip.track === track).sort((a, b) => a.startSec - b.startSec).map(clip => clip.assetId)
+                  .filter((id): id is string => id !== null)
                 const contents = [...new Set(ids)].map(id => assets.get(id)?.name ?? id).join(t('track.layerJoin'))
                 return (
                   <li key={name} data-layer={name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 4px 6px 8px', fontSize: 13, lineHeight: '20px', color: palette.fg }}>
@@ -1755,7 +1569,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         ? <button type="button" className="dv-tl-btn" style={{ ...button, marginLeft: 6, color: palette.danger }} onClick={() => { keepStale(staleRecord) }}>{t('tool.keepAnyway')}</button>
         : null}
       <span style={{ flex: 1 }} />
-      {waiting.length > 0 ? <span data-testid="dv-timeline-export-waiting" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginRight: 6 }}>{t('tool.exportWaiting', { positions: waiting.join(', ') })}</span> : null}
+      {waiting > 0 ? <span data-testid="dv-timeline-export-waiting" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginRight: 6 }}>{t('tool.exportWaiting', { count: waiting })}</span> : null}
       <button
         type="button" className="dv-tl-btn" style={buttonStyle(exportId === null)} disabled={exportId === null}
         onClick={exportId === null ? undefined : () => { exportTimeline(exportId) }}
@@ -1775,28 +1589,27 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   )
 
   const playheadLeft = player.position * px
-  // The playhead spans the ruler and every track row.
-  const playheadHeight = RULER_HEIGHT + ROW_GAP + AUDIO_HEIGHT + (1 + videoTrackCount + trackCount) * (ROW_GAP + ROW_HEIGHT)
   // A track header: the track's color and its name, cut with an ellipsis, on the first line, and its buttons on a second
   // line under the name, so the buttons never cover the name.
-  const trackHeader = (color: string, name: string, buttons: ReactNode = null): ReactNode => (
+  const trackHeader = (color: string, name: string, buttons: ReactNode): ReactNode => (
     <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4, padding: '0 6px 0 14px', fontSize: 12, lineHeight: '16px' }}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
         <span style={{ flex: 'none', width: 8, height: 8, borderRadius: 2, background: color }} />
         <span style={{ flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
       </span>
       {/* The icons' left edge lines up with the color mark: each 16 px icon sits 4 px inside its 24 px button. */}
-      {buttons === null ? null : <span style={{ display: 'flex', gap: 4, marginLeft: -4 }}>{buttons}</span>}
+      <span style={{ display: 'flex', gap: 4, marginLeft: -4 }}>{buttons}</span>
     </span>
   )
   const muteButton = (muted: boolean, name: string, toggle: (() => void) | null): ReactNode => (
     <TrackButton icon={muted ? 'soundOff' : 'sound'} label={t('track.mute', { name })} pressed={muted} onClick={toggle} />
   )
-  // The video tracks under the 视频 track by number: each header mutes or deletes its track and has a ＋ that adds a video
-  // after the track's last clip, right of the delete button as on every track, and each lane takes a dropped video.
+  // The video tracks by number: each header mutes the own audio of its clips or deletes its track and has a ＋ that adds a
+  // video after the track's last clip, right of the delete button as on every track, and each lane takes a dropped video.
   const videoTrackRows = Array.from({ length: videoTrackCount }, (_, track) => {
     const name = videoTrackName(track)
     const muted = mutedVideoTracks.includes(track)
+    const onTrack = clips.filter(clip => clip.track === track)
     return [
       <span
         key={`video-head-${String(track)}`} data-video-track-head={track} {...owned} style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}
@@ -1804,11 +1617,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       >
         {trackHeader(palette.take, name, (
           <>
-            {muteButton(muted, name, headerBusy ? null : () => { toggleVideoTrackMute(track) })}
-            <TrackButton icon="delete" label={t('track.deleteVideoTrack', { name })} onClick={headerBusy ? null : () => { removeVideoTrack(track) }} />
+            {muteButton(muted, name, timeline === null || headerBusy ? null : () => { toggleVideoTrackMute(track) })}
+            <TrackButton icon="delete" label={t('track.deleteVideoTrack', { name })} onClick={timeline === null || headerBusy ? null : () => { removeVideoTrack(track) }} />
             <TrackButton
               icon="add" label={t('track.addToTrack', { name })} expanded={picking && pickTrack === track}
-              onClick={(event) => {
+              onClick={timeline === null ? null : (event) => {
                 addRef.current = event.currentTarget
                 anchorBeside(event.currentTarget)
                 setPickingSound(false); setPicking(!picking || pickTrack !== track); setPickTrack(track); setPickAt(null)
@@ -1818,42 +1631,51 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         ))}
       </span>,
       <div
-        key={`video-lane-${String(track)}`} role="list" aria-label={t('track.videoTrackAria', { n: track + 2 })} data-video-track={track}
+        key={`video-lane-${String(track)}`} role="list" aria-label={videoTrackCount <= 1 ? t('track.aria') : t('track.videoTrackAria', { n: track + 1 })} data-video-track={track}
         style={{ position: 'relative' }}
         onDragOver={(event) => { if (event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) event.preventDefault() }}
-        onDrop={(event) => { dropTrackClip(event, track) }}
-        onContextMenu={(event) => { openMenu(event, { kind: 'videoLane', track, atSec: laneTime(event), clientX: event.clientX, clientY: event.clientY }) }}
+        onDrop={(event) => { dropClip(event, track) }}
+        onContextMenu={(event) => { if (timeline !== null) openMenu(event, { kind: 'videoLane', track, atSec: laneTime(event), clientX: event.clientX, clientY: event.clientY }) }}
       >
-        {trackClips.filter(clip => clip.track === track).map((clip) => {
-          const assetName = assets.get(clip.assetId)?.name ?? clip.assetId
+        {onTrack.map((clip) => {
+          const ready = clip.assetId !== null
+          const statusText = clip.status === 'failed' ? t('track.renderFailed') : t('track.rendering')
+          const assetName = clip.assetId === null ? statusText : assets.get(clip.assetId)?.name ?? clip.assetId
+          // Trim handles take at most a quarter of the clip each, so a short clip keeps a body to select and drag.
           const handle = Math.max(2, Math.min(7, Math.floor(clip.seconds * px / 4)))
-          const isSelected = clip.clip === chosenTrackClip
-          const picture = clipPicture(clip)
-          // The hover text names the asset and the seconds the clip plays, like the caption of a 视频 track clip.
-          const caption = `${assetName} · ${clip.seconds.toFixed(1)}s`
+          const isSelected = clip.clip === selectedClip?.clip
+          // The caption and the visible label both name any state that changes what the clip can do.
+          const states = clip.stale ? [t('track.stale')] : []
+          const label = [assetName, ...states].join(' · ')
+          const caption = [`${assetName} · ${clip.seconds.toFixed(1)}s`, ...states].join(' · ')
+          // A placeholder clip is striped, in the danger color when its render failed.
+          const placeholderFill = `repeating-linear-gradient(135deg, ${clip.status === 'failed' ? palette.dangerSoft : palette.lineStrong} 0 8px, ${palette.fill} 8px 16px)`
+          const picture = clip.assetId === null ? { still: null, tiles: null } : clipPicture({ ...clip, assetId: clip.assetId })
           return (
             <div
-              key={clip.clip} role="listitem" {...owned} aria-label={t('track.trackClipAria', { track: name, name: assetName })} aria-pressed={isSelected}
-              data-track-clip-block={clip.clip} data-clip-stale={clip.stale} title={caption} {...trackClipHandlers(clip, 'move')}
-              onContextMenu={(event) => {
-                setChosenClip(null); setChosenSound(null); setChosenTrackClip(clip.clip)
-                openMenu(event, { kind: 'trackClip', clip })
-              }}
+              key={clip.clip} role="listitem" {...owned} aria-label={t('track.trackClipAria', { track: name, name: label })} aria-pressed={isSelected}
+              data-clip={clip.clip} data-clip-status={clip.status} data-clip-stale={clip.stale} title={caption} {...clipHandlers(clip, 'move')}
+              onContextMenu={(event) => { chooseClip(clip.clip); openMenu(event, { kind: 'clip', clip }) }}
               style={{
                 ...isSelected ? { zIndex: 1 } : {}, ...placedBlockGeometry(clip, trackDrag?.id === clip.clip ? trackDrag : null), boxSizing: 'border-box', borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', cursor: 'grab', touchAction: 'none',
-                background: picture.still === null ? palette.fill : `${palette.fill} url("${picture.still}") left center / auto 100% repeat-x`,
+                background: !ready ? placeholderFill : picture.still === null ? palette.fill : `${palette.fill} url("${picture.still}") left center / auto 100% repeat-x`,
+                // A border in the track color keeps a visible gap between neighboring clips.
                 border: `1px solid ${palette.panel}`, ...muted ? { opacity: MUTED_OPACITY } : {},
                 boxShadow: [isSelected ? `0 0 0 2px ${palette.accent}` : null, `inset 0 0 0 ${clip.stale ? `2px ${palette.danger}` : `1px ${palette.line}`}`].filter(shadow => shadow !== null).join(', '),
               }}
             >
-              {picture.still === null && picture.tiles === null ? <video src={assetUrl(clip.assetId)} preload="metadata" muted style={{ height: '100%', pointerEvents: 'none' }} /> : null}
+              {picture.still === null && picture.tiles === null && clip.assetId !== null ? <video src={assetUrl(clip.assetId)} preload="metadata" muted style={{ height: '100%', pointerEvents: 'none' }} /> : null}
               {picture.tiles}
-              <span style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: palette.take, pointerEvents: 'none' }} />
+              <span style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: clip.status === 'failed' ? palette.danger : palette.take, pointerEvents: 'none' }} />
               <span style={{ position: 'absolute', left: handle + 3, bottom: 4, maxWidth: `calc(100% - ${String(handle * 2 + 6)}px)`, boxSizing: 'border-box', padding: '0 5px', borderRadius: 4, background: palette.panel, color: palette.fg, fontSize: 12, lineHeight: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
-                {assetName}
+                {label}
               </span>
-              <span data-trim="start" className="dv-tl-trim" {...trackClipHandlers(clip, 'trimStart')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: handle, cursor: 'col-resize' }} />
-              <span data-trim="end" className="dv-tl-trim" {...trackClipHandlers(clip, 'trimEnd')} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: handle, cursor: 'col-resize' }} />
+              {ready ? (
+                <>
+                  <span aria-label={t('track.trimStart', { name: assetName })} data-trim="start" className="dv-tl-trim" {...clipHandlers(clip, 'trimStart')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: handle, cursor: 'col-resize' }} />
+                  <span aria-label={t('track.trimEnd', { name: assetName })} data-trim="end" className="dv-tl-trim" {...clipHandlers(clip, 'trimEnd')} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: handle, cursor: 'col-resize' }} />
+                </>
+              ) : null}
             </div>
           )
         })}
@@ -1911,10 +1733,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
             key={sound.sound} data-sound={sound.sound} {...owned} title={t('track.soundItem', { name: sound.name })} aria-pressed={sound.sound === chosenSound}
             {...soundHandlers(sound, 'move')}
             onClick={(event) => {
-              event.stopPropagation(); setChosenClip(null); setChosenTrackClip(null); setChosenSound(sound.sound); root.current?.focus()
+              event.stopPropagation(); setChosenClip(null); setChosenSound(sound.sound); root.current?.focus()
             }}
             onContextMenu={(event) => {
-              setChosenClip(null); setChosenTrackClip(null); setChosenSound(sound.sound)
+              setChosenClip(null); setChosenSound(sound.sound)
               openMenu(event, { kind: 'sound', sound })
             }}
             style={{
@@ -1943,13 +1765,14 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       })}
     </div>,
   ])
-  // The rows under the 原声 row, top to bottom in the order the tracks were added.
-  const rowsUnderAudio = trackRows(trackOrder, videoTrackCount, trackCount)
-    .map(row => row.kind === 'video' ? videoTrackRows[row.track] : soundTrackRows[row.track])
-  // The heights of the ruler and the track rows, top to bottom, and where the line under each row sits.
-  const rowHeights = [RULER_HEIGHT, ROW_HEIGHT, AUDIO_HEIGHT, ...Array.from({ length: videoTrackCount + trackCount }, () => ROW_HEIGHT)]
+  // The track rows, top to bottom in the order the tracks were added.
+  const trackRowElements = shownRows.map(row => row.kind === 'video' ? videoTrackRows[row.track] : soundTrackRows[row.track])
+  // The heights of the ruler and the rows, top to bottom, and where the line under each row sits.
+  const rowHeights = [RULER_HEIGHT, ...shownRows.map(() => ROW_HEIGHT)]
   const rowLines = rowHeights.map((_, index) =>
     rowHeights.slice(0, index + 1).reduce((sum, height) => sum + height, 0) + index * ROW_GAP + ROW_GAP / 2)
+  // The playhead spans the ruler and every row.
+  const playheadHeight = rowHeights.reduce((sum, height) => sum + height, 0) + (rowHeights.length - 1) * ROW_GAP
   const tracks = (
     <div
       ref={scroller}
@@ -1974,111 +1797,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         >
           {rulerMarks}
         </div>
-        <span
-          data-main-track-head {...owned} style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}
-          onContextMenu={(event) => { openMenu(event, { kind: 'videoTrack', track: 'main' }) }}
-        >
-          {trackHeader(palette.take, mainTrackName, (
-            <>
-              {muteButton(videoMuted, mainTrackName, timeline === null || headerBusy ? null : toggleVideoMute)}
-              <TrackButton
-                icon="delete" label={t('track.deleteVideoTrack', { name: mainTrackName })}
-                onClick={headerBusy || !mainTrackRemovable ? null : removeMainTrack}
-              />
-              <TrackButton
-                icon="add" label={t('track.add')} expanded={picking && pickTrack === null}
-                onClick={timeline === null ? null : (event) => {
-                  addRef.current = event.currentTarget
-                  anchorBeside(event.currentTarget)
-                  setPickingSound(false); setPicking(!picking || pickTrack !== null); setPickTrack(null); setPickAt(null)
-                }}
-              />
-            </>
-          ))}
-        </span>
-        <div
-          role="list" aria-label={t('track.aria')} style={{ position: 'relative' }}
-          onContextMenu={(event) => { if (timeline !== null) openMenu(event, { kind: 'videoLane', track: 'main', atSec: laneTime(event), clientX: event.clientX, clientY: event.clientY }) }}
-          onDragOver={(event) => { if (event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)) event.preventDefault() }}
-          onDrop={(event) => {
-            const dropped = takeDrop(event)
-            if (dropped === null) return
-            if (dropped.type !== 'video') {
-              setDropNotice({ text: 'track.videoDrop' })
-              return
-            }
-            const box = (lane.current as HTMLDivElement).getBoundingClientRect()
-            insert(dropPosition(clips, (event.clientX - box.left) / screenScale() / px, null), dropped.id)
-          }}
-        >
-          {clips.map((clip) => {
-            const ready = clip.assetId !== null
-            const statusText = clip.status === 'failed' ? t('track.renderFailed') : t('track.rendering')
-            const name = clip.assetId === null ? statusText : assets.get(clip.assetId)?.name ?? clip.assetId
-            // Trim handles take at most a quarter of the clip each, so a short clip keeps a body to select and drag.
-            const handle = Math.max(2, Math.min(7, Math.floor(clip.seconds * px / 4)))
-            // The caption and the visible label both name any state that changes what the clip can do.
-            const states = [...ready ? [] : [statusText], ...clip.stale ? [t('track.stale')] : []]
-            const caption = [`${String(clip.position)} · ${clip.seconds.toFixed(1)}s`, ...states].join(' · ')
-            const label = [t('track.clipLabel', { position: clip.position }), ...states].join(' · ')
-            // A placeholder clip is striped, in the danger color when its render failed.
-            const placeholderFill = `repeating-linear-gradient(135deg, ${clip.status === 'failed' ? palette.dangerSoft : palette.lineStrong} 0 8px, ${palette.fill} 8px 16px)`
-            const isSelected = selected === clip.position
-            const picture = clip.assetId === null
-              ? { still: null, tiles: null }
-              : clipPicture({ ...clip, assetId: clip.assetId })
-            return (
-              <div
-                key={clip.clip} role="listitem" {...owned} aria-label={t('track.clipAria', { position: clip.position, name })} aria-pressed={isSelected}
-                data-clip={clip.clip} data-clip-position={clip.position} data-clip-status={clip.status} data-clip-stale={clip.stale} title={caption} {...clipHandlers(clip, 'move')}
-                onContextMenu={(event) => { setSelected(clip.position); openMenu(event, { kind: 'clip', clip }) }}
-                style={{
-                  ...isSelected ? { zIndex: 1 } : {}, ...blockGeometry(clip), boxSizing: 'border-box', borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden', cursor: 'grab', touchAction: 'none',
-                  background: !ready ? placeholderFill : picture.still === null ? palette.fill : `${palette.fill} url("${picture.still}") left center / auto 100% repeat-x`,
-                  // A border in the track color keeps a visible gap between neighboring clips.
-                  border: `1px solid ${palette.panel}`,
-                  boxShadow: [isSelected ? `0 0 0 2px ${palette.accent}` : null, `inset 0 0 0 ${clip.stale ? `2px ${palette.danger}` : `1px ${palette.line}`}`].filter(shadow => shadow !== null).join(', '),
-                }}
-              >
-                {picture.still === null && picture.tiles === null && clip.assetId !== null ? <video src={assetUrl(clip.assetId)} preload="metadata" muted style={{ height: '100%', pointerEvents: 'none' }} /> : null}
-                {picture.tiles}
-                <span style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: clip.status === 'failed' ? palette.danger : palette.take, pointerEvents: 'none' }} />
-                <span style={{ position: 'absolute', left: handle + 3, bottom: 4, maxWidth: `calc(100% - ${String(handle * 2 + 6)}px)`, boxSizing: 'border-box', padding: '0 5px', borderRadius: 4, background: palette.panel, color: palette.fg, fontSize: 12, lineHeight: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
-                  {label}
-                </span>
-                {ready ? (
-                  <>
-                    <span aria-label={t('track.trimStart', { position: clip.position })} data-trim="start" className="dv-tl-trim" {...clipHandlers(clip, 'trimStart')} style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: handle, cursor: 'col-resize' }} />
-                    <span aria-label={t('track.trimEnd', { position: clip.position })} data-trim="end" className="dv-tl-trim" {...clipHandlers(clip, 'trimEnd')} style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: handle, cursor: 'col-resize' }} />
-                  </>
-                ) : null}
-              </div>
-            )
-          })}
-        </div>
-        <span data-audio-head {...owned} style={{ display: 'flex', alignItems: 'center', minWidth: 0 }} onContextMenu={(event) => { openMenu(event, { kind: 'audio' }) }}>
-          {trackHeader(palette.audio, t('track.audio'))}
-        </span>
-        <div
-          data-audio-lane {...owned} style={{ position: 'relative', ...videoMuted ? { opacity: MUTED_OPACITY } : {} }} aria-hidden
-          onContextMenu={(event) => { openMenu(event, { kind: 'audio' }) }}
-        >
-          {clips.map(clip => (
-            <div
-              key={clip.clip}
-              style={{ ...blockGeometry(clip), boxSizing: 'border-box', borderRadius: 'var(--dv-radius-sm)', border: `1px solid ${palette.panel}`, background: palette.audioSoft, overflow: 'hidden' }}
-            >
-              {clip.status === 'ready' && clip.assetId !== null
-                ? (
-                  <AudioWaveform
-                    assetId={clip.assetId} inSec={clip.inSec} outSec={clip.outSec} width={clip.seconds * px} height={AUDIO_HEIGHT - 2}
-                  />
-                )
-                : null}
-            </div>
-          ))}
-        </div>
-        {rowsUnderAudio}
+        {trackRowElements}
       </div>
       <div
         aria-label={t('track.playhead')} data-testid="dv-timeline-playhead"
@@ -2102,7 +1821,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     position: 'absolute', left: pickAnchor.left, [pickAnchor.edge]: pickAnchor.offset,
     maxHeight: `min(${String(tallest)}px, calc(100% - ${String(pickAnchor.offset + 8)}px))`,
   })
-  // The picker's title says where the picked asset goes: the end of the track, or the time a lane menu was opened at.
+  // The picker's title says where the picked asset goes: after the track's last clip, or the time a lane menu was opened at.
   const pickTitle = pickAt === null ? t('track.pick') : t('track.pickAt', { at: timecode(pickAt) })
   const editPanel = (
     <div ref={panel} style={{ ...card === undefined ? { ...trackHeight === null ? { flex: '0 1 auto', minHeight: 0 } : { flex: 'none', height: trackHeight } } : { flex: '1 1 auto', minHeight: 0 }, display: 'flex', flexDirection: 'column', background: palette.panel }}>
@@ -2149,8 +1868,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
                   key={entry.id} type="button" className="dv-tl-btn" style={{ ...menuItem, marginTop: 4 }}
                   onClick={() => {
                     setPicking(false)
-                    if (pickTrack === null) insert(pickAt === null ? clips.length + 1 : dropPosition(clips, pickAt, null), entry.id)
-                    else addTrackClip(entry.id, pickTrack, pickAt ?? trackClipEnd(pickTrack) ?? player.position)
+                    addClip(entry.id, pickTrack, pickAt ?? trackEndOf(pickTrack) ?? player.position)
                   }}
                 >
                   {entry.name}

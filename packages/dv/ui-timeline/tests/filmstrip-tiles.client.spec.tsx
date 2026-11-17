@@ -37,17 +37,17 @@ describe('clip pictures', () => {
     const state = (): ReturnType<typeof fixtureState> => {
       const fixture = fixtureState()
       const [t1] = fixture.components.timeline.timelines
-      // export.mp4 plays from 0.5 s to 2.5 s of its asset on video track 0; its strip has a frame every half second.
+      // export.mp4 plays from 0.5 s to 2.5 s of its asset on video track 1; its strip has a frame every half second.
       if (t1 !== undefined) {
-        t1.track_clips = [{ id: 'cl5' as ClipId, asset: 'export.mp4' as AssetId, in_sec: 0.5, out_sec: 2.5, start_sec: 8, track: 0 }]
-        t1.track_order = ['sound', 'video']
+        t1.clips.push({ id: 'cl5' as ClipId, asset: 'export.mp4' as AssetId, source: null, in_sec: 0.5, out_sec: 2.5, start_sec: 8, track: 1 })
+        t1.track_order = ['video', 'sound', 'video']
       }
       return fixture
     }
     const { fetch } = scriptedFetch({ state })
     const view = render(centerView(booted, { client: new DvClient(fetch) }))
     const block = (selector: string): HTMLElement => view.container.querySelector(selector) as HTMLElement
-    await waitFor(() => { expect(view.container.querySelector('[data-track-clip-block="cl5"]')).not.toBeNull() })
+    await waitFor(() => { expect(view.container.querySelector('[data-clip="cl5"]')).not.toBeNull() })
     const tiles = (element: HTMLElement): string[] =>
       [...element.querySelectorAll('[data-filmstrip-frame]')].map(tile => `${String(tile.getAttribute('data-filmstrip-frame'))} ${(tile as HTMLElement).style.left}`)
     // cl1 plays shot1.mp4's 4 s over 160 px at 40 px a second; 54 px square tiles show the frames at 0.675 s, 2.025 s and 3.375 s.
@@ -57,7 +57,7 @@ describe('clip pictures', () => {
     expect(tiles(block('[data-clip="cl2"]'))).toEqual([])
     expect(block('[data-clip="cl2"]').style.background).toContain('shot2-last.png')
     // cl5 starts 0.5 s into its asset: its two tiles show the frames at 1.175 s and 2.5 s, its out point.
-    expect(tiles(block('[data-track-clip-block="cl5"]'))).toEqual(['2 0px', '5 54px'])
+    expect(tiles(block('[data-clip="cl5"]'))).toEqual(['2 0px', '5 54px'])
   })
 
   it('repeats the first frame of a clip whose strip is not complete and that has no still image', async () => {
@@ -65,8 +65,8 @@ describe('clip pictures', () => {
       const fixture = fixtureState()
       const [t1] = fixture.components.timeline.timelines
       if (t1 !== undefined) {
-        t1.track_clips = [{ id: 'cl5' as ClipId, asset: 'shot2.mp4' as AssetId, in_sec: null, out_sec: null, start_sec: 8, track: 0 }]
-        t1.track_order = ['sound', 'video']
+        t1.clips.push({ id: 'cl5' as ClipId, asset: 'shot2.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 8, track: 1 })
+        t1.track_order = ['video', 'sound', 'video']
       }
       // shot2.mp4 keeps its producer but loses the still beside it.
       fixture.assets = fixture.assets.filter(asset => asset.id !== 'shot2-last.png')
@@ -74,8 +74,8 @@ describe('clip pictures', () => {
     }
     const { fetch } = scriptedFetch({ state })
     const view = render(centerView(booted, { client: new DvClient(fetch) }))
-    await waitFor(() => { expect(view.container.querySelector('[data-track-clip-block="cl5"]')).not.toBeNull() })
-    const background = (view.container.querySelector('[data-track-clip-block="cl5"]') as HTMLElement).style.background
+    await waitFor(() => { expect(view.container.querySelector('[data-clip="cl5"]')).not.toBeNull() })
+    const background = (view.container.querySelector('[data-clip="cl5"]') as HTMLElement).style.background
     expect(background).toContain('url("s0")')
   })
 })

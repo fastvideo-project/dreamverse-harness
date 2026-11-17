@@ -22,9 +22,9 @@ afterEach(() => { document.documentElement.lang = '' })
 function clipState(): WireState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [
-    { id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null },
-    { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null },
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
+    { id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
+    { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
   ] })
   return state
 }
@@ -43,11 +43,26 @@ describe('clipMentionKind', () => {
     expect([clipMentionKind.section(), clipMentionKind.items(clipState())[1]?.label]).toEqual(['Clips', 'Timeline 1 · Clip 2'])
   })
 
+  it('numbers the clips of each video track by start time, and names the track of a clip that is not on 视频 1', () => {
+    document.documentElement.lang = 'zh-CN'
+    const state = fixtureState()
+    const [t1] = state.components.timeline.timelines
+    // cl9 starts before cl8 on video track 1, so it is that track's first clip.
+    t1?.clips.push(
+      { id: 'cl8' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 6, track: 1 },
+      { id: 'cl9' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 2, track: 1 },
+    )
+    const labels = (): string[] => clipMentionKind.items(state).map(item => item.label)
+    expect(labels()).toEqual(['时间线 1 · 片段 1', '时间线 1 · 片段 2', '时间线 1 · 视频 2 · 片段 2', '时间线 1 · 视频 2 · 片段 1'])
+    document.documentElement.lang = 'en'
+    expect(labels().at(-1)).toBe('Timeline 1 · Video 2 · Clip 1')
+  })
+
   it('lists a clip with neither an asset nor a render to wait for by its label alone', () => {
     document.documentElement.lang = 'en'
     const state = fixtureState()
-    state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: 'Outro', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [
-      { id: 'cl3' as ClipId, asset: null, source: null, in_sec: null, out_sec: null },
+    state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: 'Outro', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
+      { id: 'cl3' as ClipId, asset: null, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
     ] })
     expect(clipMentionKind.items(state).at(-1)).toEqual({ uri: 'dv:clip/cl3', label: 'Outro · Clip 1' })
   })

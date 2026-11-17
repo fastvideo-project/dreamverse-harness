@@ -1,7 +1,7 @@
 /**
  * Geometry of one timeline in the timeline editor: which timelines a state holds, how long each clip plays after its in
- * and out points, where it starts on its track, which clip plays at a given time, on the 视频 track and on the video
- * tracks under it, and the order of the track rows.
+ * and out points, where it starts on its video track, which clip the user sees at a given time, and the order of the
+ * track rows.
  */
 import type { Timeline, TimelineState, TrackKind } from '@dv/timeline/types'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
@@ -15,15 +15,15 @@ declare module '@dv/ui-kit/types.ts' { interface ComponentStates { timeline: Tim
  */
 export type ClipStatus = 'ready' | 'rendering' | 'failed'
 
-/** One clip placed on the track, with its in and out points resolved to numbers. */
-export interface TrackClip {
-  /** The 1-based position of the clip on its timeline. */
-  position: number
+/** One clip placed on its video track, with its in and out points resolved to numbers. */
+export interface PlacedClip {
   /** The clip ID, which the clip operations take in their `clip` param. */
   clip: string
   /** The asset the clip plays; null for a placeholder clip, whose render is not done. */
   assetId: string | null
   status: ClipStatus
+  /** The video track that holds the clip: 0 for the top track, 视频 1. */
+  track: number
   /** The recorded in point, or null when the clip starts at the asset's start. */
   rawIn: number | null
   /** The recorded out point, or null when the clip ends at the asset's end. */
@@ -36,7 +36,7 @@ export interface TrackClip {
   assetSeconds: number
   /** Seconds the clip plays: `outSec - inSec`. */
   seconds: number
-  /** Timeline time where the clip starts. */
+  /** Timeline time where the clip starts playing. */
   startSec: number
   /** The image the producing record left beside the clip, used as the track thumbnail. */
   thumbnail: string | null
@@ -65,19 +65,24 @@ export function nextTimelineId(timelines: Timeline[]): string {
 }
 
 /**
- * Place the clips of one timeline on the track in playback order. A placeholder clip (no asset yet) takes its length and
- * its status from the render record it waits for.
+ * Place the clips of one timeline, as the reducer's `placeClips` does: each from its `start_sec`, or where the clip before
+ * it on its track ends when that is later, so a render that came out longer than planned pushes the later clips of its
+ * track back. A placeholder clip (no asset yet) takes its length and its status from the render record it waits for; a
+ * clip whose asset length the state does not know plays `FALLBACK_CLIP_SECONDS` of it.
  * @param state - the project state, for asset durations, thumbnails, and stale marks.
  * @param timeline - the timeline, or null when the project has none.
- * @returns the clips and the total length in seconds.
+ * @returns the clips in the order the timeline stores them, the number of video tracks (one past the highest track that
+ *   holds a clip or a mute, and at least the `video` entries of `track_order`, which keep empty tracks), and the timeline
+ *   time at which the last clip ends.
  */
-export function placeTimeline(state: WireState, timeline: Timeline | null): { clips: TrackClip[]; total: number } {
+export function placeClips(state: WireState, timeline: Timeline | null): { clips: PlacedClip[]; tracks: number; end: number } {
   const assets = new Map(state.assets.map(asset => [asset.id, asset]))
   const proj = state.components.proj
   const records = new Map(proj.records.map(record => [record.id, record]))
-  const clips: TrackClip[] = []
-  let cursor = 0
-  for (const [index, clip] of (timeline?.clips ?? []).entries()) {
+  const stored = timeline?.clips ?? []
+  const ends = new Map<number, number>()
+  const placed = new Map<string, PlacedClip>()
+  for (const clip of stored.toSorted((a, b) => a.start_sec - b.start_sec)) {
     const source = clip.source === null ? undefined : records.get(clip.source.record)
     const renderSeconds = source?.params['duration_sec']
     const assetSeconds = clip.asset === null
@@ -86,105 +91,81 @@ export function placeTimeline(state: WireState, timeline: Timeline | null): { cl
     const inSec = clip.in_sec ?? 0
     const outSec = clip.out_sec ?? assetSeconds
     const seconds = Math.max(0.1, outSec - inSec)
+    const startSec = Math.max(clip.start_sec, ends.get(clip.track) ?? 0)
+    ends.set(clip.track, startSec + seconds)
     const rendering = source === undefined || source.status === 'pending' || source.status === 'running'
     const status: ClipStatus = clip.asset !== null ? 'ready' : rendering ? 'rendering' : 'failed'
     const producerId = (clip.asset === null ? clip.source?.record : proj.created_by[clip.asset]) ?? null
     const producer = producerId === null ? undefined : records.get(producerId)
-    const thumbnail = producer?.outputs.find(id => assets.get(id)?.mime.startsWith('image/')) ?? null
-    clips.push({
-      position: index + 1, clip: clip.id, assetId: clip.asset, status, rawIn: clip.in_sec, rawOut: clip.out_sec, inSec, outSec,
-      assetSeconds, seconds, startSec: cursor, thumbnail, stale: producerId !== null && producerId in proj.stale,
-    })
-    cursor += seconds
-  }
-  return { clips, total: cursor }
-}
-
-/** One clip placed on a video track under the 视频 track, with its in and out points resolved to numbers. */
-export interface PlacedTrackClip {
-  /** The clip ID, which the clip operations take in their `clip` param. */
-  clip: string
-  /** The video asset the clip plays. */
-  assetId: string
-  /** The video track that holds the clip: 0 for the top track. */
-  track: number
-  /** The recorded in point, or null when the clip starts at the asset's start. */
-  rawIn: number | null
-  /** The recorded out point, or null when the clip ends at the asset's end. */
-  rawOut: number | null
-  /** Asset time where the clip starts playing. */
-  inSec: number
-  /** Asset time where the clip stops playing. */
-  outSec: number
-  /** Length of the whole asset. */
-  assetSeconds: number
-  /** Seconds the clip plays: `outSec - inSec`. */
-  seconds: number
-  /** Timeline time where the clip starts. */
-  startSec: number
-  /** The image the producing record left beside the clip, used as the track thumbnail. */
-  thumbnail: string | null
-  stale: boolean
-}
-
-/**
- * Place the clips of the video tracks under the 视频 track. A clip whose asset length the state does not know plays
- * `FALLBACK_CLIP_SECONDS` of it.
- * @param state - the project state, for asset durations, thumbnails, and stale marks.
- * @param timeline - the timeline, or null when the project has none.
- * @returns the clips in the order the timeline stores them, the number of tracks (one past the highest track that holds
- *   a clip or a mute, and at least the `video` entries of `track_order`, which keep empty tracks), and the timeline time
- *   at which the last clip ends.
- */
-export function placeTrackClips(state: WireState, timeline: Timeline | null): { clips: PlacedTrackClip[]; tracks: number; end: number } {
-  const assets = new Map(state.assets.map(asset => [asset.id, asset]))
-  const proj = state.components.proj
-  const records = new Map(proj.records.map(record => [record.id, record]))
-  const clips = (timeline?.track_clips ?? []).map((clip): PlacedTrackClip => {
-    const assetSeconds = assets.get(clip.asset)?.duration_sec ?? FALLBACK_CLIP_SECONDS
-    const inSec = clip.in_sec ?? 0
-    const outSec = clip.out_sec ?? assetSeconds
-    const producerId = proj.created_by[clip.asset] ?? null
-    const producer = producerId === null ? undefined : records.get(producerId)
-    return {
-      clip: clip.id, assetId: clip.asset, track: clip.track, rawIn: clip.in_sec, rawOut: clip.out_sec, inSec, outSec, assetSeconds,
-      seconds: Math.max(0.1, outSec - inSec), startSec: clip.start_sec,
-      thumbnail: producer?.outputs.find(id => assets.get(id)?.mime.startsWith('image/')) ?? null,
+    placed.set(clip.id, {
+      clip: clip.id, assetId: clip.asset, status, track: clip.track, rawIn: clip.in_sec, rawOut: clip.out_sec, inSec, outSec,
+      assetSeconds, seconds, startSec, thumbnail: producer?.outputs.find(id => assets.get(id)?.mime.startsWith('image/')) ?? null,
       stale: producerId !== null && producerId in proj.stale,
-    }
-  })
+    })
+  }
+  const clips = stored.map(clip => placed.get(clip.id) as PlacedClip)
   // The same count as the reducer's `videoTrackCount`, which a browser package cannot import.
   const tracks = Math.max(
-    (timeline?.track_order ?? []).filter(kind => kind === 'video').length,
+    0, (timeline?.track_order ?? []).filter(kind => kind === 'video').length,
     ...clips.map(clip => clip.track + 1), ...(timeline?.muted_video_tracks ?? []).map(track => track + 1),
   )
   return { clips, tracks, end: Math.max(0, ...clips.map(clip => clip.startSec + clip.seconds)) }
 }
 
 /**
- * The clip of the video tracks under the 视频 track that the user sees at a timeline time: none while the 视频 track has a
- * clip there, else the clip of the track with the lowest number that plays then.
- * @param clips - the placed track clips.
+ * The clip the user sees and hears at a timeline time: the clip of the track with the lowest number that plays then,
+ * a placeholder clip included, which shows its status there. At the end of the last clip, where the playhead stops, the
+ * clip that ends there stays the one the user sees, so the preview holds its last frame.
+ * @param clips - the placed clips.
  * @param position - timeline time in seconds.
- * @param mainEnd - the time at which the 视频 track's last clip ends.
- * @returns the clip, or undefined when the 视频 track covers the time or no track clip plays then.
+ * @returns the clip, or undefined when no clip plays then.
  */
-export function topTrackClipAt(clips: readonly PlacedTrackClip[], position: number, mainEnd: number): PlacedTrackClip | undefined {
-  if (position < mainEnd) return undefined
-  return clips.filter(clip => position >= clip.startSec && position < clip.startSec + clip.seconds)
-    .reduce<PlacedTrackClip | undefined>((top, clip) => top === undefined || clip.track < top.track ? clip : top, undefined)
+export function topClipAt(clips: readonly PlacedClip[], position: number): PlacedClip | undefined {
+  const end = Math.max(0, ...clips.map(clip => clip.startSec + clip.seconds))
+  const shows = (clip: PlacedClip): boolean => position >= end
+    ? clip.startSec + clip.seconds >= end
+    : position >= clip.startSec && position < clip.startSec + clip.seconds
+  return clips.filter(shows)
+    .reduce<PlacedClip | undefined>((top, clip) => top === undefined || clip.track < top.track ? clip : top, undefined)
 }
 
-/** One row of the editor under the 视频 track and its 原声 row: a video track or a sound track by its number. */
+/**
+ * Whether the clips of the tracks with lower numbers than a clip's cover its whole span, so it never shows.
+ * @param clips - the placed clips.
+ * @param clip - one of them.
+ * @returns true when no moment of the clip's span is free of a clip of a lower track.
+ */
+export function coveredAbove(clips: readonly PlacedClip[], clip: PlacedClip): boolean {
+  const end = clip.startSec + clip.seconds
+  let at = clip.startSec
+  for (const above of clips.filter(each => each.track < clip.track).toSorted((a, b) => a.startSec - b.startSec)) {
+    if (above.startSec + above.seconds <= at) continue
+    if (above.startSec > at + 0.005) return false
+    at = above.startSec + above.seconds
+    if (at >= end - 0.005) return true
+  }
+  return false
+}
+
+/**
+ * The clips that never show, since the clips of the tracks with lower numbers cover their whole span. The editor works
+ * this out once per change of the clips, not on every frame of playback.
+ * @param clips - the placed clips.
+ * @returns their clip IDs.
+ */
+export function coveredClips(clips: readonly PlacedClip[]): ReadonlySet<string> {
+  return new Set(clips.filter(clip => coveredAbove(clips, clip)).map(clip => clip.clip))
+}
+
+/** One row of the editor's track area: a video track or a sound track by its number. */
 export interface TrackRow {
   kind: TrackKind
   track: number
 }
 
 /**
- * The rows of the video tracks and sound tracks under the 原声 row, top to bottom: the stored tracks in the timeline's
- * `track_order`, then, at the bottom, any counted track the order does not list, such as the one sound track the editor
- * shows while the project has no timeline.
+ * The rows of the video tracks and sound tracks, top to bottom: the stored tracks in the timeline's `track_order`, then,
+ * at the bottom, any counted track the order does not list.
  * @param order - the timeline's `track_order`.
  * @param videoTracks - how many video tracks the editor shows.
  * @param soundTracks - how many sound tracks the editor shows, at least as many as the order lists.
@@ -196,39 +177,6 @@ export function trackRows(order: readonly TrackKind[], videoTracks: number, soun
   const rest = (kind: TrackKind, count: number): TrackRow[] =>
     Array.from({ length: Math.max(0, count - next[kind]) }, (_, index) => ({ kind, track: next[kind] + index }))
   return [...rows, ...rest('video', videoTracks), ...rest('sound', soundTracks)]
-}
-
-/**
- * The clip that plays at a timeline time. A time at or past the end resolves to the last clip.
- * @param clips - the placed clips.
- * @param position - timeline time in seconds.
- * @returns the clip's index, or -1 when there are no clips.
- */
-export function clipIndexAt(clips: TrackClip[], position: number): number {
-  const index = clips.findIndex(clip => position < clip.startSec + clip.seconds)
-  return index === -1 ? clips.length - 1 : index
-}
-
-/**
- * The first clip at or after an index that can play.
- * @param clips - the placed clips.
- * @param from - the index to start at.
- * @returns the clip's index, or -1 when no later clip is ready.
- */
-export function readyIndexFrom(clips: TrackClip[], from: number): number {
-  return clips.findIndex((clip, at) => at >= from && clip.status === 'ready')
-}
-
-/**
- * Where a clip lands when it is dropped with its center at `centerSec`: one plus the number of other clips whose
- * centers lie before it.
- * @param clips - the placed clips.
- * @param centerSec - timeline time of the dropped clip's center.
- * @param exclude - the position of the dragged clip, or null for an inserted asset.
- * @returns the 1-based position.
- */
-export function dropPosition(clips: TrackClip[], centerSec: number, exclude: number | null): number {
-  return 1 + clips.filter(clip => clip.position !== exclude && clip.startSec + clip.seconds / 2 < centerSec).length
 }
 
 /**
@@ -256,7 +204,7 @@ export function timecode(seconds: number): string {
 }
 
 /**
- * The video assets of a state, newest first, for insertion into the timeline.
+ * The video assets of a state, newest first, for the video tracks.
  * @param state - the project state.
  * @returns the video assets.
  */

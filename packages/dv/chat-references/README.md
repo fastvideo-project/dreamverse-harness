@@ -60,7 +60,7 @@ A mention of a clip names the clip by its `ClipId`, which is unique in the proje
 
 #### What the model sees
 
-When a new user message holds `@[<label>](dv:<kind>/<id>)` mentions, a context message of source `dv-mentions` follows it: "The user referenced these project items:" and one line per mention with the asset, record, version of a reference kind, or clip and the record that produced it (tool, status, prompt, duration, inputs, outputs). In a conversation without a project, each line ends with "this conversation has no project yet; call dv_proj_create first". An imported chat attachment adds no text of its own; it appears as an asset in the project summary of `@dv/project`.
+When a new user message holds `@[<label>](dv:<kind>/<id>)` mentions, a context message of source `dv-mentions` follows it: "The user referenced these project items:" and one line per mention with the asset, record, version of a reference kind, or clip and the record that produced it (tool, status, prompt, duration, inputs, outputs). A clip's line gives its number by start time on its video track, such as "clip 2 by start time on video track 0 of timeline t1", the number the mention menu shows. In a conversation without a project, each line ends with "this conversation has no project yet; call dv_proj_create first". An imported chat attachment adds no text of its own; it appears as an asset in the project summary of `@dv/project`.
 
 #### Token effect
 

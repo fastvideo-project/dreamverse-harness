@@ -176,13 +176,13 @@ describe('a timeline node on the canvas', () => {
         if (entry.id === 'shot1.mp4') return { ...entry, width: 1280, height: 720 }
         return entry.id === 'export.mp4' ? { ...entry, width: 10, height: 0 } : entry
       })
-      const clip = { id: 'cl9' as ClipId, asset: 'export.mp4' as AssetId, source: null, in_sec: null, out_sec: null }
+      const clip = { id: 'cl9' as ClipId, asset: 'export.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }
       // cl8 waits for the render g2, and the sound plays ref.png's import.
-      const pending = { id: 'cl8' as ClipId, asset: null, source: { record: 'g2' as RecordId, output: 0 }, in_sec: null, out_sec: null }
+      const pending = { id: 'cl8' as ClipId, asset: null, source: { record: 'g2' as RecordId, output: 0 }, in_sec: null, out_sec: null, start_sec: 0, track: 0 }
       const sounds = [{ id: 'sd1' as SoundId, asset: 'ref.png' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 0 }]
-      // cl7 on the video track above plays g1's shot.
-      const tracked = [{ id: 'cl7' as ClipId, asset: 'shot1.mp4' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 0 }]
-      state.components.timeline.timelines.push({ ...timeline, id: 't2' as TimelineId, clips: [clip, pending], track_clips: tracked, sounds })
+      // cl7 on video track 1 plays g1's shot.
+      const tracked = { id: 'cl7' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 1 }
+      state.components.timeline.timelines.push({ ...timeline, id: 't2' as TimelineId, clips: [clip, pending, tracked], sounds })
       placeTimeline(state, 'k1', 't1')
       placeTimeline(state, 'k2', 't2')
     }, (_path, body) => (body as { operation?: string }).operation === 'timeline.clip_remove' ? '片段被锁定' : null)

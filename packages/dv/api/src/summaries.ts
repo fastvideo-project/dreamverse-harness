@@ -39,7 +39,9 @@ export interface SummarySource {
  * @param projectId - the project.
  * @param state - the project's current state.
  * @param mimeOf - the MIME type of an asset, or null for an asset the pool does not hold.
- * @param timelineId - the timeline whose first clip is the cover, when the project has it; else the first timeline.
+ * @param timelineId - the timeline whose cover clip is the project's cover, when the project has it; else the first
+ *   timeline. The cover clip is the clip with a video or an image that starts first, the one of the lowest video track
+ *   among clips that start together.
  * @returns the cover and the last edit time.
  */
 export function summarizeProject(
@@ -52,7 +54,7 @@ export function summarizeProject(
   const timelines = state.components.timeline.timelines
   const timeline = timelines.find(entry => entry.id === timelineId) ?? timelines[0]
   let cover: WireProjectCover | null = null
-  for (const clip of timeline?.clips ?? []) {
+  for (const clip of (timeline?.clips ?? []).toSorted((a, b) => a.start_sec - b.start_sec || a.track - b.track)) {
     cover = clip.asset === null ? null : coverOf(clip.asset)
     if (cover !== null) break
   }

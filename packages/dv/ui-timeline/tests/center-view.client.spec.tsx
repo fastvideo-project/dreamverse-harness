@@ -85,7 +85,7 @@ const STILL = asset('shot1-last.png', 'image/png', 'g1')
 function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null }] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }] })
   return state
 }
 
@@ -112,7 +112,7 @@ describe('插入片段 in the asset preview', () => {
     await waitFor(() => { expect(view.queryByRole('dialog')).toBeNull() })
     await waitFor(() => {
       expect(operations()).toEqual([expect.objectContaining({
-        project: 'p1', session: 's5', surface: 'timeline', operation: 'timeline.clip_insert', params: { timeline: 't1', at: 3, asset: 'shot1.mp4' },
+        project: 'p1', session: 's5', surface: 'timeline', operation: 'timeline.clip_add', params: { timeline: 't1', asset: 'shot1.mp4', track: 0, start_sec: 7 },
       })])
     })
     await runtime.dispose()
@@ -127,7 +127,7 @@ describe('插入片段 in the asset preview', () => {
     expect(targets.at(-1)).toEqual({ view: 'timeline', target: { insert: 'shot1.mp4' } })
     await waitFor(() => {
       expect(operations()).toEqual([{
-        project: 'p1', operation: 'timeline.clip_insert', params: { timeline: 't2', at: 2, asset: 'shot1.mp4' }, intent: '在位置 2 插入片段',
+        project: 'p1', operation: 'timeline.clip_add', params: { timeline: 't2', asset: 'shot1.mp4', track: 0, start_sec: 3 }, intent: '把片段放到视频 1 的 3 秒',
         surface: 'timeline', session: 's5',
       }])
     })

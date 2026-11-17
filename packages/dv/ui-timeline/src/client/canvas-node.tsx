@@ -20,7 +20,7 @@ import type { ProjectRecord, WireState } from '@dv/ui-kit/types.ts'
 import { TIMELINE_ID } from './definition.ts'
 import type {} from './locales.ts'
 import { TimelineEditor } from './TimelineEditor.tsx'
-import { placeTimeline, placeTrackClips, timelinesOf } from './timelines.ts'
+import { placeClips, timelinesOf } from './timelines.ts'
 
 /** The node type key of a placed timeline, the kind that `@dv/timeline` registers `timeline.place` under. */
 export const TIMELINE_NODE_KIND = 'timeline'
@@ -29,9 +29,9 @@ export const TIMELINE_NODE_KIND = 'timeline'
 const CARD_SIZE = { width: 640, height: 390 }
 
 /**
- * The box the card lays its editor out in at scale 1, tall enough for the toolbar, the ruler, the video and 原声 rows,
- * one sound track and the add-track row: at the default size the editor draws 640 / 480 times its panel size with all
- * of them shown, and it grows further as the node grows in both directions.
+ * The box the card lays its editor out in at scale 1, tall enough for the toolbar, the ruler, one video track, one sound
+ * track and one more track row: at the default size the editor draws 640 / 480 times its panel size with all of them
+ * shown, and it grows further as the node grows in both directions.
  */
 const LAYOUT_SIZE = { width: 480, height: 290 }
 
@@ -102,12 +102,12 @@ export function timelineNodeType(t: TimelineTranslate, show: (timeline: string) 
       const sizing = { kind: 'window' as const, defaultSize: CARD_SIZE, minSize: { width: 420, height: 220 } }
       const timeline = placedTimeline(state, record)
       if (timeline === null) return { title: t('node.deleted'), sizing }
-      const length = Math.max(placeTimeline(state, timeline).total, placeTrackClips(state, timeline).end)
+      const length = placeClips(state, timeline).end
       return {
         title: nameOf(timeline, t), meta: `${length.toFixed(1)}s`, sizing,
         uses: {
           assets: [
-            ...timeline.clips.flatMap(clip => clip.asset === null ? [] : [clip.asset]), ...timeline.track_clips.map(clip => clip.asset),
+            ...timeline.clips.flatMap(clip => clip.asset === null ? [] : [clip.asset]),
             ...timeline.sounds.map(sound => sound.asset),
           ],
           records: timeline.clips.flatMap(clip => clip.asset === null && clip.source !== null ? [clip.source.record] : []),

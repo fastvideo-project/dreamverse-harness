@@ -1,13 +1,14 @@
 /**
  * The assets that the editor's ＋ pickers and add-sound dialog offer, the placement of a timeline's sounds and of the
- * clips of its video tracks under the 视频 track, the track clip the preview shows, and the order of the track rows.
+ * clips of its video tracks, the clip the preview shows, and the order of the track rows.
  */
 import { describe, expect, it } from 'vitest'
 import type { AssetId } from '@dv/project/types'
-import type { ClipId, SoundId, Timeline, TimelineId } from '@dv/timeline/types'
+import type { RecordId } from '@dv/project/types'
+import type { Clip, ClipId, SoundId, Timeline, TimelineId } from '@dv/timeline/types'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import { asset, fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
-import { audioAssets, placeSounds, placeTrackClips, topTrackClipAt, trackRows, videoAssets } from '../src/client/timelines.ts'
+import { audioAssets, coveredAbove, placeClips, placeSounds, topClipAt, trackRows, videoAssets } from '../src/client/timelines.ts'
 
 describe('videoAssets', () => {
   it('lists the video assets of a state, newest first', () => {
@@ -31,7 +32,7 @@ describe('placeSounds', () => {
     const sound = (id: string, file: string, start: number, track: number, range: [number | null, number | null] = [null, null]): Timeline['sounds'][number] =>
       ({ id: id as SoundId, asset: file as AssetId, in_sec: range[0], out_sec: range[1], start_sec: start, track })
     const timeline: Timeline = {
-      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'],
+      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'],
       sounds: [
         sound('sd1', 'a.mp3', 1, 0), sound('sd2', 'b.mp3', 0, 1), sound('sd3', 'c.mp3', 4, 0), sound('sd4', 'lost.mp3', 0, 2),
         // The two parts of a split sound: the first ends at its out point, the second plays from its in point to the asset's end.
@@ -58,18 +59,18 @@ describe('placeSounds', () => {
   })
 })
 
-describe('placeTrackClips', () => {
-  it('places each track clip at its start for its in and out points, with the thumbnail and stale mark of its producer', () => {
+describe('placeClips', () => {
+  it('places each clip at its start for its in and out points, with the thumbnail and stale mark of its producer', () => {
     const state = fixtureState()
     const [t1] = state.components.timeline.timelines
     if (t1 === undefined) throw new Error('no t1')
-    t1.track_clips = [
-      { id: 'cl5' as ClipId, asset: 'shot2.mp4' as AssetId, in_sec: 1, out_sec: null, start_sec: 2, track: 1 },
-      { id: 'cl6' as ClipId, asset: 'lost.mp4' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
-      { id: 'cl7' as ClipId, asset: 'ref.png' as AssetId, in_sec: null, out_sec: 0.05, start_sec: 9, track: 0 },
+    t1.clips = [
+      { id: 'cl5' as ClipId, asset: 'shot2.mp4' as AssetId, source: null, in_sec: 1, out_sec: null, start_sec: 2, track: 1 },
+      { id: 'cl6' as ClipId, asset: 'lost.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
+      { id: 'cl7' as ClipId, asset: 'ref.png' as AssetId, source: null, in_sec: null, out_sec: 0.05, start_sec: 9, track: 0 },
     ]
     t1.muted_video_tracks = [3]
-    const { clips, tracks, end } = placeTrackClips(state, t1)
+    const { clips, tracks, end } = placeClips(state, t1)
     const facts = clips.map(clip => [
       clip.clip, clip.track, clip.startSec, clip.inSec, clip.outSec, clip.seconds, clip.thumbnail, clip.stale,
     ])
@@ -81,24 +82,52 @@ describe('placeTrackClips', () => {
       ['cl7', 0, 9, 0, 0.05, 0.1, 'ref.png', false],
     ])
     expect([tracks, end]).toEqual([4, 9.1])
-    expect(placeTrackClips(state, null)).toEqual({ clips: [], tracks: 0, end: 0 })
+    expect(placeClips(state, null)).toEqual({ clips: [], tracks: 0, end: 0 })
   })
-})
 
-describe('topTrackClipAt', () => {
-  it('picks the clip of the track with the lowest number that plays at a time, and none where no track clip plays or the 视频 track still covers it', () => {
+  it('places each clip at its start time, or where the clip before it on its track ends when that is later', () => {
     const state = fixtureState()
     const [t1] = state.components.timeline.timelines
     if (t1 === undefined) throw new Error('no t1')
-    t1.track_clips = [
-      { id: 'low' as ClipId, asset: 'shot1.mp4' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 2 },
-      { id: 'high' as ClipId, asset: 'export.mp4' as AssetId, in_sec: null, out_sec: null, start_sec: 1, track: 0 },
-      { id: 'middle' as ClipId, asset: 'export.mp4' as AssetId, in_sec: null, out_sec: null, start_sec: 3.5, track: 1 },
+    // shot1.mp4 plays 4 s and cl2 plays 3 s of shot2.mp4; cl3 asks for 1 s, before cl1 ends, and cl4 on track 1 for 1 s too.
+    t1.clips = [
+      { ...t1.clips[0] as Clip, start_sec: 0 }, { ...t1.clips[1] as Clip, start_sec: 6 },
+      { id: 'cl3' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 1, track: 0 },
+      { id: 'cl4' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 1, track: 1 },
     ]
-    const { clips } = placeTrackClips(state, t1)
-    expect([0.5, 1, 3.9, 4, 6, 7].map(at => topTrackClipAt(clips, at, 0)?.clip ?? null)).toEqual(['low', 'high', 'high', 'middle', 'middle', null])
-    // A 视频 track that ends at 4 s covers every track clip before then.
-    expect([1, 3.9, 4].map(at => topTrackClipAt(clips, at, 4)?.clip ?? null)).toEqual([null, null, 'middle'])
+    const { clips, end } = placeClips(state, t1)
+    expect([clips.map(clip => clip.startSec), end]).toEqual([[0, 8, 4, 1], 11])
+  })
+})
+
+describe('topClipAt', () => {
+  it('picks the clip of the track with the lowest number that plays at a time, a placeholder too, none in a gap, and the clip that ends last at the end', () => {
+    const state = fixtureState()
+    const [t1] = state.components.timeline.timelines
+    if (t1 === undefined) throw new Error('no t1')
+    t1.clips = [
+      { id: 'low' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 2 },
+      { id: 'high' as ClipId, asset: 'export.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 1, track: 0 },
+      { id: 'middle' as ClipId, asset: 'export.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 3.5, track: 1 },
+      { id: 'wait' as ClipId, asset: null, source: { record: 'g1' as RecordId, output: 0 }, in_sec: null, out_sec: 1, start_sec: 7, track: 0 },
+    ]
+    const { clips } = placeClips(state, t1)
+    expect([0.5, 1, 3.9, 4, 6, 6.8, 7.5, 8].map(at => topClipAt(clips, at)?.clip ?? null))
+      .toEqual(['low', 'high', 'high', 'middle', 'middle', null, 'wait', 'wait'])
+    expect(topClipAt([], 0)).toBeUndefined()
+  })
+
+  it('tells whether the clips of the tracks with lower numbers cover a clip\'s whole span', () => {
+    const state = fixtureState()
+    const [t1] = state.components.timeline.timelines
+    if (t1 === undefined) throw new Error('no t1')
+    const clip = (id: string, start: number, out: number, track: number): Clip =>
+      ({ id: id as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: out, start_sec: start, track })
+    // Track 0 plays 0 s to 2 s and 2 s to 4 s; track 1 plays 4 s to 5 s.
+    t1.clips = [clip('a', 0, 2, 0), clip('b', 2, 2, 0), clip('c', 4, 1, 1), clip('under', 1, 3, 2), clip('past', 4, 1, 2), clip('gap', 5.5, 1, 2)]
+    const { clips } = placeClips(state, t1)
+    const covered = (id: string): boolean => coveredAbove(clips, clips.find(each => each.clip === id) as (typeof clips)[number])
+    expect(['under', 'past', 'gap', 'c'].map(covered)).toEqual([true, true, false, false])
   })
 })
 

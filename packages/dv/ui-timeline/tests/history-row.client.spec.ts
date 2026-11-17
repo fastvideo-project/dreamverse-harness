@@ -25,11 +25,11 @@ describe('timelineHistoryRow', () => {
     expect(Object.fromEntries(clipTimelines(records))).toEqual({ cl1: 't1', cl2: 't1', cl3: 't2', cl4: 't1' })
   })
 
-  it('leaves unassigned the clips of a record whose timeline is unknown: a split of an unknown clip, an insert without a timeline', () => {
+  it('leaves unassigned the clips of a record whose timeline is unknown: a split of an unknown clip, an add without a timeline', () => {
     const orphans = [
       record({ id: 's1', operation: 'timeline.clip_split', params: { clip: 'gone', at_sec: 1 }, report: { clips: ['cl5'] } }),
       record({ id: 's2', operation: 'timeline.clip_split', params: { at_sec: 1 }, report: { clips: ['cl6'] } }),
-      record({ id: 'i', operation: 'timeline.clip_insert', params: { asset: 'y.mp4' }, report: { clips: ['cl7'] } }),
+      record({ id: 'i', operation: 'timeline.clip_add', params: { asset: 'y.mp4' }, report: { clips: ['cl7'] } }),
     ]
     expect(Object.fromEntries(clipTimelines([...records, ...orphans]))).toEqual({ cl1: 't1', cl2: 't1', cl3: 't2', cl4: 't1' })
   })

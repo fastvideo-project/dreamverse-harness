@@ -52,7 +52,7 @@ const assets = (...ids: string[]): AssetId[] => ids.map(id => brandString<AssetI
  */
 function clip(id: string, asset: string | null): Clip {
   const played = asset === null ? null : brandString<AssetId>(asset)
-  return { id: brandString<ClipId>(id), asset: played, source: null, in_sec: null, out_sec: null }
+  return { id: brandString<ClipId>(id), asset: played, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }
 }
 
 /**
@@ -77,11 +77,11 @@ function state(): SummarySource {
         timelines: [
           {
             id: brandString<TimelineId>('t1'), name: '', clips: [clip('c0', null), clip('c1', 'shot1.mp4'), clip('c2', 'shot2.mp4')],
-            sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'],
+            sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'],
           },
           {
             id: brandString<TimelineId>('t2'), name: '', clips: [clip('c4', 'notes.txt'), clip('c3', 'shot2.mp4')],
-            sounds: [], sound_track_names: [], video_muted: false, muted_sound_tracks: [], track_clips: [], muted_video_tracks: [], track_order: ['sound'],
+            sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'],
           },
         ],
       },
@@ -101,6 +101,15 @@ describe('summarizeProject', () => {
   it('takes the named timeline when the project has it, else the first timeline, and skips a clip that is neither a video nor an image', () => {
     expect(summarizeProject(projectId, state(), mimeOf, 't2').cover).toEqual({ asset: 'shot2.mp4', mime: 'video/mp4' })
     expect(summarizeProject(projectId, state(), mimeOf, 't9').cover).toEqual({ asset: 'shot1.mp4', mime: 'video/mp4' })
+  })
+
+  it('takes the clip that starts first, of the lowest video track among clips that start together, in whatever order the timeline stores them', () => {
+    const source = state()
+    const [first] = source.components.timeline.timelines
+    if (first !== undefined) {
+      first.clips = [{ ...clip('c7', 'shot2.mp4'), start_sec: 20 }, { ...clip('c8', 'shot1.mp4'), track: 1 }, clip('c9', 'ref.png')]
+    }
+    expect(summarizeProject(projectId, source, mimeOf).cover).toEqual({ asset: 'ref.png', mime: 'image/png' })
   })
 
   it('falls back to the first finished image without a timeline clip, and reports no cover and no records on an empty state', () => {

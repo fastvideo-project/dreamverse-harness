@@ -227,12 +227,12 @@ describe('dvApi', () => {
     const b = await fixture.handlers.runOperation({ project: projectId, operation: 'asset.import', surface: 'timeline', params: { path: fixture.writeFile('b.mp4', 'B'), mime: 'video/mp4' } })
     const created = await fixture.handlers.runOperation({ project: projectId, operation: 'timeline.create', surface: 'timeline', params: { assets: [a.outputs[0], b.outputs[0]] } })
     expect(created.status).toBe('done')
-    const moved = await fixture.handlers.runOperation({ project: projectId, operation: 'timeline.clip_move', surface: 'timeline', intent: 'drag clip 2 before clip 1', params: { clip: 'cl2', to: 1 } })
-    expect(moved.intent).toBe('drag clip 2 before clip 1')
+    const moved = await fixture.handlers.runOperation({ project: projectId, operation: 'timeline.clip_move', surface: 'timeline', intent: 'drag clip 2 to 20 s', params: { clip: 'cl2', start_sec: 20 } })
+    expect(moved.intent).toBe('drag clip 2 to 20 s')
     const state = fixture.handlers.getState(projectId)
     expect(state.components.timeline.timelines[0]?.clips).toEqual([
-      { id: 'cl2', asset: b.outputs[0], source: null, in_sec: null, out_sec: null },
-      { id: 'cl1', asset: a.outputs[0], source: null, in_sec: null, out_sec: null },
+      { id: 'cl1', asset: a.outputs[0], source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
+      { id: 'cl2', asset: b.outputs[0], source: null, in_sec: null, out_sec: null, start_sec: 20, track: 0 },
     ])
     expect(state.components.proj.records.every(record => record.actor === 'user' && record.turn === null)).toBe(true)
 
@@ -564,7 +564,7 @@ describe('dvApi', () => {
     expect(mentionedAssets(fixture.project.getState(projectId), imports())).toEqual([...imported.outputs, ...later.outputs])
   })
 
-  it('lists every asset that a timeline\'s clips, track clips and sounds play', async () => {
+  it('lists every asset that the clips of a timeline\'s video tracks and its sounds play', async () => {
     const fixture = await start()
     const projectId = await fixture.newProject('demo')
     // Assets stored outside any record, so only the timeline mentions them.
@@ -573,7 +573,7 @@ describe('dvApi', () => {
     const cut = fixture.assets.importAsset(projectId, Buffer.from('cut'), { mime: 'video/mp4', name: 'cut.mp4', durationSec: 2 }, null)
     await fixture.handlers.runOperation({ project: projectId, operation: 'timeline.create', surface: 'timeline', params: { assets: [shot] } })
     const tracked = await fixture.handlers.runOperation({
-      project: projectId, operation: 'timeline.track_clip_add', surface: 'timeline', params: { timeline: 't1', asset: cut, track: 0, start_sec: 0 },
+      project: projectId, operation: 'timeline.clip_add', surface: 'timeline', params: { timeline: 't1', asset: cut, track: 1, start_sec: 0 },
     })
     expect(tracked.status).toBe('done')
     const added = await fixture.handlers.runOperation({

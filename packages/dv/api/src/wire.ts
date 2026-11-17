@@ -67,7 +67,7 @@ export interface WireOperation {
 /**
  * Collect the assets of a project as the views read them: every asset the current state mentions (the outputs and
  * resolved inputs of its records, which include the reference images of every reference kind's versions, its created
- * assets, and the assets of the timeline clips, track clips and sounds), and every asset that an `asset.import` record of the
+ * assets, and the assets of the timeline clips and sounds), and every asset that an `asset.import` record of the
  * project output, discarded steps included. A generated asset of a step after the current position, or of a discarded
  * step, is left out; an imported asset never is.
  * @param state - the project's current state.
@@ -84,7 +84,6 @@ export function mentionedAssets(state: ProjectState, imported: ReadonlyMap<Asset
   // A placeholder clip has no asset until its render is done.
   for (const timeline of state.components.timeline.timelines) {
     for (const clip of timeline.clips) if (clip.asset !== null) seen.add(clip.asset)
-    for (const clip of timeline.track_clips) seen.add(clip.asset)
     for (const sound of timeline.sounds) seen.add(sound.asset)
   }
   return [...seen]
