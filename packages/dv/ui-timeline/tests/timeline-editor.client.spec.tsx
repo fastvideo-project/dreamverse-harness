@@ -64,6 +64,24 @@ describe('TimelineView', () => {
     expect(view.container.querySelectorAll('[data-clip]')).toHaveLength(1)
   })
 
+  it('cuts each part of a long name on a clip block to eight characters, and keeps the whole name in the tooltip', async () => {
+    const { clip, track } = mount({
+      state: () => {
+        const state = twoTimelines()
+        // The node g1 is named, and the second clip plays an earlier take of it.
+        const shot = state.components.canvas.nodes['g1']
+        if (shot !== undefined) shot.name = 'Opening scene'
+        state.assets.push(asset('earlier-take.mp4', 'video/mp4', 'g1', 4))
+        const second = state.components.timeline.timelines[0]?.clips[1]
+        if (second !== undefined) second.asset = 'earlier-take.mp4' as AssetId
+        return state
+      },
+    })
+    await track()
+    expect([clip(1).textContent, clip(2).textContent]).toEqual(['Opening …', 'Opening … · earlier-…'])
+    expect([clip(1).getAttribute('title'), clip(2).getAttribute('title')]).toEqual(['Opening scene · 4.0s', 'Opening scene · earlier-take.mp4 · 3.0s'])
+  })
+
   it('shows a clip and the asset list under the name the user gave the asset\'s canvas node', async () => {
     const { view, clip, track } = mount({
       state: () => {
@@ -75,6 +93,7 @@ describe('TimelineView', () => {
     })
     await track()
     expect([clip(1).getAttribute('title'), clip(2).getAttribute('title')]).toEqual(['雨夜 · 4.0s', expect.stringContaining('shot2.mp4 · 3.0s')])
+    expect([clip(1).textContent, clip(2).textContent]).toEqual(['雨夜', expect.stringContaining('shot2.mp4')])
     expect(within(clip(1)).getByLabelText('拖动裁剪 雨夜 的开头')).toBeTruthy()
     fireEvent.click(view.getByLabelText('添加片段到 视频'))
     const picker = within(view.getByRole('dialog'))

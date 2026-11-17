@@ -148,6 +148,23 @@ export function coveredAbove(clips: readonly PlacedClip[], clip: PlacedClip): bo
   return false
 }
 
+/** The most characters of a name that a clip block shows before the `…` of a cut name. */
+const CLIP_NAME_CHARS = 8
+
+/** Splits a name into whole characters as the user reads them, so an emoji or a letter with a combining mark stays whole. */
+const CHARACTERS = new Intl.Segmenter()
+
+/**
+ * A name as a clip block shows it, so a long file name does not fill the block: the first `CLIP_NAME_CHARS` characters
+ * and then `…`. A name of up to one character more shows whole, since the cut would not make it shorter.
+ * @param name - the name.
+ * @returns the name, cut when the cut makes it shorter.
+ */
+export function shortName(name: string): string {
+  const characters = Array.from(CHARACTERS.segment(name), part => part.segment)
+  return characters.length <= CLIP_NAME_CHARS + 1 ? name : `${characters.slice(0, CLIP_NAME_CHARS).join('')}…`
+}
+
 /**
  * The clips that never show, since the clips of the tracks with lower numbers cover their whole span. The editor works
  * this out once per change of the clips, not on every frame of playback.

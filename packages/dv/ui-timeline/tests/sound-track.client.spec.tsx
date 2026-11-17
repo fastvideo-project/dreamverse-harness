@@ -156,7 +156,6 @@ describe('sound tracks', () => {
     expect(audio?.getAttribute('src')).toBe('/dv/assets/theme.mp3')
     // The preview reads only each file's length until it plays.
     expect(audio?.getAttribute('preload')).toBe('metadata')
-    expect(view.getByTestId('dv-timeline-export-no-sounds').textContent).toBe('导出暂不包含声音')
 
     fireEvent.click(addTrack())
     await waitFor(() => { expect(lanes()).toBe(3) })
@@ -164,7 +163,6 @@ describe('sound tracks', () => {
     fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
     expect(heads()).toEqual(['声音 1'])
     expect(view.container.querySelectorAll('div[data-sound]')).toHaveLength(0)
-    expect(view.queryByTestId('dv-timeline-export-no-sounds')).toBeNull()
   })
 
   it('gives a sound of unknown asset length the length its audio element measures, once that is a positive number', async () => {
@@ -884,7 +882,6 @@ describe('sound tracks', () => {
     expect(view.getByRole('button', { name: 'Add track' })).toBeTruthy()
     expect([view.getByRole('button', { name: 'Mute Video' }), view.getByRole('button', { name: 'Delete track Sound 1' })]
       .map(button => button.getAttribute('aria-label'))).toEqual(['Mute Video', 'Delete track Sound 1'])
-    expect(view.getByTestId('dv-timeline-export-no-sounds').textContent).toBe('Export does not include sounds yet')
     fireEvent.click(plus(0, 'Add sound'))
     expect(within(view.getByRole('dialog', { name: 'Add sound' })).getByText('Starts at 00:03.00')).toBeTruthy()
   })

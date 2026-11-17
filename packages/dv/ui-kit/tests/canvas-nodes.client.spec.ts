@@ -1,6 +1,6 @@
 /** Which canvas node of a state's node list shows a record, and the name an asset takes from its node. */
 import { describe, expect, it } from 'vitest'
-import { assetLabel, nodeOfRecord } from '../src/client/canvas-nodes.ts'
+import { assetLabel, assetLabelParts, nodeOfRecord } from '../src/client/canvas-nodes.ts'
 import { asset, fixtureState } from './fixture.client.tsx'
 
 describe('nodeOfRecord', () => {
@@ -28,6 +28,7 @@ describe('assetLabel', () => {
     // g1's newest version g3 is still running, so shot1.mp4 of its version g1 stays its main asset.
     expect(labels()).toEqual(['ref.png', '雨夜', '转身', '雨夜 · old.mp4', 'imported.mp4', 'lost.mp4'])
     expect(assetLabel(state, state.assets.find(entry => entry.id === 'shot1-last.png') ?? old)).toBe('雨夜 · shot1-last.png')
+    expect([assetLabelParts(state, old), assetLabelParts(state, imported)]).toEqual([['雨夜', 'old.mp4'], ['imported.mp4']])
     // A placement node's main asset is its placed asset.
     nodes['p1'] = { kind: 'asset', name: '参考图', versions: ['u1'], asset: 'placed.png', position: { x: 0, y: 0, width: null, height: null } }
     assets['placed.png'] = 'p1'

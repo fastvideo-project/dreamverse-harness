@@ -35,7 +35,7 @@ import type { CSSProperties, DragEvent, FocusEvent, KeyboardEvent, MouseEvent, P
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { Timeline, TrackKind } from '@dv/timeline/types'
 import { assetUrl } from '@dv/ui-kit/api.ts'
-import { assetLabel } from '@dv/ui-kit/canvas-nodes.ts'
+import { assetLabel, assetLabelParts } from '@dv/ui-kit/canvas-nodes.ts'
 import { mediaTypeOf } from '@dv/ui-kit/media-type.ts'
 import type { DvClient } from '@dv/ui-kit/api.ts'
 import { readStored, writeStored } from '@dv/ui-kit/storage.ts'
@@ -49,7 +49,7 @@ import { clipPeaks, useAudioEnvelope } from '@dv/ui-kit/waveform.ts'
 import { useSoundPlayback } from './sound-playback.ts'
 import { clipStalled, trackClipPreload, useTrackClipPlayback } from './track-clip-playback.ts'
 import {
-  audioAssets, coveredClips, nextTimelineId, placeClips, placeSounds, timecode, timelinesOf, topClipAt, trackRows, videoAssets,
+  audioAssets, coveredClips, nextTimelineId, placeClips, placeSounds, shortName, timecode, timelinesOf, topClipAt, trackRows, videoAssets,
 } from './timelines.ts'
 import type { PlacedClip, TrackSound } from './timelines.ts'
 import type { DvTimelineKey } from './locales.ts'
@@ -475,6 +475,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // asset that the project no longer has shows its ID.
   const labels = useMemo(() => new Map(state.assets.map(asset => [asset.id, assetLabel(state, asset)])), [state])
   const labelOf = (id: string): string => labels.get(id) ?? id
+  // The name a clip block shows: each part of the asset's name cut short on its own, so the block of an earlier take
+  // of a named node still shows the start of the take's own name after the node's.
+  const shortLabels = useMemo(
+    () => new Map(state.assets.map(asset => [asset.id, assetLabelParts(state, asset).map(shortName).join(' · ')])), [state],
+  )
   // Every ready clip shows its video's frames across its width once they are read (`clipPicture`).
   const videoUrls = [...new Set(clips.flatMap(clip => clip.assetId === null ? [] : [assetUrl(clip.assetId)]))]
   const strips = useFilmstrips(videoUrls)
@@ -1582,7 +1587,6 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       >
         <Icon name="export" />{exporting ? t('tool.exporting') : t('tool.export')}
       </button>
-      {sounds.length > 0 ? <span data-testid="dv-timeline-export-no-sounds" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginLeft: 6 }}>{t('tool.exportNoSounds')}</span> : null}
       {exported !== null ? <a href={assetUrl(exported)} target="_blank" rel="noreferrer" data-testid="dv-timeline-exported" style={{ color: palette.accentFg, marginLeft: 6 }}>{t('tool.exported')}</a> : null}
       <span style={{ width: 1, height: 18, background: palette.lineStrong, margin: '0 6px' }} />
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', color: palette.muted, fontSize: 12, lineHeight: '16px' }}>
@@ -1650,9 +1654,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           // Trim handles take at most a quarter of the clip each, so a short clip keeps a body to select and drag.
           const handle = Math.max(2, Math.min(7, Math.floor(clip.seconds * px / 4)))
           const isSelected = clip.clip === selectedClip?.clip
-          // The caption and the visible label both name any state that changes what the clip can do.
+          // The caption and the visible label both name any state that changes what the clip can do. The block shows a
+          // long asset name cut short; the caption and the accessible name keep all of it.
           const states = clip.stale ? [t('track.stale')] : []
           const label = [assetName, ...states].join(' · ')
+          const shown = [clip.assetId === null ? statusText : shortLabels.get(clip.assetId) ?? shortName(assetName), ...states].join(' · ')
           const caption = [`${assetName} · ${clip.seconds.toFixed(1)}s`, ...states].join(' · ')
           // A placeholder clip is striped, in the danger color when its render failed.
           const placeholderFill = `repeating-linear-gradient(135deg, ${clip.status === 'failed' ? palette.dangerSoft : palette.lineStrong} 0 8px, ${palette.fill} 8px 16px)`
@@ -1674,7 +1680,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
               {picture.tiles}
               <span style={{ position: 'absolute', left: 0, right: 0, top: 0, height: 3, background: clip.status === 'failed' ? palette.danger : palette.take, pointerEvents: 'none' }} />
               <span style={{ position: 'absolute', left: handle + 3, bottom: 4, maxWidth: `calc(100% - ${String(handle * 2 + 6)}px)`, boxSizing: 'border-box', padding: '0 5px', borderRadius: 4, background: palette.panel, color: palette.fg, fontSize: 12, lineHeight: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', pointerEvents: 'none' }}>
-                {label}
+                {shown}
               </span>
               {ready ? (
                 <>

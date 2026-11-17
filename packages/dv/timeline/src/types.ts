@@ -99,7 +99,7 @@ export interface Timeline {
   sounds: Sound[]
   /** The names of the sound tracks by track number; a missing or empty name shows as 声音 {n}. */
   sound_track_names: string[]
-  /** The numbers of the muted sound tracks, ascending: the preview plays their sounds silent. */
+  /** The numbers of the muted sound tracks, ascending: the preview plays their sounds silent, and the export leaves them out. */
   muted_sound_tracks: number[]
 }
 

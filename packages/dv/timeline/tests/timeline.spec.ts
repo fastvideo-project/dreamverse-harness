@@ -396,8 +396,8 @@ describe('dvTimeline', () => {
     expect(spec('timeline.mute')?.description).toBe(
       'Mute or unmute audio of a timeline. Target `video_track` is the own audio of the clips of one video track: while it is '
       + 'muted, the user hears those clips silent when playing the timeline, and the exported video leaves their audio out. Target '
-      + '`sound` is one sound track: while it is muted, the user does not hear its sounds when playing the timeline (the exported '
-      + 'video does not include sounds yet).',
+      + '`sound` is one sound track: while it is muted, the user does not hear its sounds when playing the timeline, and the exported '
+      + 'video leaves them out.',
     )
     expect(spec('timeline.mute')?.label).toEqual({ zh: '静音或取消静音', en: 'Mute or unmute' })
   })

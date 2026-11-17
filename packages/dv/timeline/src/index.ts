@@ -17,7 +17,8 @@
  * - `timeline.mute` mutes or unmutes the own audio of one video track's clips, or one sound track.
  *
  * Its twenty-second operation, `timeline.export`, writes a timeline to one video file with `dvFfmpeg` and imports the
- * file into the asset pool (see `export.ts`), without the sounds and without the audio of muted video tracks.
+ * file into the asset pool (see `export.ts`), with the sounds of the sound tracks mixed in and without the audio of
+ * muted video tracks and muted sound tracks.
  * While `@dv/canvas` is loaded, `timeline.place` puts one timeline on the canvas as a node of kind `timeline` (see
  * `place.ts`).
  *
@@ -181,13 +182,14 @@ export default class DvTimeline extends Service {
   }
 
   /**
-   * Export a timeline to one MP4 file, every clip at its time and the track with the lowest number on top (see
-   * `export.ts`).
+   * Export a timeline to one MP4 file, every clip at its time and the track with the lowest number on top, with the
+   * sounds of the sound tracks that are not muted mixed in up to the end of the last clip (see `export.ts`).
    * @param timeline - the timeline with at least one clip, each of which has an asset.
    * @param dir - an existing directory for the trimmed clips and the result, usually the operation's `scratchDir`.
    * @returns the path of the result inside `dir`.
-   * @throws Error for a timeline without clips or with a placeholder clip; FfmpegError when ffmpeg cannot trim, join or
-   *   draw the clips.
+   * @throws Error for a timeline without clips or with a placeholder clip, for a sound of a sound track that is not
+   *   muted whose file has no audio that ffprobe can read, and for sounds to mix into a video whose length ffprobe
+   *   cannot tell; FfmpegError when ffmpeg cannot trim, join, draw or mix.
    */
   exportTimeline(timeline: Timeline, dir: string): Promise<string> {
     return exportTimeline(this.ctx, timeline, dir)
@@ -405,7 +407,8 @@ export default class DvTimeline extends Service {
         label: { zh: '添加声音', en: 'Add sound' },
         version: '1',
         description: 'Add an audio asset to a sound track of a timeline, starting start_sec seconds after the timeline\'s start. '
-          + 'It may overlap clips and other sounds and gets a new sound ID. The exported video does not include sounds yet.',
+          + 'It may overlap clips and other sounds and gets a new sound ID. The exported video plays it over the clips\' audio, up to the end '
+          + 'of the last clip.',
         params: {
           timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
           asset: { type: 'string', required: true, description: 'The audio asset ID.' },
@@ -495,7 +498,7 @@ export default class DvTimeline extends Service {
         description: 'Mute or unmute audio of a timeline. Target `video_track` is the own audio of the clips of one video track: '
           + 'while it is muted, the user hears those clips silent when playing the timeline, and the exported video leaves their '
           + 'audio out. Target `sound` is one sound track: while it is muted, the user does not hear its sounds when playing the '
-          + 'timeline (the exported video does not include sounds yet).',
+          + 'timeline, and the exported video leaves them out.',
         params: {
           timeline: { type: 'string', required: true, description: 'The timeline, such as t1.' },
           target: {

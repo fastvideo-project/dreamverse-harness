@@ -8,7 +8,7 @@ import type { RecordId } from '@dv/project/types'
 import type { Clip, ClipId, SoundId, Timeline, TimelineId } from '@dv/timeline/types'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import { asset, fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
-import { audioAssets, coveredAbove, placeClips, placeSounds, topClipAt, trackRows, videoAssets } from '../src/client/timelines.ts'
+import { audioAssets, coveredAbove, placeClips, placeSounds, shortName, topClipAt, trackRows, videoAssets } from '../src/client/timelines.ts'
 
 describe('videoAssets', () => {
   it('lists the video assets of a state, newest first', () => {
@@ -112,6 +112,13 @@ describe('placeClips', () => {
     ]
     const { clips, end } = placeClips(state, t1)
     expect([clips.map(clip => clip.startSec), end]).toEqual([[0, 8, 4, 1], 11])
+  })
+})
+
+describe('shortName', () => {
+  it('keeps a name of up to nine characters, which the cut would not shorten, and cuts a longer one to eight characters and an ellipsis', () => {
+    expect(['', 'bf16.mp4', 'shot1.mp4', 'shot10.mp4', '47eb68588815dec672f2843bae7af899.mp4', '雨夜里的第一个长镜头', '🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬'].map(shortName))
+      .toEqual(['', 'bf16.mp4', 'shot1.mp4', 'shot10.m…', '47eb6858…', '雨夜里的第一个长…', '🎬🎬🎬🎬🎬🎬🎬🎬…'])
   })
 })
 
