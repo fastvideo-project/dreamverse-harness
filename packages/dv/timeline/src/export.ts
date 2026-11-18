@@ -137,11 +137,9 @@ function videoSeconds(probe: { videoDurationSec: number | null; durationSec: num
 }
 
 /**
- * Draw the track clips that end after the joined 视频 track, which covers them up to its end. The joined video is
- * extended with black frames to the last clip's end, and each clip is scaled to fit its frame, with black bars, and
- * shows during its span after the joined video's end; the track with the highest number is drawn first, so a track with
- * a lower number covers it. A clip's audio is silenced up to the joined video's end and where a clip of a track with a
- * lower number plays; the remaining audio is mixed.
+ * Draw the clips of the tracks under 视频 1 that end after the joined 视频 1, which covers them, picture and audio, up to
+ * its end. The joined video is extended with black frames to the last clip's end, and the clips are layered over it as
+ * `layer` does; a clip that ends before the joined video's end is left out.
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
  * @param timeline - the timeline.
  * @param others - where the clips of the tracks under 视频 1 play.
