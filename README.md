@@ -70,7 +70,7 @@ To run the server on one local machine, use the matching configuration in [FastV
 The repository is private for now; cloning it needs a GitHub account with access to `fastvideo-project/dreamverse-harness`.
 
 ```sh
-git clone https://github.com/fastvideo-project/dreamverse-harness.git
+git clone https://github.com/fastvideo-project/dreamverse-harness
 cd dreamverse-harness
 pnpm install
 pnpm run build
@@ -151,9 +151,10 @@ The [DreamVerse packages page](docs/subsystems/video-harness.md) describes the l
 
 ## Community
 
-- Join the [FastVideo Slack](https://join.slack.com/t/fastvideo/shared_invite/zt-3f4lao1uq-u~Ipx6Lt4J27AlD2y~IdLQ) to ask questions and share what you make.
+- Join the [FastVideo Slack](https://join.slack.com/t/fastvideo/shared_invite/zt-4heayzk81-lOkgpvJRoceuZjNP7pXxJA) to ask questions and share what you make.
+- Join the [Discord server](https://discord.gg/dqc2J2yNQ) to chat with other users.
 - Report bugs and request features in [GitHub Issues](https://github.com/fastvideo-project/dreamverse-harness/issues).
-- Share your provider plugins and skills: open a pull request, or post them in Slack.
+- Share your provider plugins and skills: open a pull request, or post them in Slack or Discord.
 
 ## Development
 

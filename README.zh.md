@@ -72,7 +72,7 @@ fastvideo serve --config examples/serving/openai_fasth3_8step.yaml --server.host
 仓库目前是私有的；克隆它需要一个能访问 `fastvideo-project/dreamverse-harness` 的 GitHub 账号。
 
 ```sh
-git clone https://github.com/fastvideo-project/dreamverse-harness.git
+git clone https://github.com/fastvideo-project/dreamverse-harness
 cd dreamverse-harness
 pnpm install
 pnpm run build
@@ -157,9 +157,10 @@ DreamVerse Harness 构建于 [DeepSeek Harness](https://github.com/deepseek-ai/d
 
 ## 社区
 
-- 加入 [FastVideo Slack](https://join.slack.com/t/fastvideo/shared_invite/zt-3f4lao1uq-u~Ipx6Lt4J27AlD2y~IdLQ)，提问并分享你的作品。
+- 加入 [FastVideo Slack](https://join.slack.com/t/fastvideo/shared_invite/zt-4heayzk81-lOkgpvJRoceuZjNP7pXxJA)，提问并分享你的作品。
+- 加入 [Discord 服务器](https://discord.gg/dqc2J2yNQ)，和其他用户交流。
 - 在 [GitHub Issues](https://github.com/fastvideo-project/dreamverse-harness/issues) 报告 bug、提出功能需求。
-- 分享你的提供方插件和 skill：提交 pull request，或者发到 Slack。
+- 分享你的提供方插件和 skill：提交 pull request，或者发到 Slack 或 Discord。
 
 ## 开发
 
