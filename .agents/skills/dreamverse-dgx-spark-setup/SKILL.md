@@ -26,7 +26,7 @@ Pick by the number of DGX Sparks, then tell the user the plan before installing.
 | 3 | Qwen on DGX Spark 3, or remote | FastH3 V1 | FastH3 V2, Omni on demand | Qwen + FastH3 Trim | |
 | 4 | Remote, or Qwen on one box | FastH3 V1 | FastH3 V2 | FastH3 Omni | FastH3 Trim |
 
-For a 2K finish, two boxes joined by a direct cable load the Open-H3-Regenerate-2K upscaler together and split each clip (sequence parallel 2). Two or three DGX Sparks can be cabled directly; splitting one job across four needs a 200 GbE switch, so on a LAN say so instead of attempting it.
+For a 2K finish, two boxes joined by a direct cable load the Open-H3-Regenerate-2K upscaler together and split each clip (sequence parallel 2). Two or three DGX Sparks can be cabled directly, and four connect in a ring (each to its two neighbours) or through a 200 GbE switch. Boxes that share only a LAN cannot split a job; say so instead of attempting it.
 
 The models, all public on Hugging Face:
 

@@ -11,9 +11,9 @@ Each recipe ends with a verify step. Run them in order: a later step assumes the
 | 1 | [Fully local](#1-fully-local-on-one-dgx-spark) | Qwen 3.8 27B on the box | Qwen 3.8 27B (vLLM) and FastH3 Trim share one DGX Spark |
 | 2 or 3 | [Several DGX Sparks](#2-several-dgx-sparks) | Local or remote | One FastVideo server per DGX Spark; the harness loads, unloads and routes per box |
 | 2 or 3, cabled | [A 2K upscale split across a pair](#3-a-2k-upscale-split-across-two-dgx-sparks) | Local or remote | Two DGX Sparks run one FastVideo server with sequence parallel |
-| 4 | [Several DGX Sparks](#2-several-dgx-sparks) | Local or remote | Splitting one job across all four needs a 200 GbE switch |
+| 4 | [Several DGX Sparks](#2-several-dgx-sparks) | Local or remote | Four connect in a ring, each cabled to its two neighbours, or through a 200 GbE switch |
 
-Two or three DGX Sparks can be cabled directly through their two QSFP ports; four need a 200 GbE switch (or a manually configured four-cable ring), per NVIDIA's multi-DGX-Spark playbook.
+Each DGX Spark has two QSFP ports. Two or three can be cabled directly; four connect in a ring, each cabled to its two neighbours with no switch, or through a 200 GbE switch, per NVIDIA's multi-DGX-Spark guidance.
 
 ## 0. Prepare each DGX Spark
 
