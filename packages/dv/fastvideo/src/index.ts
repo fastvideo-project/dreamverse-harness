@@ -224,7 +224,7 @@ function requestProblems(
 }
 
 /** The native task of each harness task, for a server configured without one. */
-const NATIVE_TASKS: Readonly<Record<TaskId, string>> = { t2v: 't2va', i2v: 'i2va', l2v: 'l2va', fl2v: 'fl2va', ref2v: 'ref2va' }
+const NATIVE_TASKS: Readonly<Record<TaskId, string>> = { t2v: 't2va', i2v: 'i2va', l2v: 'l2va', fl2v: 'fl2va', ref2v: 'ref2va', v2v: 'v2v' }
 /** Native task aliases that a FastVideo server accepts in a request, after it lowercases the task. */
 const NATIVE_ALIASES: Readonly<Record<string, string>> = { t2v: 't2va', i2v: 'i2va' }
 
