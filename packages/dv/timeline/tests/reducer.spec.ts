@@ -65,7 +65,7 @@ const layered = (): ComponentStates['timeline'] => reduceAll([
 ], base())
 
 /** A timeline's fields besides its ID, name and clips, as a new timeline has them. */
-const EMPTY_TRACKS = { muted_video_tracks: [], track_order: ['video', 'sound'], sounds: [], sound_track_names: [], muted_sound_tracks: [] }
+const EMPTY_TRACKS = { muted_video_tracks: [], track_order: ['video', 'sound'], sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [] }
 
 describe('timeline reducer', () => {
   it('creates, updates, renames and deletes whole timelines, laying the clips out on 视频 1 at the stored start times', () => {
@@ -416,6 +416,38 @@ describe('timeline reducer', () => {
     expect(problem(muted, mute({ target: 'video_track', muted: true }))).toBe('track undefined is not a track number of 0 or more.')
   })
 
+  it('sets the volume of a video track or a sound track, keeps it with its track on a removal or a move, and refuses a volume out of range', () => {
+    const volume = (params: Record<string, unknown>): ProjectRecord => edit('timeline.volume', { timeline: 't1', ...params })
+    const fields = (current: ComponentStates['timeline']): unknown =>
+      [current.timelines[0]?.video_track_volumes, current.timelines[0]?.sound_track_volumes]
+    const set = reduceAll([
+      volume({ target: 'video_track', track: 2, volume_db: -6 }), volume({ target: 'sound', track: 1, volume_db: -18 }),
+      // A second call replaces a track's volume; tracks before it without one are at 0 dB.
+      volume({ target: 'sound', track: 1, volume_db: -12 }),
+    ], layered())
+    expect(fields(set)).toEqual([[0, 0, -6], [0, -12]])
+    // A volume below 0 dB keeps its track, as a mute does: sound track 1, the track after the last, is now stored.
+    expect(set.timelines[0]?.track_order).toEqual(['video', 'sound', 'video', 'video', 'sound'])
+    expect(problem(set, volume({ target: 'sound', track: 3, volume_db: -6 }))).toBe('Timeline t1 has no sound track 3; it has 2.')
+    // Video track 2 goes on top, its volume along; the tracks between move one number down.
+    const moved = reduceAll([edit('timeline.video_track_move', { timeline: 't1', track: 2, to: 0 })], set)
+    expect(fields(moved)).toEqual([[-6, 0, 0], [0, -12]])
+    // A track below the last one with a volume moves up to a number past it and leaves 0 dB where it was.
+    const onlyFirst = reduceAll([volume({ target: 'video_track', track: 0, volume_db: -3 })], layered())
+    expect(fields(reduceAll([edit('timeline.video_track_move', { timeline: 't1', track: 0, to: 2 })], onlyFirst))).toEqual([[0, 0, -3], []])
+    const removed = reduceAll([
+      edit('timeline.video_track_remove', { timeline: 't1', track: 0 }), edit('timeline.sound_track_remove', { timeline: 't1', track: 0 }),
+    ], moved)
+    // Sound track 1 moved up to 0 with its volume.
+    expect(fields(removed)).toEqual([[0, 0], [-12]])
+    expect(problem(set, volume({ target: 'sound', track: 0, volume_db: 3 }))).toBe('volume_db 3 is not a number of decibels from -40 to 0.')
+    expect(problem(set, volume({ target: 'sound', track: 0, volume_db: -41 }))).toBe('volume_db -41 is not a number of decibels from -40 to 0.')
+    expect(problem(set, volume({ target: 'sound', track: 0, volume_db: '-6' }))).toBe('volume_db -6 is not a number of decibels from -40 to 0.')
+    expect(problem(set, volume({ target: 'music', track: 0, volume_db: -6 }))).toBe('target music is not video_track or sound.')
+    expect(problem(set, volume({ target: 'video_track', track: 4, volume_db: -6 }))).toBe('Timeline t1 has no video track 4; it has 3.')
+    expect(problem(set, volume({ target: 'sound', track: 0, volume_db: -40 }))).toBeNull()
+  })
+
   it('lists every timeline with its video tracks, their clips by start time with URLs or the status of placeholders, and its sounds in the agent summary', () => {
     const running = edit('shot.render', {}, { status: 'running' })
     const failed = edit('shot.render', {}, { status: 'failed' })
@@ -430,6 +462,8 @@ describe('timeline reducer', () => {
       edit('timeline.sound_track_rename', { timeline: 't2', track: 0, name: 'Music' }),
       edit('timeline.mute', { timeline: 't2', target: 'video_track', track: 0, muted: true }),
       edit('timeline.mute', { timeline: 't2', target: 'sound', track: 1, muted: true }),
+      edit('timeline.volume', { timeline: 't2', target: 'sound', track: 0, volume_db: -15 }),
+      edit('timeline.volume', { timeline: 't2', target: 'video_track', track: 0, volume_db: 0 }),
       adding('timeline.create', { timeline: 't3' }, []), edit('timeline.sound_track_rename', { timeline: 't3', track: 0, name: 'Voice' }),
       adding('timeline.create', { timeline: 't4' }, []), edit('timeline.sound_track_remove', { timeline: 't4', track: 0 }),
     ])
@@ -455,7 +489,8 @@ describe('timeline reducer', () => {
           ],
         }],
         // Every track up to the last one that holds a sound or a name, with '' for an unnamed track.
-        sound_tracks: [{ track: 0, name: 'Music' }, { track: 1, name: '', muted: true }],
+        // A volume shows only while it is below 0 dB.
+        sound_tracks: [{ track: 0, name: 'Music', volume_db: -15 }, { track: 1, name: '', muted: true }],
         sounds: [{ sound: 'sd1', asset: 'm', url: '/dv/assets/m', start_sec: 2, in_sec: null, out_sec: null, track: 1 }],
       }, {
         // A named track without sounds is listed; the timeline lists no sounds.

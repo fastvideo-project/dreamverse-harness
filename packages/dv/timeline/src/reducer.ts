@@ -31,9 +31,9 @@
  */
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { AssetId, ProjectRecord, Reducer } from '@dv/project'
-import type { Clip, ClipId, ClipStatus, Sound, SoundId, Timeline, TimelineId, TimelineState, TrackKind } from './types.ts'
+import type { Clip, ClipId, ClipStatus, MinVolumeDb, Sound, SoundId, Timeline, TimelineId, TimelineState, TrackKind } from './types.ts'
 
-/** The twenty-one Timeline edit operations by verb. */
+/** The twenty-two Timeline edit operations by verb. */
 export const OPERATIONS = {
   create: 'timeline.create',
   update: 'timeline.update',
@@ -53,10 +53,14 @@ export const OPERATIONS = {
   soundTrackRemove: 'timeline.sound_track_remove',
   soundTrackRename: 'timeline.sound_track_rename',
   mute: 'timeline.mute',
+  volume: 'timeline.volume',
   trackAdd: 'timeline.track_add',
   videoTrackRemove: 'timeline.video_track_remove',
   videoTrackMove: 'timeline.video_track_move',
 } as const
+
+/** The lowest volume of a track, in dB; a track plays at a volume from this to 0 dB, the audio as recorded. */
+export const MIN_VOLUME_DB: MinVolumeDb = -40
 
 /** The ID a `timeline.create` without a `timeline` param creates. */
 export const FIRST_TIMELINE_ID = brandString<TimelineId>('t1')
@@ -88,12 +92,15 @@ function round(seconds: number): number {
 }
 
 /**
- * A new timeline's fields besides its ID, name and clips: an empty 视频 1 and an empty sound track 0, nothing named and
- * nothing muted.
+ * A new timeline's fields besides its ID, name and clips: an empty 视频 1 and an empty sound track 0, nothing named,
+ * nothing muted, and every track at 0 dB.
  * @returns new arrays on every call, so no two timelines share one.
  */
 function emptyTracks(): Omit<Timeline, 'id' | 'name' | 'clips'> {
-  return { muted_video_tracks: [], track_order: ['video', 'sound'], sounds: [], sound_track_names: [], muted_sound_tracks: [] }
+  return {
+    muted_video_tracks: [], video_track_volumes: [], track_order: ['video', 'sound'], sounds: [], sound_track_names: [],
+    muted_sound_tracks: [], sound_track_volumes: [],
+  }
 }
 
 /** The timeline a call names in its `timeline` param, or null when the param is absent. */
@@ -253,28 +260,38 @@ function findClip(slice: Slice, id: string | null): { timeline: Timeline; clip: 
 }
 
 /**
- * The number of sound tracks a timeline stores: one past the highest track that holds a sound, a name, or a mute, and at
- * least the number of `sound` entries of `track_order`, which keep empty tracks.
+ * @param volumes - track volumes in dB by track number.
+ * @returns each track number that has a volume below 0 dB.
+ */
+function quieted(volumes: number[]): number[] {
+  return volumes.flatMap((volume, track) => volume === 0 ? [] : [track])
+}
+
+/**
+ * The number of sound tracks a timeline stores: one past the highest track that holds a sound, a name, a mute, or a
+ * volume below 0 dB, and at least the number of `sound` entries of `track_order`, which keep empty tracks.
  * @param timeline - the timeline to count.
  * @returns the track count, 0 once every sound track was removed.
  */
 function soundTrackCount(timeline: Timeline): number {
-  const tracks = [...timeline.sounds.map(sound => sound.track), ...timeline.muted_sound_tracks]
+  const tracks = [
+    ...timeline.sounds.map(sound => sound.track), ...timeline.muted_sound_tracks, ...quieted(timeline.sound_track_volumes),
+  ]
   return Math.max(
     timeline.sound_track_names.length, ...tracks.map(track => track + 1), timeline.track_order.filter(kind => kind === 'sound').length,
   )
 }
 
 /**
- * The number of video tracks a timeline stores: one past the highest track that holds a clip or a mute, and at least the
- * number of `video` entries of `track_order`, which keep empty tracks.
+ * The number of video tracks a timeline stores: one past the highest track that holds a clip, a mute, or a volume below
+ * 0 dB, and at least the number of `video` entries of `track_order`, which keep empty tracks.
  * @param timeline - the timeline to count.
  * @returns the track count, 0 once every video track was removed.
  */
-export function videoTrackCount(timeline: Pick<Timeline, 'clips' | 'muted_video_tracks' | 'track_order'>): number {
+export function videoTrackCount(timeline: Pick<Timeline, 'clips' | 'muted_video_tracks' | 'video_track_volumes' | 'track_order'>): number {
   return Math.max(
-    timeline.track_order.filter(kind => kind === 'video').length,
-    ...timeline.clips.map(clip => clip.track + 1), ...timeline.muted_video_tracks.map(track => track + 1),
+    timeline.track_order.filter(kind => kind === 'video').length, ...timeline.clips.map(clip => clip.track + 1),
+    ...[...timeline.muted_video_tracks, ...quieted(timeline.video_track_volumes)].map(track => track + 1),
   )
 }
 
@@ -327,14 +344,15 @@ function startProblem(params: Record<string, unknown>): string | null {
   return start === null || start < 0 ? `start_sec ${String(params['start_sec'])} is not a time of 0 seconds or more.` : null
 }
 
-/** The `target` values of `timeline.mute`. */
+/** The `target` values of `timeline.mute` and `timeline.volume`. */
 const MUTE_TARGETS = ['video_track', 'sound']
 
 /**
  * Why a call that names a whole timeline cannot apply: `timeline.create` of an ID that exists, another call of a
  * timeline that does not exist, a start time below 0, a track number that is not a whole number of 0 or more or that the
- * timeline does not have, a track name that is not a string, a `kind` other than `video` or `sound`, or a `target` other
- * than `video_track` or `sound` or a `muted` that is not a boolean of `timeline.mute`.
+ * timeline does not have, a track name that is not a string, a `kind` other than `video` or `sound`, a `target` other
+ * than `video_track` or `sound` of `timeline.mute` or `timeline.volume`, a `muted` that is not a boolean, or a
+ * `volume_db` that is not a number from `MIN_VOLUME_DB` to 0.
  * @param slice - the slice the call applies to.
  * @param call - a whole-timeline call, an add, or a sound call that names a timeline.
  * @returns the reason, or null when the call applies.
@@ -364,11 +382,17 @@ function timelineProblem(slice: Slice, call: TimelineCall): string | null {
     case OPERATIONS.videoTrackMove:
       return videoTrackProblem(timeline, params['track'], true) ?? videoTrackProblem(timeline, params['to'], true, 'to')
     case OPERATIONS.mute:
+    case OPERATIONS.volume: {
       if (!MUTE_TARGETS.includes(params['target'] as never)) return `target ${String(params['target'])} is not video_track or sound.`
-      if (typeof params['muted'] !== 'boolean') return 'muted must be true or false.'
+      if (call.operation === OPERATIONS.mute && typeof params['muted'] !== 'boolean') return 'muted must be true or false.'
+      const volume = number(params['volume_db'])
+      if (call.operation === OPERATIONS.volume && (volume === null || volume < MIN_VOLUME_DB || volume > 0)) {
+        return `volume_db ${String(params['volume_db'])} is not a number of decibels from ${String(MIN_VOLUME_DB)} to 0.`
+      }
       return params['target'] === 'video_track'
         ? videoTrackProblem(timeline, params['track'], false)
         : soundTrackProblem(timeline, params['track'], false)
+    }
     default:
       return null
   }
@@ -440,8 +464,8 @@ function clipCallProblem(timeline: Timeline, clip: Clip, call: TimelineCall): st
 /** The operations that name a whole timeline rather than a clip or a sound. */
 const WHOLE: readonly string[] = [
   OPERATIONS.create, OPERATIONS.update, OPERATIONS.rename, OPERATIONS.delete, OPERATIONS.add, OPERATIONS.soundAdd,
-  OPERATIONS.soundTrackRemove, OPERATIONS.soundTrackRename, OPERATIONS.mute, OPERATIONS.trackAdd, OPERATIONS.videoTrackRemove,
-  OPERATIONS.videoTrackMove,
+  OPERATIONS.soundTrackRemove, OPERATIONS.soundTrackRename, OPERATIONS.mute, OPERATIONS.volume, OPERATIONS.trackAdd,
+  OPERATIONS.videoTrackRemove, OPERATIONS.videoTrackMove,
 ]
 
 /** The operations that name a sound. */
@@ -606,6 +630,27 @@ function withoutTrack(numbers: number[], track: number): number[] {
 }
 
 /**
+ * @param volumes - track volumes in dB by track number.
+ * @param moved - the new number of a track by its old number.
+ * @returns the volumes by the tracks' new numbers; a track without an entry is at 0 dB.
+ */
+function movedVolumes(volumes: number[], moved: (track: number) => number): number[] {
+  const result: number[] = []
+  volumes.forEach((volume, track) => { result[moved(track)] = volume })
+  return Array.from({ length: result.length }, (_, track) => result[track] ?? 0)
+}
+
+/**
+ * @param volumes - track volumes in dB by track number.
+ * @param track - a track number.
+ * @returns `{volume_db}` for a track below 0 dB, else nothing.
+ */
+function volumeOf(volumes: number[], track: number): { volume_db?: number } {
+  const volume = volumes[track] ?? 0
+  return volume === 0 ? {} : { volume_db: volume }
+}
+
+/**
  * The timelines after one call, before `orderTracks` brings their track orders in line.
  * @param slice - the slice before the call.
  * @param call - a valid finished call.
@@ -680,6 +725,7 @@ function editTimelines(slice: Slice, call: TimelineCall): Timeline[] {
           .map(sound => sound.track > track ? { ...sound, track: sound.track - 1 } : sound),
         sound_track_names: timeline.sound_track_names.toSpliced(track, 1),
         muted_sound_tracks: withoutTrack(timeline.muted_sound_tracks, track),
+        sound_track_volumes: timeline.sound_track_volumes.toSpliced(track, 1),
       }))
     }
     case OPERATIONS.soundTrackRename: {
@@ -698,6 +744,15 @@ function editTimelines(slice: Slice, call: TimelineCall): Timeline[] {
         ? { ...timeline, muted_video_tracks: tracks(timeline.muted_video_tracks) }
         : { ...timeline, muted_sound_tracks: tracks(timeline.muted_sound_tracks) })
     }
+    case OPERATIONS.volume: {
+      const track = Number(params['track'])
+      const volume = Number(params['volume_db'])
+      const set = (volumes: number[]): number[] =>
+        Array.from({ length: Math.max(volumes.length, track + 1) }, (_, index) => index === track ? volume : volumes[index] ?? 0)
+      return change(timeline => params['target'] === 'video_track'
+        ? { ...timeline, video_track_volumes: set(timeline.video_track_volumes) }
+        : { ...timeline, sound_track_volumes: set(timeline.sound_track_volumes) })
+    }
     case OPERATIONS.trackAdd:
       return change(timeline => ({ ...timeline, track_order: [...timeline.track_order, params['kind'] as TrackKind] }))
     case OPERATIONS.videoTrackRemove: {
@@ -708,6 +763,7 @@ function editTimelines(slice: Slice, call: TimelineCall): Timeline[] {
         clips: timeline.clips.filter(clip => clip.track !== track)
           .map(clip => clip.track > track ? { ...clip, track: clip.track - 1 } : clip),
         muted_video_tracks: withoutTrack(timeline.muted_video_tracks, track),
+        video_track_volumes: timeline.video_track_volumes.toSpliced(track, 1),
       }))
     }
     case OPERATIONS.videoTrackMove: {
@@ -716,6 +772,7 @@ function editTimelines(slice: Slice, call: TimelineCall): Timeline[] {
         ...timeline,
         clips: timeline.clips.map(clip => ({ ...clip, track: moved(clip.track) })),
         muted_video_tracks: timeline.muted_video_tracks.map(moved).sort((a, b) => a - b),
+        video_track_volumes: movedVolumes(timeline.video_track_volumes, moved),
       }))
     }
     default: {
@@ -831,12 +888,13 @@ export const timelineReducer: Reducer<'timeline'> = {
     // Clips are named by their ID, the way the `clip` param of the timeline operations names them, and listed by video
     // track, track 0 (视频 1) first, each track's clips by start time; a placeholder clip shows its status and the render
     // record it waits for instead of an asset. A timeline with sound tracks lists each track number with its name (''
-    // when unnamed), so a request that names a track maps to its number. A mute shows only while it is on.
+    // when unnamed), so a request that names a track maps to its number. A mute shows only while it is on, and a volume
+    // only while it is not 0 dB.
     return {
       timelines: slice.timelines.map(entry => ({
         id: entry.id, name: entry.name,
         video_tracks: Array.from({ length: videoTrackCount(entry) }, (_, track) => ({
-          track, ...entry.muted_video_tracks.includes(track) ? { muted: true } : {},
+          track, ...entry.muted_video_tracks.includes(track) ? { muted: true } : {}, ...volumeOf(entry.video_track_volumes, track),
           clips: entry.clips.filter(clip => clip.track === track).toSorted((a, b) => a.start_sec - b.start_sec).map(clip => ({
             clip: clip.id,
             ...clip.asset === null
@@ -848,6 +906,7 @@ export const timelineReducer: Reducer<'timeline'> = {
         ...soundTrackCount(entry) === 0 ? {} : {
           sound_tracks: Array.from({ length: soundTrackCount(entry) }, (_, track) => ({
             track, name: entry.sound_track_names[track] ?? '', ...entry.muted_sound_tracks.includes(track) ? { muted: true } : {},
+            ...volumeOf(entry.sound_track_volumes, track),
           })),
         },
         ...entry.sounds.length === 0 ? {} : {

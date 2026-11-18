@@ -69,7 +69,7 @@ async function mountScripted(routes: ScriptedRoutes = {}) {
 describe('timeline tab body', () => {
   it('reads the newest project, then shows its timeline editor under the project bar, where a picked tab is selected', async () => {
     const state = fixtureState()
-    state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
+    state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
     const { tab } = await mountScripted({ state })
     expect(tab.getByText('正在读取…')).toBeTruthy()
     const editor = await tab.findByTestId('dv-timeline-editor')

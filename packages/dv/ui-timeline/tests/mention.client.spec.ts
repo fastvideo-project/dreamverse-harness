@@ -22,7 +22,7 @@ afterEach(() => { document.documentElement.lang = '' })
 function clipState(): WireState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
     { id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
     { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
   ] })
@@ -61,7 +61,7 @@ describe('clipMentionKind', () => {
   it('lists a clip with neither an asset nor a render to wait for by its label alone', () => {
     document.documentElement.lang = 'en'
     const state = fixtureState()
-    state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: 'Outro', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
+    state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: 'Outro', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
       { id: 'cl3' as ClipId, asset: null, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
     ] })
     expect(clipMentionKind.items(state).at(-1)).toEqual({ uri: 'dv:clip/cl3', label: 'Outro · Clip 1' })

@@ -32,7 +32,7 @@ const shownTabs = (view: { getAllByRole: (role: string) => HTMLElement[] }): Arr
 function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }] })
   return state
 }
 
@@ -164,7 +164,7 @@ describe('TimelineView', () => {
     const { fetch } = scriptedFetch({
       state: () => {
         const state = twoTimelines()
-        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
+        state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
         return state
       },
     })
@@ -626,7 +626,7 @@ describe('timeline editor gestures', () => {
     const { view, track } = mount({
       state: () => {
         const state = twoTimelines()
-        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
+        if (created) state.components.timeline.timelines.push({ id: 't3' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
         return state
       },
       post: () => { created = true; return { status: 200, body: record({ id: 'n1', operation: 'timeline.create' }) } },
@@ -643,7 +643,7 @@ describe('timeline editor gestures', () => {
     expect((empty.view.getByRole('button', { name: '添加片段到 视频' }) as HTMLButtonElement).disabled).toBe(true)
     empty.view.unmount()
     const state = fixtureState()
-    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] }]
+    state.components.timeline.timelines = [{ id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] }]
     const { view, requests } = mount({ state })
     await waitFor(() => { expect(view.getAllByRole('tab').map(tab => tab.textContent)).toEqual(['时间线 2']) })
     fireEvent.click(view.getByText('＋ 新建'))

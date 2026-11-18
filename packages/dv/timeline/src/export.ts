@@ -54,9 +54,9 @@ function notReady(timeline: Timeline): string | null {
 /**
  * Export a timeline to one MP4 file: trim each clip with an in or out point to that range, lay the clips out at their
  * times, and mix the sounds of the sound tracks in. The picture and the clip audio at each time come from the clip of
- * the track with the lowest number there, else black and silence; muted audio is silent. Each sound of a sound track
- * that is not muted plays over that audio and the other sounds, up to the end of the last clip, as the preview plays
- * it. A timeline with no audio that is heard gives a file without audio.
+ * the track with the lowest number there, else black and silence; muted audio is silent, and every other track plays
+ * at its volume. Each sound of a sound track that is not muted plays over that audio and the other sounds, up to the end
+ * of the last clip, as the preview plays it. A timeline with no audio that is heard gives a file without audio.
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
  * @param timeline - the timeline with at least one clip, each of which has an asset.
  * @param dir - an existing directory for the trimmed clips and the joined file, usually the operation's `scratchDir`.
@@ -71,6 +71,15 @@ export async function exportTimeline(ctx: Context, timeline: Timeline, dir: stri
   if (reason !== null) throw new Error(reason)
   const sounds = await audibleSounds(ctx, timeline)
   return await mixSounds(ctx, timeline, sounds, await layClips(ctx, timeline, dir), dir)
+}
+
+/**
+ * The file of a timeline's clips, and the volume in dB that its own audio still has to be played at: the volume of 视频 1
+ * when the file is 视频 1's clips joined as they are, else 0, because drawing the tracks sets each track's volume.
+ */
+interface LaidClips {
+  path: string
+  volumeDb: number
 }
 
 /**
@@ -108,9 +117,9 @@ async function audibleSounds(ctx: Context, timeline: Timeline): Promise<Sound[]>
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
  * @param timeline - the timeline with at least one clip, each of which has an asset.
  * @param dir - the directory for the trimmed clips and the result.
- * @returns the path of the result.
+ * @returns the result.
  */
-async function layClips(ctx: Context, timeline: Timeline, dir: string): Promise<string> {
+async function layClips(ctx: Context, timeline: Timeline, dir: string): Promise<LaidClips> {
   const pool = ctx.dvAssetPool
   // Every clip has an asset of the pool here: the caller refuses a timeline with a clip without one.
   const durationOf = (asset: AssetId): number | null => pool.get(asset).duration_sec
@@ -118,7 +127,7 @@ async function layClips(ctx: Context, timeline: Timeline, dir: string): Promise<
   // 视频 1 playing from 0 s without a gap joins into one file; any other timeline is drawn on black.
   const top = placed.filter(each => each.clip.track === 0).toSorted((a, b) => a.start - b.start)
   const gapless = top.length > 0 && top.every((each, index) => Math.abs(each.start - (top[index - 1]?.end ?? 0)) < 0.01)
-  if (!gapless) return await drawOnBlack(ctx, timeline, placed, dir)
+  if (!gapless) return { path: await drawOnBlack(ctx, timeline, placed, dir), volumeDb: 0 }
   const muted = timeline.muted_video_tracks.includes(0)
   const paths: string[] = []
   for (const [index, { clip: { asset, ...clip } }] of top.entries()) {
@@ -126,7 +135,8 @@ async function layClips(ctx: Context, timeline: Timeline, dir: string): Promise<
   }
   const joined = await joinClips(ctx, paths, dir, muted)
   const others = placed.filter(each => each.clip.track !== 0)
-  return others.length === 0 ? joined : await drawTracks(ctx, timeline, others, joined, dir)
+  const drawn = others.length === 0 ? null : await drawTracks(ctx, timeline, others, joined, dir)
+  return drawn ?? { path: joined, volumeDb: trackVolume(timeline.video_track_volumes, 0) }
 }
 
 /**
@@ -150,11 +160,28 @@ function coveringAudio(input: number): string {
  * that time.
  * @param input - the ffmpeg input number.
  * @param startSec - the timeline time at which the file starts.
- * @param silenced - a filter that silences parts of it, with its leading comma, or empty.
+ * @param filters - filters that silence parts of it or set its volume, with their leading comma, or empty.
  * @returns the chain, without its output label.
  */
-function delayedAudio(input: number, startSec: number, silenced = ''): string {
-  return `[${String(input)}:a:0]asetpts=PTS-STARTPTS,adelay=delays=${String(Math.round(startSec * 1000))}:all=1${silenced},${MIX_FORMAT}`
+function delayedAudio(input: number, startSec: number, filters = ''): string {
+  return `[${String(input)}:a:0]asetpts=PTS-STARTPTS,adelay=delays=${String(Math.round(startSec * 1000))}:all=1${filters},${MIX_FORMAT}`
+}
+
+/**
+ * @param volumes - track volumes in dB by track number.
+ * @param track - a track number.
+ * @returns the track's volume in dB; a track without an entry is at 0 dB.
+ */
+function trackVolume(volumes: readonly number[], track: number): number {
+  return volumes[track] ?? 0
+}
+
+/**
+ * @param volumeDb - a track volume in dB.
+ * @returns the `volume` filter that plays a chain at it, with its leading comma, or empty at 0 dB.
+ */
+function gain(volumeDb: number): string {
+  return volumeDb === 0 ? '' : `,volume=${String(volumeDb)}dB`
 }
 
 /**
@@ -168,32 +195,34 @@ function mixOf(labels: readonly string[]): string {
 
 /**
  * Mix the sounds of a timeline's sound tracks into the video of its clips. Each sound of a track that is not muted plays
- * its range of its asset from its start time, over the video's own audio and the other sounds. The result ends where
- * the video ends, so a sound is cut there and a sound that starts at or after that end is left out. The picture is
- * copied as it is.
+ * its range of its asset from its start time at its track's volume, over the video's own audio and the other sounds.
+ * The result ends where the video ends, so a sound is cut there and a sound that starts at or after that end is left
+ * out. The picture is copied as it is.
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
  * @param timeline - the timeline.
  * @param audible - the sounds of its sound tracks that are not muted.
- * @param video - the file of the timeline's clips.
+ * @param video - the file of the timeline's clips, and the volume its own audio plays at.
  * @param dir - the directory for the result.
- * @returns `video` when no sound is heard, else the path of `mixed.mp4`.
+ * @returns the video's file when no sound is heard and its own audio plays at 0 dB, else the path of `mixed.mp4`.
  * @throws Error when sounds are to be mixed and ffprobe cannot tell the video's length.
  */
-async function mixSounds(ctx: Context, timeline: Timeline, audible: readonly Sound[], video: string, dir: string): Promise<string> {
-  if (audible.length === 0) return video
-  const probe = await ctx.dvFfmpeg.probe(video)
+async function mixSounds(ctx: Context, timeline: Timeline, audible: readonly Sound[], video: LaidClips, dir: string): Promise<string> {
+  if (audible.length === 0 && video.volumeDb === 0) return video.path
+  const probe = await ctx.dvFfmpeg.probe(video.path)
   const total = videoSeconds(probe)
   if (total <= 0) throw new Error(`The video of timeline ${timeline.id} has no length to mix its sounds over.`)
   const heard = audible.filter(sound => sound.start_sec < total)
-  if (heard.length === 0) return video
-  const own = probe.hasAudio ? [`${coveringAudio(0)}[own]`] : []
+  const quieter = probe.hasAudio && video.volumeDb !== 0
+  if (heard.length === 0 && !quieter) return video.path
+  const own = probe.hasAudio ? [`${coveringAudio(0)}${gain(video.volumeDb)}[own]`] : []
   // Each sound's range is cut where its file is read: ffmpeg loses the audio of a range that the `atrim` filter cuts
   // before `adelay` and `amix`.
   const files = heard.flatMap((sound, index) => [
     ...sound.in_sec === null ? [] : ['-ss', String(sound.in_sec)], ...sound.out_sec === null ? [] : ['-to', String(sound.out_sec)],
     '-i', `{{in:${String(index + 1)}}}`,
   ])
-  const sounds = heard.map((sound, index) => `${delayedAudio(index + 1, sound.start_sec)}[s${String(index)}]`)
+  const sounds = heard.map((sound, index) =>
+    `${delayedAudio(index + 1, sound.start_sec, gain(trackVolume(timeline.sound_track_volumes, sound.track)))}[s${String(index)}]`)
   const labels = [...own.map(() => '[own]'), ...heard.map((_sound, index) => `[s${String(index)}]`)]
   const filter = [...own, ...sounds, mixOf(labels)].join(';')
   await ctx.dvFfmpeg.run({
@@ -202,25 +231,30 @@ async function mixSounds(ctx: Context, timeline: Timeline, audible: readonly Sou
       '-filter_complex', filter, '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-t', String(total),
       '-movflags', '+faststart', '{{out:mixed.mp4}}',
     ],
-    inputs: [video, ...heard.map(sound => ctx.dvAssetPool.path(sound.asset))], outputs: ['mixed.mp4'], dir,
+    inputs: [video.path, ...heard.map(sound => ctx.dvAssetPool.path(sound.asset))], outputs: ['mixed.mp4'], dir,
   })
   return join(dir, 'mixed.mp4')
 }
 
-/** One clip ready to draw: its layer (its video track; a lower layer covers a higher one), its file, its span, and whether it is heard. */
+/**
+ * One clip ready to draw: its layer (its video track; a lower layer covers a higher one), its file, its span, whether
+ * it is heard, and the volume of its track in dB.
+ */
 interface DrawnClip {
   layer: number
   path: string
   start: number
   end: number
   audio: boolean
+  volumeDb: number
 }
 
 /**
  * The picture and audio that the drawn clips go over: a file that covers the timeline from 0 s to `covers` seconds with
- * its own picture and audio, or black of the drawing's whole length at a frame rate, which the result takes.
+ * its own picture and its audio at a volume in dB, or black of the drawing's whole length at a frame rate, which the
+ * result takes.
  */
-type Base = { path: string; covers: number; audio: boolean } | { black: true; rate: string }
+type Base = { path: string; covers: number; audio: boolean; volumeDb: number } | { black: true; rate: string }
 
 /** The frame rate of the black base when ffprobe reports none for the first clip. */
 const FALLBACK_FRAME_RATE = '30'
@@ -270,9 +304,11 @@ function videoSeconds(probe: { videoDurationSec: number | null; durationSec: num
  * @param others - where the clips of the tracks under 视频 1 play.
  * @param joined - the joined 视频 1.
  * @param dir - the directory for the trimmed clips and the result.
- * @returns the path of the result.
+ * @returns the result, or null when no clip shows after the joined video's end.
  */
-async function drawTracks(ctx: Context, timeline: Timeline, others: readonly PlacedClip[], joined: string, dir: string): Promise<string> {
+async function drawTracks(
+  ctx: Context, timeline: Timeline, others: readonly PlacedClip[], joined: string, dir: string,
+): Promise<LaidClips | null> {
   const ffmpeg = ctx.dvFfmpeg
   const base = await ffmpeg.probe(joined)
   if (base.width === null || base.height === null) throw new Error('The joined clips have no video frame size to draw the video tracks at.')
@@ -289,11 +325,15 @@ async function drawTracks(ctx: Context, timeline: Timeline, others: readonly Pla
     const path = await clipFile(ctx, { ...clip, asset }, `track-${clip.id}.mp4`, dir, muted)
     const probe = await ffmpeg.probe(path)
     const end = start + videoSeconds(probe)
-    if (end > baseSeconds + 0.01) drawn.push({ layer: clip.track, path, start, end, audio: probe.hasAudio && !muted })
+    const volumeDb = trackVolume(timeline.video_track_volumes, clip.track)
+    if (end > baseSeconds + 0.01) drawn.push({ layer: clip.track, path, start, end, audio: probe.hasAudio && !muted, volumeDb })
   }
-  if (drawn.length === 0) return joined
-  const covered = { path: joined, covers: baseSeconds, audio: base.hasAudio && !timeline.muted_video_tracks.includes(0) }
-  return await layer(ctx, covered, drawn, { width, height }, dir)
+  if (drawn.length === 0) return null
+  const covered = {
+    path: joined, covers: baseSeconds, audio: base.hasAudio && !timeline.muted_video_tracks.includes(0),
+    volumeDb: trackVolume(timeline.video_track_volumes, 0),
+  }
+  return { path: await layer(ctx, covered, drawn, { width, height }, dir), volumeDb: 0 }
 }
 
 /**
@@ -316,7 +356,8 @@ async function drawOnBlack(ctx: Context, timeline: Timeline, placed: readonly Pl
     const muted = timeline.muted_video_tracks.includes(clip.track)
     const path = await clipFile(ctx, { ...clip, asset: clip.asset as AssetId }, `clip-${clip.id}.mp4`, dir, muted)
     const probe = await ffmpeg.probe(path)
-    drawn.push({ layer: clip.track, path, start, end: start + videoSeconds(probe), audio: probe.hasAudio && !muted })
+    const volumeDb = trackVolume(timeline.video_track_volumes, clip.track)
+    drawn.push({ layer: clip.track, path, start, end: start + videoSeconds(probe), audio: probe.hasAudio && !muted, volumeDb })
     sizes.push(probe)
   }
   const lead = sizes[0] as { width: number | null; height: number | null }
@@ -358,11 +399,11 @@ async function layer(
   }
   const audio: string[] = []
   const silence = (cover: ReadonlyArray<{ start: number; end: number }>): string => cover.length === 0 ? '' : `,volume=0:enable='${during(cover)}'`
-  if ('path' in base && base.audio) audio.push(`${coveringAudio(0)}[a0]`)
+  if ('path' in base && base.audio) audio.push(`${coveringAudio(0)}${gain(base.volumeDb)}[a0]`)
   for (const [index, each] of drawn.entries()) {
     if (!each.audio) continue
     const cover = [...covers > 0 ? [{ start: 0, end: covers }] : [], ...drawn.filter(other => other.layer < each.layer)]
-    audio.push(`${delayedAudio(index + 1, each.start, silence(cover))}[a${String(index + 1)}]`)
+    audio.push(`${delayedAudio(index + 1, each.start, silence(cover) + gain(each.volumeDb))}[a${String(index + 1)}]`)
   }
   const labels = audio.map(chain => chain.slice(chain.lastIndexOf('[')))
   const mix = labels.length === 0 ? [] : [mixOf(labels)]
@@ -465,7 +506,7 @@ export function exportOperation(ctx: Context): OperationSpec {
     description: 'Export a timeline to one video: each clip with an in or out point is trimmed to that range and plays at its time. '
       + 'Where clips of several video tracks play, the track with the lowest number covers the others, picture and audio; where '
       + 'no clip plays, the video is black and silent. The sounds of the sound tracks play over the clips\' audio, up to the end '
-      + 'of the last clip. Muted audio (dv_timeline_mute) is left out.',
+      + 'of the last clip. Muted audio (dv_timeline_mute) is left out, and every track plays at its volume (dv_timeline_volume).',
     inputs: {},
     params: { timeline: { type: 'string', description: 'The ID of the timeline to export, such as `t1`; default: the first timeline.' } },
     outputs: [{ role: 'video', type: 'video' }],

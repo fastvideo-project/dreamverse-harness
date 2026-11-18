@@ -115,7 +115,7 @@ describe('timeline.export', () => {
       'Export a timeline to one video: each clip with an in or out point is trimmed to that range and plays at its time. Where clips '
       + 'of several video tracks play, the track with the lowest number covers the others, picture and audio; where no clip plays, the '
       + 'video is black and silent. The sounds of the sound tracks play over the clips\' audio, up to the end of the last clip. Muted '
-      + 'audio (dv_timeline_mute) is left out. Runs on the CPU.',
+      + 'audio (dv_timeline_mute) is left out, and every track plays at its volume (dv_timeline_volume). Runs on the CPU.',
     )
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-timeline.mjs'))
     await entry?.fiber?.dispose()
@@ -276,6 +276,11 @@ describe('timeline.export', () => {
     expect(format.stdout.trim()).toBe('48000,2')
     // Silent before sd1 while sound track 1 is muted, the tone during sd1, and silent again after its out point.
     expect([await loudAt(mixed, 0.3) < 0.01, await loudAt(mixed, 1.3) > 0.03, await loudAt(mixed, 1.85) < 0.01]).toEqual([true, true, true])
+    // At -20 dB, sound track 0 plays its tone at a tenth of its level.
+    const loud = await loudAt(mixed, 1.3)
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'sound', track: 0, volume_db: -20 })
+    expect(await loudAt(await exported(), 1.3) / loud).toBeCloseTo(0.1, 1)
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'sound', track: 0, volume_db: 0 })
     // With sound track 1 heard, the tone also plays from 0 s, and both tones play during sd1.
     await mute(1, false)
     const both = await exported()
@@ -317,6 +322,10 @@ describe('timeline.export', () => {
     // Without a sound the clip is copied: its tone plays from 1.5 s to 3.5 s.
     const plain = await exported()
     expect([await loudAt(plain, 0.6), await loudAt(plain, 2.4)]).toEqual([false, true])
+    // At -40 dB on 视频 1 its tone is too quiet to count, and still starts at 1.5 s when it is back at 0 dB.
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'video_track', track: 0, volume_db: -40 })
+    expect(await loudAt(await exported(), 2.4)).toBe(false)
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'video_track', track: 0, volume_db: 0 })
     // With a sound from 3.5 s the mix runs, and the clip's tone still starts at 1.5 s.
     await fixture.run('timeline.sound_add', { timeline: 't1', asset: blip, start_sec: 3.5 })
     const mixed = await exported()
@@ -363,12 +372,26 @@ describe('timeline.export', () => {
       ].join(';'),
       '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-t', '4', '-movflags', '+faststart', '{{out:mixed.mp4}}',
     ])
+    // Each sound plays at its sound track's volume.
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'sound', track: 1, volume_db: -12 })
+    const quieter = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0] as Timeline
+    await fixture.ctx.dvTimeline.exportTimeline(quieter, fixture.dir)
+    const quieterArgv = (requests.at(-1) as { argv: readonly string[] }).argv
+    expect(quieterArgv[quieterArgv.indexOf('-filter_complex') + 1]?.split(';')[2])
+      .toBe('[2:a:0]asetpts=PTS-STARTPTS,adelay=delays=0:all=1,volume=-12dB,aformat=sample_rates=48000:channel_layouts=stereo[s1]')
     // A sound without an out point is read to the end of its file, and a video without audio gives only the sounds.
     await fixture.run('timeline.sound_remove', { sound: 'sd1' })
     await fixture.run('timeline.sound_remove', { sound: 'sd2' })
     const later = (): Timeline => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0] as Timeline
     // With only the sound that starts at the video's end, nothing is mixed and the video of the clips is the export.
     expect(await fixture.ctx.dvTimeline.exportTimeline(later(), fixture.dir)).toBe(join(fixture.dir, 'timeline.mp4'))
+    // 视频 1 below 0 dB runs the mix for its own audio alone, at its volume.
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'video_track', track: 0, volume_db: -6 })
+    expect(await fixture.ctx.dvTimeline.exportTimeline(later(), fixture.dir)).toBe(join(fixture.dir, 'mixed.mp4'))
+    const ownArgv = (requests.at(-1) as { argv: readonly string[] }).argv
+    expect(ownArgv[ownArgv.indexOf('-filter_complex') + 1]).toBe(
+      '[0:a:0]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,volume=-6dB[own];[own]amix=inputs=1:duration=longest:normalize=0[a]',
+    )
     await fixture.run('timeline.sound_move', { sound: 'sd3', start_sec: 1 })
     video = { ...video, videoDurationSec: null, hasAudio: false }
     await fixture.ctx.dvTimeline.exportTimeline(later(), fixture.dir)
@@ -546,6 +569,16 @@ describe('timeline.export', () => {
       '[2:a:0]asetpts=PTS-STARTPTS,adelay=delays=1000:all=1,aformat=sample_rates=48000:channel_layouts=stereo[a2]',
       '[a1][a2]amix=inputs=2:duration=longest:normalize=0[a]',
     ].join(';'))
+    // Each clip's audio plays at its video track's volume, after the silencing of what the picture hides.
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'video_track', track: 1, volume_db: -10 })
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'video_track', track: 0, volume_db: -3 })
+    const quieter = fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0] as Timeline
+    await fixture.ctx.dvTimeline.exportTimeline(quieter, fixture.dir)
+    const quieterArgv = argvs.at(-1) as readonly string[]
+    expect(quieterArgv[quieterArgv.indexOf('-filter_complex') + 1]?.split(';').slice(5, 7)).toEqual([
+      "[1:a:0]asetpts=PTS-STARTPTS,adelay=delays=0:all=1,volume=0:enable='between(t,1,3)',volume=-10dB,aformat=sample_rates=48000:channel_layouts=stereo[a1]",
+      '[2:a:0]asetpts=PTS-STARTPTS,adelay=delays=1000:all=1,volume=-3dB,aformat=sample_rates=48000:channel_layouts=stereo[a2]',
+    ])
     probe.mockResolvedValue({ durationSec: 2, videoDurationSec: 2, width: null, height: null, hasAudio: false, codec: null })
     await expect(fixture.ctx.dvTimeline.exportTimeline(timeline, fixture.dir)).rejects.toThrow('The first clip has no video frame size to draw the timeline at.')
   })
@@ -623,6 +656,12 @@ describe('timeline.export', () => {
       "[2:a:0]asetpts=PTS-STARTPTS,adelay=delays=1500:all=1,volume=0:enable='between(t,0,2)',aformat=sample_rates=48000:channel_layouts=stereo[a2]",
       '[a0][a1][a2]amix=inputs=3:duration=longest:normalize=0[a]',
     ].join(';')])
+    // The joined 视频 1 plays its audio at its track's volume under the drawn clips.
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'video_track', track: 0, volume_db: -6 })
+    const state = (): Timeline => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0] as Timeline
+    await fixture.ctx.dvTimeline.exportTimeline(state(), fixture.dir)
+    expect(filters.at(-1)?.split(';')[5]).toBe('[0:a:0]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,volume=-6dB[a0]')
+    await fixture.run('timeline.volume', { timeline: 't1', target: 'video_track', track: 0, volume_db: 0 })
     // A 视频 1 that lasts past every clip of the other tracks covers them all, so the joined video is the export, and no
     // file of theirs is read.
     seconds[join(fixture.dir, 'timeline.mp4')] = 9

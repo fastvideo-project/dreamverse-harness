@@ -8,7 +8,9 @@ import type { RecordId } from '@dv/project/types'
 import type { Clip, ClipId, SoundId, Timeline, TimelineId } from '@dv/timeline/types'
 import { FALLBACK_CLIP_SECONDS } from '@dv/ui-kit/timeline.ts'
 import { asset, fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
-import { audioAssets, coveredAbove, placeClips, placeSounds, shortName, topClipAt, trackRows, videoAssets } from '../src/client/timelines.ts'
+import {
+  audioAssets, coveredAbove, placeClips, placeSounds, shortName, snapStart, topClipAt, trackGain, trackRows, videoAssets,
+} from '../src/client/timelines.ts'
 
 describe('videoAssets', () => {
   it('lists the video assets of a state, newest first', () => {
@@ -32,7 +34,7 @@ describe('placeSounds', () => {
     const sound = (id: string, file: string, start: number, track: number, range: [number | null, number | null] = [null, null]): Timeline['sounds'][number] =>
       ({ id: id as SoundId, asset: file as AssetId, in_sec: range[0], out_sec: range[1], start_sec: start, track })
     const timeline: Timeline = {
-      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'],
+      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'],
       sounds: [
         sound('sd1', 'a.mp3', 1, 0), sound('sd2', 'b.mp3', 0, 1), sound('sd3', 'c.mp3', 4, 0), sound('sd4', 'lost.mp3', 0, 2),
         // The two parts of a split sound: the first ends at its out point, the second plays from its in point to the asset's end.
@@ -61,7 +63,7 @@ describe('placeSounds', () => {
     state.components.proj.records.find(record => record.id === 'g2')?.outputs.unshift('a.mp3')
     const imported = state.components.canvas.nodes['g2']
     const timeline: Timeline = {
-      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'],
+      id: 't1' as TimelineId, name: '', clips: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'],
       sounds: [{ id: 'sd1' as SoundId, asset: 'a.mp3' as AssetId, in_sec: null, out_sec: null, start_sec: 0, track: 0 }],
     }
     expect(placeSounds(state, timeline, new Map()).sounds.map(sound => sound.name)).toEqual(['a.mp3'])
@@ -119,6 +121,25 @@ describe('shortName', () => {
   it('keeps a name of up to nine characters, which the cut would not shorten, and cuts a longer one to eight characters and an ellipsis', () => {
     expect(['', 'bf16.mp4', 'shot1.mp4', 'shot10.mp4', '47eb68588815dec672f2843bae7af899.mp4', '雨夜里的第一个长镜头', '🎬🎬🎬🎬🎬🎬🎬🎬🎬🎬'].map(shortName))
       .toEqual(['', 'bf16.mp4', 'shot1.mp4', 'shot10.m…', '47eb6858…', '雨夜里的第一个长…', '🎬🎬🎬🎬🎬🎬🎬🎬…'])
+  })
+})
+
+describe('snapStart', () => {
+  it('puts the start or the end of a block on the nearest target within the tolerance, never before 0, and leaves it elsewhere', () => {
+    // A 3 s block: its start lands on 10, or its end lands on 10 (start 7), whichever edge is nearer a target.
+    expect(snapStart(9.9, 3, [10], 0.2)).toBe(10)
+    expect(snapStart(7.15, 3, [10], 0.2)).toBe(7)
+    expect(snapStart(9.5, 3, [10], 0.2)).toBe(9.5)
+    // Of two targets in reach, the nearer one wins.
+    expect(snapStart(4.95, 3, [5.1, 8], 0.2)).toBe(5)
+    // An end on a target before 3 s would start the block before 0, so the block stays.
+    expect(snapStart(0.1, 3, [2.95], 0.2)).toBe(0.1)
+  })
+})
+
+describe('trackGain', () => {
+  it('turns a track volume in dB into the amplitude that a media element plays at', () => {
+    expect([0, -6, -20, -40].map(db => Math.round(trackGain(db) * 1000) / 1000)).toEqual([1, 0.501, 0.1, 0.01])
   })
 })
 

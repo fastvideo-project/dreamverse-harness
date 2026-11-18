@@ -161,17 +161,17 @@ describe('syncTrackClip', () => {
 })
 
 describe('useTrackClipPlayback', () => {
-  it('syncs each clip element under the box after every render, and skips a clip without an element', () => {
+  it('syncs each clip element under the box after every render at its video track\'s volume, and skips a clip without an element', () => {
     const { element, play } = clipElement({ paused: true })
     const box = document.createElement('div')
     box.append(element)
     const other: PlacedClip = { ...CLIP, clip: 'cl9' }
     const { rerender } = renderHook(({ position }: { position: number }) => {
-      useTrackClipPlayback({ current: box }, [CLIP, other], position, true, 1, 'cl5')
+      useTrackClipPlayback({ current: box }, [CLIP, other], position, true, 1, 'cl5', track => track === CLIP.track ? 0.5 : 1)
     }, { initialProps: { position: 0 } })
-    expect(play).not.toHaveBeenCalled()
+    expect([play.mock.calls.length, element.volume]).toEqual([0, 0.5])
     rerender({ position: 3 })
     expect(play).toHaveBeenCalledTimes(1)
-    renderHook(() => { useTrackClipPlayback({ current: null }, [CLIP], 3, true, 1, null) })
+    renderHook(() => { useTrackClipPlayback({ current: null }, [CLIP], 3, true, 1, null, () => 1) })
   })
 })

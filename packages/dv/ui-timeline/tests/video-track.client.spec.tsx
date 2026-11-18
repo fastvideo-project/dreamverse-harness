@@ -201,6 +201,18 @@ describe('video tracks', () => {
     expect(requests()[2]?.['params']).toEqual({ clip: 'cl5', start_sec: 1, track: 0 })
   })
 
+  it('snaps a dragged clip whose end comes within 8 px of the start of another clip, while it moves and when it drops', async () => {
+    const { block, requests, ready } = mount()
+    await ready()
+    // cl5 (3 s, from 1 s on 视频 2) dragged 84 px (2.1 s) right would end at 6.1 s; it snaps to end where cl6 starts, 6 s.
+    fireEvent.pointerDown(block('cl5'), { clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(block('cl5'), { clientX: 84, clientY: 0 })
+    expect(block('cl5').style.transform).toBe('translate(80px, 0px)')
+    fireEvent.pointerUp(block('cl5'), { clientX: 84, clientY: 0 })
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]?.['params']).toEqual({ clip: 'cl5', start_sec: 3 })
+  })
+
   it('moves a clip to another video track by a drag up or down, 视频 1 like any other, and in time by a drag along its row', async () => {
     const { block, requests, ready } = mount()
     await ready()

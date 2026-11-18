@@ -47,7 +47,7 @@ function soundState(): FixtureState {
   ]
   t1.sound_track_names = ['', '旁白']
   t1.track_order = ['video', 'sound', 'sound']
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [] })
   return state
 }
 
@@ -543,6 +543,100 @@ describe('sound tracks', () => {
     expect(requests().slice(2).map(each => each['intent'])).toEqual(['取消 旁白 的静音', '取消 视频 的静音'])
   })
 
+  it('sets a track\'s volume with the slider beside its mute: the preview plays it at once, and the release writes timeline.volume', async () => {
+    // The served state applies each timeline.volume the editor writes; 视频 starts at -6 dB.
+    const volumes = { video: [-6], sound: [] as number[] }
+    const routes: ScriptedRoutes = {
+      state: () => {
+        const state = soundState()
+        const [t1] = state.components.timeline.timelines
+        if (t1 !== undefined) Object.assign(t1, { video_track_volumes: [...volumes.video], sound_track_volumes: [...volumes.sound] })
+        return state
+      },
+      post: (_path, body) => {
+        const { operation, params = {} } = body as { operation: string; params?: Record<string, unknown> }
+        const list = params['target'] === 'video_track' ? volumes.video : volumes.sound
+        list[Number(params['track'])] = Number(params['volume_db'])
+        return { status: 200, body: record({ id: 'v1', operation, params }) }
+      },
+    }
+    const { view, head, requests, ready } = mount(routes)
+    await ready()
+    const audio = (id: string): HTMLAudioElement => view.container.querySelector(`audio[data-sound="${id}"]`) as HTMLAudioElement
+    const videos = (): number[] => [...view.getByTestId('dv-timeline-viewer').querySelectorAll('video')].map(video => Math.round(video.volume * 1000) / 1000)
+    // A stored volume plays at once: -6 dB is half the amplitude.
+    expect([videos(), audio('sd2').volume]).toEqual([[0.501, 0.501], 1])
+    expect(view.getByRole('button', { name: '视频 音量：-6 dB' })).toBeTruthy()
+    const button = within(head(1)).getByRole('button', { name: '旁白 音量：0 dB' })
+    fireEvent.click(button)
+    const slider = view.getByRole('slider', { name: '旁白 音量' }) as HTMLInputElement
+    expect([slider.value, slider.min, slider.max, button.getAttribute('aria-expanded')]).toEqual(['0', '-40', '0', 'true'])
+    // The open slider takes focus.
+    expect(document.activeElement).toBe(slider)
+    // Moving the slider plays the track at its volume and writes nothing until the pointer lets go.
+    fireEvent.change(slider, { target: { value: '-20' } })
+    expect([Math.round(audio('sd2').volume * 1000) / 1000, audio('sd1').volume, requests()]).toEqual([0.1, 1, []])
+    expect(view.getByRole('dialog', { name: '旁白 音量' }).textContent).toBe('旁白 音量-20 dB-40 dB原音量')
+    fireEvent.pointerUp(slider)
+    await waitFor(() => { expect(requests()).toHaveLength(1) })
+    expect(requests()[0]).toMatchObject({
+      operation: 'timeline.volume', params: { timeline: 't1', target: 'sound', track: 1, volume_db: -20 }, intent: '把 旁白 的音量设为 -20 dB',
+    })
+    // A key that leaves the volume where the state has it writes nothing; a press outside closes the slider.
+    await waitFor(() => { expect(within(head(1)).getByRole('button', { name: '旁白 音量：-20 dB' })).toBeTruthy() })
+    fireEvent.keyUp(slider, { key: 'ArrowLeft' })
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => { expect(view.queryByRole('dialog', { name: '旁白 音量' })).toBeNull() })
+    expect([requests().length, Math.round(audio('sd2').volume * 1000) / 1000]).toEqual([1, 0.1])
+    // The button toggles the slider; the 视频 slider starts at its stored volume and writes for video track 0.
+    fireEvent.click(view.getByRole('button', { name: '视频 音量：-6 dB' }))
+    const video = view.getByRole('slider', { name: '视频 音量' }) as HTMLInputElement
+    expect(video.value).toBe('-6')
+    fireEvent.change(video, { target: { value: '-12' } })
+    fireEvent.keyUp(video, { key: 'ArrowLeft' })
+    await waitFor(() => { expect(requests()).toHaveLength(2) })
+    expect(requests()[1]).toMatchObject({ params: { target: 'video_track', track: 0, volume_db: -12 }, intent: '把 视频 的音量设为 -12 dB' })
+    fireEvent.click(view.getByRole('button', { name: /^视频 音量/u }))
+    expect(view.queryByRole('slider', { name: '视频 音量' })).toBeNull()
+    // A quick return to the volume the state still shows is written too, since the slider compares with its last write.
+    await waitFor(() => { expect(view.getByRole('button', { name: '视频 音量：-12 dB' })).toBeTruthy() })
+    fireEvent.click(view.getByRole('button', { name: '视频 音量：-12 dB' }))
+    const again = view.getByRole('slider', { name: '视频 音量' }) as HTMLInputElement
+    fireEvent.change(again, { target: { value: '-13' } })
+    fireEvent.keyUp(again, { key: 'ArrowLeft' })
+    fireEvent.change(again, { target: { value: '-12' } })
+    fireEvent.keyUp(again, { key: 'ArrowRight' })
+    await waitFor(() => { expect(requests()).toHaveLength(4) })
+    expect(requests().slice(2).map(each => (each['params'] as Record<string, unknown>)['volume_db'])).toEqual([-13, -12])
+    // Escape closes the slider and returns focus to its button; not during IME composition, nor while focus is elsewhere.
+    fireEvent.keyDown(again, { key: 'Escape', isComposing: true })
+    fireEvent.keyDown(again, { key: 'Enter' })
+    view.getByRole('button', { name: '添加轨道' }).focus()
+    fireEvent.keyDown(document.activeElement as HTMLElement, { key: 'Escape' })
+    expect(view.getByRole('dialog', { name: '视频 音量' })).toBeTruthy()
+    again.focus()
+    fireEvent.keyDown(again, { key: 'Escape' })
+    expect(view.queryByRole('dialog', { name: '视频 音量' })).toBeNull()
+    expect(document.activeElement).toBe(view.getByRole('button', { name: /^视频 音量/u }))
+    // A slider open when another timeline is shown closes, so it cannot write for that timeline.
+    fireEvent.click(view.getByRole('button', { name: /^视频 音量/u }))
+    expect(view.getByRole('dialog', { name: '视频 音量' })).toBeTruthy()
+    fireEvent.click(view.getAllByRole('tab')[1] as HTMLElement)
+    await waitFor(() => { expect(view.queryByRole('dialog', { name: '视频 音量' })).toBeNull() })
+  })
+
+  it('shows a track that only a volume below 0 dB stores, as a mute stores one', async () => {
+    const quietThird = (): FixtureState => {
+      const state = soundState()
+      const [t1] = state.components.timeline.timelines
+      if (t1 !== undefined) t1.sound_track_volumes = [0, 0, -18]
+      return state
+    }
+    const { heads, ready } = mount({ state: quietThird })
+    await ready()
+    expect(heads()).toEqual(['声音 1', '旁白', '声音 3'])
+  })
+
   it('shows a track that only a mute stores, deletes a track from its header, and disables the speakers and delete without a timeline', async () => {
     const mutedThird = (): FixtureState => {
       const state = soundState()
@@ -577,7 +671,7 @@ describe('sound tracks', () => {
       state: () => {
         const state = soundState()
         const [t1] = state.components.timeline.timelines
-        if (t1 !== undefined) Object.assign(t1, { muted_video_tracks: muted.video ? [0] : [], muted_sound_tracks: [...muted.tracks], track_order: ['video', 'sound', 'sound', 'sound'] })
+        if (t1 !== undefined) Object.assign(t1, { muted_video_tracks: muted.video ? [0] : [], muted_sound_tracks: [...muted.tracks], video_track_volumes: [], sound_track_volumes: [], track_order: ['video', 'sound', 'sound', 'sound'] })
         return state
       },
       post: (_path, body) => {

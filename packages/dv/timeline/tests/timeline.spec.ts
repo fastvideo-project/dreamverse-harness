@@ -28,12 +28,12 @@ import DvTimeline from '../src/index.ts'
 /** The plugin classes the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = { SystemPrompt, ToolRuntime, DvProject, DvFfmpeg, DvAssetPool, DvCanvasNodes, DvTimeline }
 
-/** The twenty-two operations in registration order: the twenty-one edits, then the export. */
+/** The twenty-three operations in registration order: the twenty-two edits, then the export. */
 const OPERATIONS = [
   'timeline.create', 'timeline.update', 'timeline.rename', 'timeline.delete', 'timeline.clip_add', 'timeline.clip_move', 'timeline.clip_remove',
   'timeline.clip_split', 'timeline.clip_trim', 'timeline.clip_replace', 'timeline.sound_add', 'timeline.sound_remove', 'timeline.sound_split', 'timeline.sound_move', 'timeline.sound_trim',
-  'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute', 'timeline.track_add', 'timeline.video_track_remove',
-  'timeline.video_track_move', 'timeline.export',
+  'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute', 'timeline.volume', 'timeline.track_add',
+  'timeline.video_track_remove', 'timeline.video_track_move', 'timeline.export',
 ]
 
 interface Fixture {
@@ -133,7 +133,7 @@ function video(fixture: Fixture, name: string, durationSec?: number): string {
 }
 
 describe('dvTimeline', () => {
-  it('registers the twenty-two operations with their dv_timeline_* tools and removes them on disposal', async () => {
+  it('registers the twenty-three operations with their dv_timeline_* tools and removes them on disposal', async () => {
     const fixture = await start()
     const specs = fixture.ctx.dvProject.listOperations().filter(spec => spec.component === 'timeline')
     expect(specs.map(spec => spec.name)).toEqual(OPERATIONS)
@@ -253,7 +253,7 @@ describe('dvTimeline', () => {
     const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
     expect(timeline()).toMatchObject({
       sounds: [{ id: 'sd1', asset: song, start_sec: 1.5, track: 0 }, { id: 'sd2', asset: voice, start_sec: 0, track: 1 }],
-      sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound', 'sound'],
+      sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound', 'sound'],
     })
     expect(value(await fixture.call('dv_timeline_sound_track_rename', { reason: 'label', timeline: 't1', track: 1, name: 'Voice' })).summary)
       .toBe('t1 sound track 1 renamed to Voice')
@@ -319,6 +319,32 @@ describe('dvTimeline', () => {
     ])
   })
 
+  it('sets the volume of a video track and a sound track from the agent\'s calls, and refuses a volume out of range', async () => {
+    const fixture = await start()
+    await fixture.run('timeline.create', { assets: ['a1'] })
+    const volume = async (args: Record<string, unknown>): Promise<string> =>
+      value(await fixture.call('dv_timeline_volume', { reason: 'turn the music down', timeline: 't1', ...args })).summary
+    expect(await volume({ target: 'sound', track: 1, volume_db: -18 })).toBe('t1 sound track 1 volume -18 dB')
+    expect(await volume({ target: 'video_track', track: 0, volume_db: -6 })).toBe('t1 video track 0 volume -6 dB')
+    expect(fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0])
+      .toMatchObject({ video_track_volumes: [-6], sound_track_volumes: [0, -18] })
+    expect(await fixture.run('timeline.volume', { timeline: 't1', target: 'sound', track: 0, volume_db: 6 })).toMatchObject({
+      status: 'failed', error: { code: 'operation_failed', message: 'volume_db 6 is not a number of decibels from -40 to 0.' },
+    })
+    await expect(fixture.run('timeline.volume', { timeline: 't1', target: 'sound', track: 0 })).rejects.toMatchObject({ code: 'invalid_params' })
+    const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.volume')
+    expect([spec?.label, spec?.description, spec?.params['track']?.description, spec?.params['volume_db']?.description]).toEqual([
+      { zh: '调整音量', en: 'Set volume' },
+      'Set the volume of one track of a timeline, such as music turned down under a narration. Target `video_track` is the own '
+      + 'audio of the clips of one video track, target `sound` is one sound track. The user hears the track at this volume when '
+      + 'playing the timeline, and the exported video mixes it at this volume. 0 dB plays the audio as recorded; a track cannot '
+      + 'be made louder than that. To silence a track, call dv_timeline_mute instead.',
+      'The video track (0 for 视频 1; see `video_tracks` in dv_proj_state) or the sound track (0 for the first; see '
+      + '`sound_tracks`); an existing track, or the one after the last, which this adds.',
+      'The volume in decibels, from -40 to 0; 0 is the audio as recorded. Music under a narration usually sits at -18 to -12.',
+    ])
+  })
+
   it('mutes and unmutes the own audio of a video track and a sound track from the agent\'s calls, and refuses a mute that does not apply', async () => {
     const fixture = await start()
     await fixture.run('timeline.create', { assets: ['a1'] })
@@ -327,11 +353,11 @@ describe('dvTimeline', () => {
     expect(await mute({ target: 'video_track', track: 0, muted: true })).toBe('t1 video track 0 muted')
     expect(await mute({ target: 'sound', track: 1, muted: true })).toBe('t1 sound track 1 muted')
     const timeline = (): unknown => fixture.ctx.dvProject.getState(fixture.project).components.timeline.timelines[0]
-    expect(timeline()).toMatchObject({ muted_video_tracks: [0], muted_sound_tracks: [1] })
+    expect(timeline()).toMatchObject({ muted_video_tracks: [0], muted_sound_tracks: [1], video_track_volumes: [], sound_track_volumes: [] })
     expect(await mute({ target: 'sound', track: 1, muted: false })).toBe('t1 sound track 1 unmuted')
     expect(await mute({ target: 'video_track', track: 0, muted: false })).toBe('t1 video track 0 unmuted')
     // Sound track 1 stays after the unmute, empty, until a removal deletes it.
-    expect(timeline()).toMatchObject({ muted_video_tracks: [], muted_sound_tracks: [], track_order: ['video', 'sound', 'sound'] })
+    expect(timeline()).toMatchObject({ muted_video_tracks: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], track_order: ['video', 'sound', 'sound'] })
     const cases: Array<[Record<string, unknown>, string]> = [
       [{ timeline: 't1', target: 'sound', track: 3, muted: true }, 'Timeline t1 has no sound track 3; it has 2.'],
       [{ timeline: 't1', target: 'video_track', track: 2, muted: true }, 'Timeline t1 has no video track 2; it has 1.'],
@@ -430,8 +456,8 @@ describe('dvTimeline', () => {
     const spec = fixture.ctx.dvProject.listOperations().find(entry => entry.name === 'timeline.video_track_move')
     expect([spec?.label, spec?.description]).toEqual([
       { zh: '移动视频轨', en: 'Move video track' },
-      'Move one video track to another number, with its clips and its mute. A track with a lower number covers the tracks with '
-      + 'higher numbers where it has a clip; the tracks between the two numbers move one number toward the old one.',
+      'Move one video track to another number, with its clips, its mute and its volume. A track with a lower number covers the '
+      + 'tracks with higher numbers where it has a clip; the tracks between the two numbers move one number toward the old one.',
     ])
   })
   it('leaves a gap where a removed clip played, and adds and moves clips at a time', async () => {

@@ -37,20 +37,29 @@ export function syncSound(element: HTMLMediaElement, sound: TrackSound, position
 }
 
 /**
- * Keep the sound elements under `box` (`audio[data-sound]`) in step with the player on every playhead change.
+ * Keep the sound elements under `box` (`audio[data-sound]`) in step with the player on every playhead change and every
+ * volume change, each at its track's volume.
  * @param box - the element that holds the sound elements.
  * @param sounds - the placed sounds.
  * @param position - the playhead's timeline time.
  * @param playing - whether the player plays.
  * @param rate - the playback rate.
+ * @param gains - the volume of each sound track by its number, as `HTMLMediaElement.volume` takes it; 1 for a track
+ *   past the end.
  */
 export function useSoundPlayback(
-  box: RefObject<HTMLElement>, sounds: TrackSound[], position: number, playing: boolean, rate: number,
+  box: RefObject<HTMLElement>, sounds: TrackSound[], position: number, playing: boolean, rate: number, gains: readonly number[],
 ): void {
+  // The gains as one value, so a new array with the same gains does not sync the sounds again.
+  const heard = gains.join(' ')
   useEffect(() => {
+    const levels = heard === '' ? [] : heard.split(' ').map(Number)
     for (const sound of sounds) {
       const element = box.current?.querySelector<HTMLAudioElement>(`audio[data-sound="${sound.sound}"]`)
-      if (element !== null && element !== undefined) syncSound(element, sound, position, playing, rate)
+      if (element !== null && element !== undefined) {
+        element.volume = levels[sound.track] ?? 1
+        syncSound(element, sound, position, playing, rate)
+      }
     }
-  }, [box, sounds, position, playing, rate])
+  }, [box, sounds, position, playing, rate, heard])
 }

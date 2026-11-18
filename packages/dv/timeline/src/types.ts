@@ -79,7 +79,7 @@ export type ClipStatus = 'ready' | 'rendering' | 'failed'
 
 /**
  * One edited video of a project: the clips of its video tracks, the sounds of its sound tracks, the order of those tracks,
- * its name, and which of its tracks are muted; an empty name shows as 时间线 {n} for ID t<n>.
+ * its name, which of its tracks are muted, and the volume of each track; an empty name shows as 时间线 {n} for ID t<n>.
  */
 export interface Timeline {
   id: TimelineId
@@ -88,6 +88,11 @@ export interface Timeline {
   clips: Clip[]
   /** The numbers of the video tracks whose clips' own audio plays silent, ascending; 0 is 视频 1. */
   muted_video_tracks: number[]
+  /**
+   * The volume of the own audio of each video track's clips, in dB by track number, from `MIN_VOLUME_DB` to 0; a missing
+   * entry is 0 dB, the audio as recorded. The preview and the export play the track at this volume.
+   */
+  video_track_volumes: number[]
   /**
    * The kinds of the video tracks and sound tracks, top to bottom, in the order they were added: the n-th `video` entry
    * is video track n and the n-th `sound` entry is sound track n. It holds one entry per stored track; an entry keeps its
@@ -101,6 +106,11 @@ export interface Timeline {
   sound_track_names: string[]
   /** The numbers of the muted sound tracks, ascending: the preview plays their sounds silent, and the export leaves them out. */
   muted_sound_tracks: number[]
+  /**
+   * The volume of each sound track, in dB by track number, from `MIN_VOLUME_DB` to 0; a missing entry is 0 dB, the
+   * sounds as recorded. The preview and the export play the track's sounds at this volume.
+   */
+  sound_track_volumes: number[]
 }
 
 /** The Timeline component's slice: every timeline of the project, in creation order. */
@@ -114,3 +124,10 @@ declare module '@dv/project/types' {
     timeline: TimelineState
   }
 }
+
+/**
+ * The lowest volume of a track, in dB, that `timeline.volume` takes; a track plays at a volume from this to 0 dB, the
+ * audio as recorded. The reducer's `MIN_VOLUME_DB` and the timeline editor's slider both have this type, so a change
+ * here fails to compile until both follow.
+ */
+export type MinVolumeDb = -40

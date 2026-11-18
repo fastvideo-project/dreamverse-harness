@@ -19,7 +19,7 @@ describe('timelineRecordsInUse', () => {
     const state = fixtureState()
     // The clip of video track 1 plays the export c1 made.
     state.components.timeline.timelines.push({
-      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound', 'video'], clips: [
+      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound', 'video'], clips: [
         { id: 'cl3' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
         { id: 'cl4' as ClipId, asset: 'unknown.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
         { id: 'cl5' as ClipId, asset: null, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
@@ -35,7 +35,7 @@ describe('timelineRecordsInUse', () => {
   it('puts the trim label on the asset of each clip with an in or out point', () => {
     const state = fixtureState()
     state.components.timeline.timelines.push({
-      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
+      id: 't2' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
         { id: 'cl3' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: 2, start_sec: 0, track: 0 },
         { id: 'cl4' as ClipId, asset: null, source: { record: 'g3' as RecordId, output: 0 }, in_sec: 1, out_sec: null, start_sec: 0, track: 0 },
       ],

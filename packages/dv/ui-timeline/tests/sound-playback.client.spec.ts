@@ -102,23 +102,29 @@ describe('syncSound', () => {
 })
 
 describe('useSoundPlayback', () => {
-  it('brings each sound that has an element under the box in step on every playhead change, and skips the others', () => {
+  it('brings each sound that has an element under the box in step on every playhead change and volume change at its track\'s volume, and skips the others', () => {
     const box = document.createElement('div')
     const sound = soundElement({ paused: true })
     box.append(sound.element)
     const other: TrackSound = { ...SOUND, sound: 'sd2' }
-    const { rerender } = renderHook(({ position }: { position: number }) => {
-      useSoundPlayback({ current: box }, [SOUND, other], position, true, 1)
-    }, { initialProps: { position: 0 } })
-    expect(sound.play).not.toHaveBeenCalled()
-    rerender({ position: 3 })
+    const sounds = [SOUND, other]
+    const { rerender } = renderHook(({ position, gains }: { position: number; gains: number[] }) => {
+      useSoundPlayback({ current: box }, sounds, position, true, 1, gains)
+    }, { initialProps: { position: 0, gains: [0.25] } })
+    expect([sound.play.mock.calls.length, sound.element.volume]).toEqual([0, 0.25])
+    rerender({ position: 3, gains: [0.25] })
     expect(sound.element.currentTime).toBe(1)
     expect(sound.play).toHaveBeenCalledTimes(1)
+    // A new volume applies without a playhead change; a track without a gain plays as recorded.
+    rerender({ position: 3, gains: [0.5] })
+    expect(sound.element.volume).toBe(0.5)
+    rerender({ position: 3, gains: [] })
+    expect(sound.element.volume).toBe(1)
   })
 
   it('syncs nothing while the box is not mounted', () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play')
-    renderHook(() => { useSoundPlayback({ current: null }, [SOUND], 3, true, 1) })
+    renderHook(() => { useSoundPlayback({ current: null }, [SOUND], 3, true, 1, []) })
     expect(play).not.toHaveBeenCalled()
   })
 })

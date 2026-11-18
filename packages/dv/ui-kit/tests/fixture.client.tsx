@@ -141,7 +141,7 @@ export function fixtureState(): FixtureState {
       }, records),
       timeline: {
         timelines: [{
-          id: 't1' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
+          id: 't1' as TimelineId, name: '', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [
             { id: 'cl1' as ClipId, asset: 'shot1.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
             { id: 'cl2' as ClipId, asset: 'shot2.mp4' as AssetId, source: null, in_sec: 1, out_sec: 4, start_sec: 0, track: 0 },
           ],

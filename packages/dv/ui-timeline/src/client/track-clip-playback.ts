@@ -83,22 +83,28 @@ export function syncTrackClip(
 }
 
 /**
- * Keep the clip elements under `box` (`video[data-track-clip]`) in step with the player after every render, so elements
- * that mount later, such as those of a card's preview, show the playhead's frame at once.
+ * Keep the clip elements under `box` (`video[data-track-clip]`) in step with the player after every render, each at its
+ * video track's volume, so elements that mount later, such as those of a card's preview, show the playhead's frame at
+ * once.
  * @param box - the element that holds the clip elements.
  * @param clips - the placed clips.
  * @param position - the playhead's timeline time.
  * @param playing - whether the player plays.
  * @param rate - the playback rate.
  * @param shown - the clip ID of the clip the user sees at the playhead, or null while none shows.
+ * @param volumeOf - the volume, as `HTMLMediaElement.volume` takes it, of a video track's own audio by its number.
  */
 export function useTrackClipPlayback(
   box: RefObject<HTMLElement>, clips: readonly PlacedClip[], position: number, playing: boolean, rate: number, shown: string | null,
+  volumeOf: (track: number) => number,
 ): void {
   useEffect(() => {
     for (const clip of clips) {
       const element = box.current?.querySelector<HTMLVideoElement>(`video[data-track-clip="${clip.clip}"]`)
-      if (element !== null && element !== undefined) syncTrackClip(element, clip, position, playing, rate, clip.clip === shown)
+      if (element !== null && element !== undefined) {
+        element.volume = volumeOf(clip.track)
+        syncTrackClip(element, clip, position, playing, rate, clip.clip === shown)
+      }
     }
   })
 }

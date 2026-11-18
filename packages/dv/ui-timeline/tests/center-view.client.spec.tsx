@@ -85,7 +85,7 @@ const STILL = asset('shot1-last.png', 'image/png', 'g1')
 function twoTimelines(): FixtureState {
   const state = fixtureState()
   state.assets.push(asset('imported.mp4', 'video/mp4', null, 3))
-  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }] })
+  state.components.timeline.timelines.push({ id: 't2' as TimelineId, name: '片尾', sounds: [], sound_track_names: [], muted_sound_tracks: [], video_track_volumes: [], sound_track_volumes: [], muted_video_tracks: [], track_order: ['video', 'sound'], clips: [{ id: 'cl3' as ClipId, asset: 'imported.mp4' as AssetId, source: null, in_sec: null, out_sec: null, start_sec: 0, track: 0 }] })
   return state
 }
 
