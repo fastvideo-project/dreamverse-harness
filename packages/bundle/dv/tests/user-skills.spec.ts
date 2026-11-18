@@ -48,8 +48,7 @@ it('loads a user upload through the preset filesystem row after API installation
   await bundle.stop()
   vi.stubEnv('DSH_HOME', home)
   bundle = await bootBundle({ skills: SkillRegistry }, earlier)
-  const restarted = globalThis as typeof globalThis & { __dvComposition?: Record<string, object> }
-  restarted.__dvComposition!['user-filesystem'] = Filesystem
+  globals.__dvComposition!['user-filesystem'] = Filesystem
   writeFileSync(configFile, dump([entry], { schema: entryListSchema }))
   await bundle.ctx.loader.create(include)
   await bundle.ctx.loader.await()

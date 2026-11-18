@@ -2,8 +2,10 @@
  * Browser half of the Skills page: the 技能 / Skills entry in the left navigator (a DSH `sidebar.panellist` entry that
  * `@dv/ui-shell` lists below 首页), the page it opens in the main column, and the 技能 / Skills tab of the entry page's
  * 探索 / Explore section (a `dv.explore` entry). The page and the tab read the skills a creator can start with `/name`
- * through DSH's `skills` Remote. 使用 / Use writes `/name` into the current session's resident draft before closing
- * the page; without a ready session input, the existing `dv:compose` queue handles the first composer mount.
+ * through DSH's `skills` Remote. 使用 / Use on the page writes `/name` into the draft of the launching composer's session
+ * (else the right panel's session) before closing the page; without a ready session input, the `dv:compose` queue
+ * handles the first composer mount. 使用 in the tab writes `/name` into the draft of the session that the entry page
+ * shows.
  *
  * @module @dv/ui-skills/client
  */
@@ -55,6 +57,10 @@ export function apply(ctx: ClientContext): void {
     if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
     return result.value.skills
   }
+  const sessionInput = (sessionId: SessionId | undefined) => {
+    const scope = sessionId === undefined ? undefined : ctx.sessions.scope(sessionId)
+    return scope?.get('conversation')?.input.for(scope)
+  }
   // The launching composer's session, valid until the next navigation aborts its signal.
   let source: { sessionId: SessionId; signal: AbortSignal } | undefined
   const api = new DvClient()
@@ -68,10 +74,9 @@ export function apply(ctx: ClientContext): void {
       // The launcher belongs to a session-scoped composer, which need not be the right panel.
       const sessionId = source !== undefined && !source.signal.aborted ? source.sessionId : ctx.sidebarRight.mounted.getSnapshot()
       source = undefined
-      const scope = sessionId === undefined ? undefined : ctx.sessions.scope(sessionId)
-      const input = scope?.get('conversation')?.input.for(scope)
+      const input = sessionInput(sessionId)
       // Persist before navigation: mounted editors can change while the Skills page closes.
-      if (input !== undefined) input.setDraft(`/${name} `)
+      input?.setDraft(`/${name} `)
       ctx.get('layout')?.selectPanel(null)
       if (input !== undefined) input.focus()
       else dispatchCompose({ text: `/${name}`, refs: [] })
@@ -82,10 +87,7 @@ export function apply(ctx: ClientContext): void {
   const shelfInjected: SkillsInjected = {
     list, ...library,
     use: (name) => {
-      const sessionId = ctx.sidebarRight.mounted.getSnapshot()
-      if (sessionId === undefined) return
-      const scope = ctx.sessions.scope(sessionId)
-      const input = scope?.get('conversation')?.input.for(scope)
+      const input = sessionInput(ctx.sidebarRight.mounted.getSnapshot())
       if (input === undefined) return
       input.setDraft(`/${name} `)
       input.focus()

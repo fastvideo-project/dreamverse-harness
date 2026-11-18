@@ -23,10 +23,12 @@ export interface SavedSkill {
   modelInvocable: boolean
 }
 
+/** @throws ApiRequestError `400 invalid_skill` with the given message. */
 function invalid(message: string): never {
   throw new ApiRequestError(400, message, 'invalid_skill')
 }
 
+/** Validate SKILL.md: UTF-8, YAML frontmatter, name, description, invocation flags, and nonempty instructions. */
 function metadata(bytes: Uint8Array): SavedSkill {
   let text: string
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
@@ -131,7 +133,7 @@ export class UserSkillStore {
         const local = path.slice(prefix.length)
         if (local === '' || local.split('/').some(part => part === '')) return invalid('Skill archive contains an invalid path')
         const target = join(staging, local)
-        await mkdir(join(target, '..'), { recursive: true, mode: 0o700 })
+        await mkdir(dirname(target), { recursive: true, mode: 0o700 })
         await writeFile(target, content, { flag: 'wx', mode: 0o600 })
       }
       try { await rename(staging, join(this.directory, skill.name)) }

@@ -7,7 +7,7 @@ kind: "package-bundle"
 
 English | [中文](README.zh.md)
 
-The DreamVerse preset also scans `$DSH_HOME/dreamverse-skills` (default `~/.dsh/dreamverse-skills`), the persistent upload library managed by the Skills page and `@dv/api`. The preset keeps its existing isolated roots and adds this directory before the bundled video-directing root.
+The DreamVerse preset also scans `$DSH_HOME/dreamverse-skills` (default `~/.dsh/dreamverse-skills`), the persistent upload library managed by the Skills page and `@dv/api`. The preset keeps `includeDefaultRoots: false` and lists this directory before the bundled `video-directing` root.
 
 ## Summary
 

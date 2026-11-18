@@ -7,7 +7,7 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
-`DvClient.listUserSkills()` reads the persistent user skill library without a session. `uploadUserSkill(file)` sends a Markdown file or ZIP bundle as the raw body to `/api/dv/skills/upload?filename=...` and returns its saved metadata; failed validation and duplicate names reject through the existing API error decoder.
+`DvClient.listUserSkills()` reads the persistent user skill library without a session. `uploadUserSkill(file)` sends a Markdown file or ZIP bundle as the raw body to `/api/dv/skills/upload?filename=...` and returns its saved metadata; failed validation and duplicate names reject with `DvApiError`.
 
 ## Summary
 

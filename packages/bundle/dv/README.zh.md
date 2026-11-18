@@ -7,7 +7,7 @@ kind: "package-bundle"
 
 [English](README.md) | 中文
 
-DreamVerse 预设还会扫描 `$DSH_HOME/dreamverse-skills`（默认 `~/.dsh/dreamverse-skills`），这是技能页面和 `@dv/api` 管理的持久上传目录。预设保留原有目录隔离，并在内置 video-directing 目录前加入此目录。
+DreamVerse 预设还会扫描 `$DSH_HOME/dreamverse-skills`（默认 `~/.dsh/dreamverse-skills`），这是技能页面和 `@dv/api` 管理的持久上传目录。预设保持 `includeDefaultRoots: false`，并在内置 `video-directing` 目录前列出此目录。
 
 ## 概要
 

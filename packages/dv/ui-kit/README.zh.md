@@ -7,7 +7,7 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
-`DvClient.listUserSkills()` 无需会话即可读取持久保存的用户技能库。`uploadUserSkill(file)` 将 Markdown 文件或 ZIP 技能包作为原始请求体发送到 `/api/dv/skills/upload?filename=...`，返回保存后的元数据；校验失败和重名错误通过现有 API 错误解析器拒绝。
+`DvClient.listUserSkills()` 无需会话即可读取持久保存的用户技能库。`uploadUserSkill(file)` 将 Markdown 文件或 ZIP 技能包作为原始请求体发送到 `/api/dv/skills/upload?filename=...`，返回保存后的元数据；校验失败和重名错误以 `DvApiError` 拒绝。
 
 ## 概述
 
