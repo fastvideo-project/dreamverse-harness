@@ -2,11 +2,12 @@
 /**
  * The DreamVerse cards of chat Markdown: element selection, the resolution against the open project's assets, the
  * following of the project, and the chain entry under the real slot runtime, which draws each asset through the
- * `dv.media` Factory of `@dv/ui-media` and opens the asset preview.
+ * `dv.media` Factory of `@dv/ui-media`, opens the asset preview, and opens text-node links in the canvas editor.
  */
 import { act, cleanup, fireEvent, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MarkdownElement, MarkdownTableCell } from '@deepseek-ai/dsh-client-ui-primitives'
+import { MarkdownDelegateProvider, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { DvHistory } from '@dv/ui-history/contract'
 import { assetUrl, DvClient } from '@dv/ui-kit/api.ts'
@@ -14,7 +15,8 @@ import { publishCurrentProject } from '@dv/ui-kit/current-project.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { AudioView, ImageView, VideoView } from '../../ui-asset-pool/src/client/media.tsx'
-import { asset, fixtureState, OPERATIONS, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { asset, fixtureState, OPERATIONS, record, scriptedFetch } from '../../ui-kit/tests/fixture.client.tsx'
+import { markdownLabels } from '../../../client/ui-primitives/tests/labels.client.ts'
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { createDvCanvas } from '../../ui-canvas/src/client/dv-canvas.ts'
 import { apply as historyApply, inject as historyInject } from '../../ui-history/src/client/index.ts'
@@ -91,6 +93,19 @@ describe('selectAssetReference', () => {
     expect(assetIdOf('http://')).toBeUndefined()
     expect(assetIdOf('/dv/assets/%E0%A4%A')).toBeUndefined()
   })
+
+  it('selects the decoded path of a relative file link as a text node', () => {
+    expect(selectAssetReference(link('story/beats.md'))).toEqual({ kind: 'text', path: 'story/beats.md' })
+    expect(selectAssetReference(link('./story/beats.md'))).toEqual({ kind: 'text', path: 'story/beats.md' })
+    expect(selectAssetReference(link('story/%E8%8A%82%E6%8B%8D.md'))).toEqual({ kind: 'text', path: 'story/节拍.md' })
+    expect(selectAssetReference(link('story/beats.md#L10'))).toEqual({ kind: 'text', path: 'story/beats.md' })
+  })
+
+  it('declines URLs, absolute paths, anchors, and file links that the default element does not open', () => {
+    for (const href of ['https://example.com/beats.md', 'mailto:a@example.com', '/abs/beats.md', 'C:\\beats.md', '#intro', 'story/beats.md#intro']) {
+      expect(selectAssetReference(link(href)), href).toBeNull()
+    }
+  })
 })
 
 describe('resolveChatMedia', () => {
@@ -130,6 +145,19 @@ describe('resolveChatMedia', () => {
     const missing = selectAssetReference(table([cell('1'), cell('播放', '/dv/assets/shot1.mp4')], [cell('2'), cell('缺失', '/dv/assets/missing.mp4')]))
     if (missing === null) throw new Error('the table links no asset')
     expect(resolveChatMedia(missing, held, describeRecord)).toBeNull()
+  })
+
+  it('opens the newest done write or edit record of a text node and skips other records and paths', () => {
+    const text = (id: string, operation: string, path: string, status: ProjectRecord['status'] = 'done') =>
+      record({ id, operation, component: 'textnode', params: { path }, status })
+    const records = [
+      text('w1', 'textnode.write', 'beats.md'), text('e1', 'textnode.edit', 'beats.md'), text('e2', 'textnode.edit', 'beats.md', 'failed'),
+      text('r1', 'textnode.read', 'beats.md'), text('w2', 'textnode.write', 'other.md'),
+    ]
+    const texts = { ...held, records: Object.fromEntries(records.map(entry => [entry.id, entry])) }
+    expect(resolveChatMedia({ kind: 'text', path: 'beats.md' }, texts, describeRecord)).toEqual({ kind: 'text', record: 'e1' })
+    expect(resolveChatMedia({ kind: 'text', path: 'missing.md' }, texts, describeRecord)).toBeNull()
+    expect(resolveChatMedia({ kind: 'text', path: 'beats.md' }, NO_CHAT_ASSETS, describeRecord)).toBeNull()
   })
 })
 
@@ -335,6 +363,46 @@ describe('registerChatMedia under the slot runtime', () => {
 
     fireEvent.click(thumb)
     expect(view.getByRole('dialog', { name: 'wide.png' }).querySelector('img')?.getAttribute('src')).toBe(assetUrl('wide.png'))
+    await runtime.dispose()
+  })
+
+  it('opens a relative text-node link in the canvas editor and leaves an unmatched relative link to the outer file opener', async () => {
+    fakeEvents()
+    const state = chatState()
+    state.components.proj.records.push(
+      record({ id: 'tw1', operation: 'textnode.write', component: 'textnode', params: { path: 'story/beats.md' } }),
+      record({ id: 'tw2', operation: 'textnode.write', component: 'textnode', params: { path: 'story/节拍.md' } }),
+    )
+    vi.stubGlobal('fetch', scriptedFetch({ state }).fetch)
+    const runtime = await SlotTestRuntime.create()
+    const show = vi.fn()
+    runtime.ctx.provide('dvCenter', { show })
+    const openFile = vi.fn()
+    const session = await runtime.sessions.add({ id: 's1' })
+    const reference = runtime.sessions.retain(session)
+    const texts = ['[beats](story/beats.md)', '[节拍](story/%E8%8A%82%E6%8B%8D.md)', '[notes](notes.md)']
+    await runtime.root.declare({ 'conversation.chat.markdown': { kind: 'chain', scope: 'session' } }, props => (
+      <props.SessionProvider session={reference}>
+        <MarkdownDelegateProvider openFile={openFile} renderElement={(element, fallback) =>
+          props.renderSlotChain('conversation.chat.markdown', { element, fallback }, { fallback, inline: true })}>
+          {texts.map((text, index) => <div key={index} data-testid={`p${String(index)}`}><MarkdownText text={text} labels={markdownLabels} /></div>)}
+        </MarkdownDelegateProvider>
+      </props.SessionProvider>
+    ))
+    await runtime.mount({ inject: ['slots'], apply: registerChatMedia })
+    const view = runtime.renderRoot()
+    act(() => { publishCurrentProject('p1') })
+    // The records arrive with the first fetch of the project.
+    await vi.waitFor(() => {
+      fireEvent.click(within(view.getByTestId('p0')).getByRole('button', { name: 'beats' }))
+      expect(show).toHaveBeenCalledExactlyOnceWith({ view: 'canvas', target: { record: 'tw1' } })
+    })
+    // Clicks before the records arrived reached the outer opener.
+    openFile.mockClear()
+    fireEvent.click(within(view.getByTestId('p1')).getByRole('button', { name: '节拍' }))
+    expect(show).toHaveBeenLastCalledWith({ view: 'canvas', target: { record: 'tw2' } })
+    fireEvent.click(within(view.getByTestId('p2')).getByRole('button', { name: 'notes' }))
+    expect(openFile).toHaveBeenCalledExactlyOnceWith('notes.md', undefined)
     await runtime.dispose()
   })
 })
