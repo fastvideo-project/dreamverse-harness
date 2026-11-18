@@ -55,7 +55,8 @@ export function apply(ctx: ClientContext): void {
     if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`)
     return result.value.skills
   }
-  let sourceSession: SessionId | undefined
+  // The launching composer's session, valid until the next navigation aborts its signal.
+  let source: { sessionId: SessionId; signal: AbortSignal } | undefined
   const api = new DvClient()
   const library = {
     listMine: () => api.listUserSkills(),
@@ -65,8 +66,8 @@ export function apply(ctx: ClientContext): void {
     list, ...library,
     use: (name) => {
       // The launcher belongs to a session-scoped composer, which need not be the right panel.
-      const sessionId = sourceSession ?? ctx.sidebarRight.mounted.getSnapshot()
-      sourceSession = undefined
+      const sessionId = source !== undefined && !source.signal.aborted ? source.sessionId : ctx.sidebarRight.mounted.getSnapshot()
+      source = undefined
       const scope = sessionId === undefined ? undefined : ctx.sessions.scope(sessionId)
       const input = scope?.get('conversation')?.input.for(scope)
       // Persist before navigation: mounted editors can change while the Skills page closes.
@@ -99,8 +100,10 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
     { name: 'conversation.input.left', id: 'dv.skills.library',
       inject: sessionId => ({ open: () => {
-        sourceSession = sessionId
-        ctx.get('layout')?.selectPanel(SKILLS_PANEL_ID)
+        const layout = ctx.get('layout')
+        layout?.selectPanel(SKILLS_PANEL_ID)
+        const signal = layout?.beginNavigation()
+        source = signal === undefined ? undefined : { sessionId, signal }
       } }) }, SkillsLauncher,
   )), 'ui-skills: composer shortcut')
   // The 探索 tab waits for `@dv/ui-shell` to declare `dv.explore`; MCP (order 0) stays before it.

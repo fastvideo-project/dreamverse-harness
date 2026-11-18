@@ -70,10 +70,16 @@ async function boot(
     }),
   } as never)
   ctx.provide('sidebarRight', { mounted: { getSnapshot: () => mounted } } as never)
-  ctx.provide('layout', { selectPanel: (id: unknown) => { selected.push(id) } } as never)
+  // Like LayoutController, each selection or new navigation aborts the previous navigation signal.
+  let navigation = new AbortController()
+  const layout = {
+    selectPanel: (id: unknown) => { navigation.abort(); selected.push(id) },
+    beginNavigation: () => { navigation.abort(); navigation = new AbortController(); return navigation.signal },
+  }
+  ctx.provide('layout', layout as never)
   const fiber = ctx.plugin({ inject: [...inject], apply })
   await fiber.await()
-  return { registered, calls, selected, inputs, fiber }
+  return { registered, calls, selected, inputs, layout, fiber }
 }
 
 describe('ui-skills apply', () => {
@@ -139,6 +145,18 @@ describe('ui-skills apply', () => {
       registered[0]?.inject?.().use('storyboard')
       expect(inputs).toEqual([`session ${seat}`, 'draft /storyboard ', 'focus'])
     }
+    await fiber.dispose()
+  })
+
+  it('targets the right seat after a launcher-opened page is left and the page is reopened from the navigator', async () => {
+    const { registered, inputs, layout, fiber } = await boot('other-session')
+    const launcher = registered[2]?.inject?.('prompt-session') as unknown as { open: () => void }
+    const view = render(createElement(SkillsLauncher, launcher))
+    fireEvent.click(screen.getByRole('button', { name: 'Skills' }))
+    view.unmount()
+    layout.selectPanel(SKILLS_PANEL_ID)
+    registered[0]?.inject?.().use('my-trailer')
+    expect(inputs).toEqual(['session other-session', 'draft /my-trailer ', 'focus'])
     await fiber.dispose()
   })
 
