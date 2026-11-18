@@ -1,5 +1,5 @@
 /** Uploaded bundles persist intact and become discoverable by the existing filesystem provider. */
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { zipSync, strToU8 } from 'fflate'
@@ -76,6 +76,17 @@ describe('persistent user skills', () => {
     const archive = zipSync({ 'SKILL.md': strToU8(TEXT), 'huge.txt': new Uint8Array(LIMITS.extractedBytes + 1) })
     expect((await upload('large.zip', archive)).status).toBe(400)
     expect(await readdir(root)).toEqual([])
+  })
+
+  it('lists saved skills when the library also holds a folder without a valid SKILL.md', async () => {
+    expect((await upload('SKILL.md')).status).toBe(200)
+    await mkdir(join(store.directory, 'notes'))
+    await mkdir(join(store.directory, 'draft'))
+    await writeFile(join(store.directory, 'draft', 'SKILL.md'), 'No metadata')
+    const route = userSkillRoutes(store).find(route => route.path === '/api/dv/skills')!
+    const response = await route.fetch(new Request('http://localhost/api/dv/skills'))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual([{ name: 'my-trailer', description: 'Plan my trailer', modelInvocable: true }])
   })
 
   it('allows only one winner for simultaneous uploads with the same name', async () => {

@@ -63,7 +63,8 @@ export class UserSkillStore {
     private readonly ensureAvailable?: (name: string) => Promise<void>,
   ) {}
 
-  /** @returns saved skill summaries in name order; an absent library is empty. */
+  /** @returns saved skill summaries in name order; an absent library is empty, and a folder without a valid
+   * SKILL.md is skipped, as the filesystem skill provider skips it. */
   async list(): Promise<SavedSkill[]> {
     let entries
     try { entries = await readdir(this.directory, { withFileTypes: true }) }
@@ -72,8 +73,14 @@ export class UserSkillStore {
       throw error
     }
     const skills = await Promise.all(entries.filter(entry => entry.isDirectory() && !entry.name.startsWith('.'))
-      .map(async entry => metadata(await readFile(join(this.directory, entry.name, 'SKILL.md')))))
-    return skills.sort((a, b) => a.name.localeCompare(b.name))
+      .map(async (entry) => {
+        try { return metadata(await readFile(join(this.directory, entry.name, 'SKILL.md'))) }
+        catch (error) {
+          if (error instanceof ApiRequestError || (error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+          throw error
+        }
+      }))
+    return skills.filter(skill => skill !== undefined).sort((a, b) => a.name.localeCompare(b.name))
   }
 
   /** Install one Markdown file or ZIP bundle without replacing an existing skill.
