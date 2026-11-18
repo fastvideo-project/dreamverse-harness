@@ -64,7 +64,7 @@ If `dv_asset_grab_still` is in your tool list, grab the middle frame of each sho
 
 1. `dv_timeline_create` with `inputs.clip` = output #0 of each shot's render, in storyboard order, and a `name`. Pass a new `timeline` ID when the project already has a timeline.
 2. Call `dv_proj_state` and read each clip's `start_sec`. A section starts where its first shot starts.
-3. A piece longer than its section minus 1.5 s: if `dv_audioedit_speed` is in your tool list and that length is at most 15% shorter, call it with `inputs.audio` = the piece and `duration_sec` = that length, and use its output as the piece; otherwise place the next piece later and say so.
+3. If `dv_audioedit_speed` is in your tool list and a piece is longer than its section minus 1.5 s by at most 15% of the piece, call it with `inputs.audio` = the piece and `duration_sec` = that length, and use its output. Otherwise, for a long piece, place the next piece later and say so.
 4. Per narration piece, `dv_timeline_sound_add` with `timeline`, `asset` = the piece, `start_sec` = its section's start plus 1, and `track: 0`. A clip kept whole goes once at 1 s.
 
 When the user gave a music file, add it with `dv_timeline_sound_add` on `track: 1` at `start_sec: 0`, then `dv_timeline_volume` with `target: sound`, `track: 1`, `volume_db: -15`.
