@@ -143,7 +143,7 @@ export function TextEditor({ node, state, host, renderFactorySlot, useVersionKin
         host.close()
         return
       }
-      refusal = record.error?.message ?? t('node.saveFailed')
+      refusal = record.error?.message ?? t('editor.saveFailed')
     } catch (error) {
       refusal = errorMessage(error)
     }

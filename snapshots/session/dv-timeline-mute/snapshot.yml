@@ -1,0 +1,9 @@
+version: 1
+scenario: dv-timeline-mute
+profile: headless
+composition: dv-timeline
+recording: live
+header:
+  class: dv-timeline
+workspace:
+  final: true

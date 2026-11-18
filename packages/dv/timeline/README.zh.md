@@ -64,7 +64,7 @@ kind: "package-reference"
 
 `timeline.export` 不是确定性的，因为它的输出取决于项目状态中时间线的片段，而参数并不指明这些片段；每次调用都重新导出。它在 `cpu` 资源类别中运行。时间线未知、项目没有时间线或时间线没有片段时，调用让记录失败。时间线中有占位片段时，调用在写下记录之前被拒绝，并列出占位片段的 ID，例如 "Clips cl3, cl5 of timeline t1 are not ready yet."；`exportTimeline` 抛出同样的错误。服务方法 `exportTimeline(timeline, dir)` 为其他调用方把导出的文件写入 `dir` 并返回其路径。
 
-加载 `@dv/canvas` 时，插件还注册 `timeline.place`（工具 `dv_timeline_place`，标签 把时间线放到画布上 / Place timeline on canvas，必填参数 `timeline`），并通过 `dvCanvasNodes` 的 `registerMaker` 登记它：每条完成的记录在布局第 3 列生成一个 `timeline` 类型的画布节点。它的前置检查在写入任何记录之前拒绝不存在的时间线（"Timeline t9 does not exist."）和已有 `timeline` 节点显示的时间线（"Timeline t1 is already on the canvas as node <id>."）；节点被 `canvas.node_remove` 移除后，这条时间线可以再次作为新节点放到画布上。时间线被删除后，节点仍留在原处。[`@dv/ui-timeline`](../ui-timeline/README.zh.md) 绘制这个节点，并从画布的添加菜单把时间线放到画布上。
+加载 `@dv/canvas` 时，插件还注册 `timeline.place`（工具 `dv_timeline_place`，标签 把时间线放到画布上 / Place timeline on canvas，必填参数 `timeline`），并通过 `dvCanvasNodes` 的 `registerMaker` 登记它：每条完成的记录在布局第 3 列生成一个 `timeline` 类型的画布节点，声明的尺寸 640 × 390 使下一个放置的节点避开它的默认画框。它的前置检查在写入任何记录之前拒绝不存在的时间线（"Timeline t9 does not exist."）和已有 `timeline` 节点显示的时间线（"Timeline t1 is already on the canvas as node <id>."）；节点被 `canvas.node_remove` 移除后，这条时间线可以再次作为新节点放到画布上。时间线被删除后，节点仍留在原处。[`@dv/ui-timeline`](../ui-timeline/README.zh.md) 绘制这个节点，并从画布的添加菜单把时间线放到画布上。
 
 工作流技能（例如 `@dv/workflow-skills` 的 `story-directing`）用智能体工具 `dv_timeline_create` 和 `dv_timeline_update` 排布渲染结果：每个 `clip` 输入指明一个渲染输出 `<record>#<output>`，渲染尚未完成的片段在完成前是占位片段。
 

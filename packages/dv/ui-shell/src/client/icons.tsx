@@ -1,10 +1,13 @@
 /**
- * The 16 px stroke icons of the DreamVerse shell. Each draws in `currentColor` with a 1.75 stroke and is hidden from
- * assistive technology; the button that holds it carries the accessible label.
+ * The stroke icons of the DreamVerse shell. Each draws in `currentColor` with a 1.5 px rendered stroke at every size and
+ * is hidden from assistive technology; the button that holds it carries the accessible label.
  *
  * @module @dv/ui-shell/icons
  */
 import type { ReactNode } from 'react'
+
+/** The rendered stroke width in pixels; the 24-unit drawing grid scales it, so the attribute is this times 24 / size. */
+const ICON_STROKE = 1.5
 
 /**
  * One stroke icon.
@@ -14,7 +17,7 @@ import type { ReactNode } from 'react'
 function Icon({ children, size = 16 }: { children: ReactNode; size?: number }): ReactNode {
   return (
     <svg
-      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={ICON_STROKE * 24 / size}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
     >{children}</svg>
   )

@@ -11,11 +11,13 @@ const makers: NodeMaker[] = [
   { operations: ['shot.render'], kind: 'shot', column: 2 },
   { operations: ['character.create'], kind: 'character', column: 0 },
   { operations: ['asset.import'], kind: 'asset', column: 0, makes: record => record.params['place'] === true },
+  { operations: ['timeline.place'], kind: 'timeline', column: 3, size: { width: 640, height: 390 } },
 ]
 const placement: AssetPlacement = { place: 'asset.place', kind: 'asset', column: 0 }
 const reducer = canvasReducer({
   maker: operation => makers.find(maker => maker.operations.includes(operation)),
   placement: operation => operation === placement.place ? placement : undefined,
+  size: kind => makers.find(maker => maker.kind === kind)?.size,
 })
 
 let counter = 0
@@ -207,6 +209,17 @@ describe('canvasReducer', () => {
     expect(nodes[1]).toBe(`${second.id} shot [${second.id}] ${String(2 * COLUMN)},${String(2 * ROW)} null×null`)
   })
 
+  it('places a node of a maker that declares a size clear of the declared box of each unsized node', () => {
+    const slice = reduceAll([record('timeline.place'), record('timeline.place'), ...Array.from({ length: 7 }, () => record('character.create'))])
+    // Each node's box with the caption: a timeline's declared frame, and one cell for a node of an undeclared kind.
+    const boxes = Object.values(slice.nodes).map(({ kind, position: at }) =>
+      ({ kind, x: at.x, y: at.y, width: kind === 'timeline' ? 640 : COLUMN, height: kind === 'timeline' ? 390 + 20 : ROW }))
+    const overlaps = boxes.flatMap((a, i) => boxes.slice(i + 1)
+      .filter(b => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height))
+    expect(boxes.filter(box => box.kind === 'timeline').map(box => `${String(box.x)},${String(box.y)}`)).toEqual([`${String(3 * COLUMN)},0`, `${String(3 * COLUMN)},${String(3 * ROW)}`])
+    expect(overlaps).toEqual([])
+  })
+
   it('continues a full column of six rows in a sub-column three columns to the right', () => {
     const nodes = nodesOf(reduceAll(Array.from({ length: 7 }, () => record('shot.render'))))
     expect(nodes[5]).toMatch(new RegExp(` ${String(2 * COLUMN)},${String(5 * ROW)} `, 'u'))
@@ -223,7 +236,7 @@ describe('canvasReducer', () => {
     const first = record('shot.render')
     const rerun = record('shot.render', { based_on: first.id })
     const slice = reduceAll([first, rerun])
-    expect(reducer.agentSummary?.(slice, { url: id => id }, {} as never)).toEqual({
+    expect(reducer.agentSummary?.(slice, { url: id => id }, {} as never, 's1' as never)).toEqual({
       canvas: [{ node: first.id, kind: 'shot', name: null, shown: rerun.id, x: 2 * COLUMN, y: 0, width: null, height: null }],
     })
   })

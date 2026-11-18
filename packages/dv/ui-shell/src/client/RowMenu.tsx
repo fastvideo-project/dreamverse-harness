@@ -16,7 +16,7 @@ export interface RowMenuItem {
 }
 
 /**
- * A ⋯ button that shows on row hover and opens a small menu; a click outside the menu closes it.
+ * A ⋯ button that shows while its row is hovered or holds focus, and opens a small menu; a click outside the menu closes it.
  * @param props - the menu entries and the button's accessible label.
  * @returns the button and, while open, the menu.
  */

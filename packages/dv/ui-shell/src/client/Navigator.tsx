@@ -5,7 +5,7 @@
  *
  * @module @dv/ui-shell/Navigator
  */
-import type { ReactNode } from 'react'
+import type { KeyboardEvent, ReactNode } from 'react'
 import { Fragment, useState } from 'react'
 import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -17,6 +17,7 @@ import { pickText, useText } from '@dv/ui-kit/locale.ts'
 import type { ShellInjected } from './Center.tsx'
 import { ChevronDownIcon, ChevronRightIcon, HomeIcon, PlugIcon, PluginsIcon, PlusIcon, SkillsIcon } from './icons.tsx'
 import { DREAMVERSE_WORDMARK } from './logo.ts'
+import { runAction } from './notice.tsx'
 import { RowMenu } from './RowMenu.tsx'
 import type { WireProject } from '@dv/ui-kit/types.ts'
 import { usePanelEntries } from './panels.ts'
@@ -34,11 +35,17 @@ const PAGE_ICONS: Readonly<Record<string, () => ReactNode>> = { plugins: Plugins
 const SHOWN_PROJECTS = 12
 
 /**
- * Run an action and log its failure; navigation failures leave the page as it was.
- * @param work - the action.
+ * The key handler of a focusable row: Enter or Space runs the action, as a click does. A key pressed in an element
+ * inside the row, such as its rename field, is left to that element.
+ * @param action - what the click does.
+ * @returns the `onKeyDown` handler.
  */
-function run(work: () => Promise<void>): void {
-  work().catch((error: unknown) => { console.warn('ui-shell: navigation failed', error) })
+function onActivate(action: () => void): (event: KeyboardEvent<HTMLElement>) => void {
+  return (event) => {
+    if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
+    event.preventDefault()
+    action()
+  }
 }
 
 /**
@@ -69,15 +76,15 @@ export function Navigator(props: NavigatorProps): ReactNode {
   )
   return (
     <div className={css.nav} data-dv-navigator="">
-      <button type="button" className={css.navSecondary} onClick={() => { run(() => shell.newProject()) }}>
+      <button type="button" className={css.navSecondary} onClick={() => { runAction(() => shell.newProject()) }}>
         <PlusIcon />{t('新建项目', 'Create project')}
       </button>
-      {nav(t('首页', 'Home'), projectId === null && activePage === null, () => { run(() => shell.goHome()) }, <HomeIcon />)}
+      {nav(t('首页', 'Home'), projectId === null && activePage === null, () => { runAction(() => shell.goHome()) }, <HomeIcon />)}
       {pages.map((page) => {
         const PageIcon = PAGE_ICONS[page.id] ?? PluginsIcon
         return <Fragment key={page.id}>{nav(page.label, activePage === page.id, () => { shell.openPage(page.id) }, <PageIcon />)}</Fragment>
       })}
-      {sorted.length > SHOWN_PROJECTS && nav(showAll ? t('收起项目', 'Fewer projects') : t('全部项目', 'All projects'), false, () => { setShowAll(value => !value) })}
+      {sorted.length > SHOWN_PROJECTS && nav(showAll ? t('收起项目', 'Show less') : t('全部项目', 'All projects'), false, () => { setShowAll(value => !value) })}
       <div className={css.section}>{t('项目', 'Projects')}</div>
       {loaded && sorted.length === 0 && (
         <div className={css.navHint}>{t('还没有项目。点击「新建项目」，或在首页描述你想做的视频。', 'No projects yet. Click Create project, or describe the video you want on Home.')}</div>
@@ -110,9 +117,10 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
   const toggle = (): void => {
     setExpanded(!isOpen)
   }
+  const openProject = (): void => { runAction(() => shell.openProject(project.id)) }
   const deleteProject = (): void => {
     if (!window.confirm(pickText(`删除项目“${project.title}”？项目会移到回收目录，可由管理员恢复。`, `Delete project "${project.title}"? It moves to the trash directory, where an administrator can restore it.`))) return
-    run(() => shell.deleteProject(project.id))
+    runAction(() => shell.deleteProject(project.id))
   }
   return (
     <>
@@ -120,19 +128,19 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
         <span
           role="button" tabIndex={0} className={css.treeCaret} aria-expanded={isOpen}
           aria-label={isOpen ? t('收起会话', 'Hide chats') : t('展开会话', 'Show chats')}
-          onClick={toggle} onKeyDown={() => {}}
+          onClick={toggle} onKeyDown={onActivate(toggle)}
         >{isOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}</span>
         {renaming === project.id
           ? (
             <InlineRename
               className={css.renameInput} value={project.title} onClose={() => { setRenaming(null) }}
-              onSave={(title) => { if (title !== '') run(() => shell.renameProject(project.id, title)) }}
+              onSave={(title) => { if (title !== '') runAction(() => shell.renameProject(project.id, title)) }}
             />
           )
           : (
             <span
               className={css.treeLabel} role="button" tabIndex={0} title={project.title}
-              onClick={() => { run(() => shell.openProject(project.id)) }} onKeyDown={() => {}}
+              onClick={openProject} onKeyDown={onActivate(openProject)}
             >{project.title}</span>
           )}
         <RowMenu
@@ -144,7 +152,7 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
         />
         <button
           type="button" className={css.treeAdd} title={t('新对话', 'New chat')} aria-label={t('新对话', 'New chat')}
-          onClick={() => { run(() => shell.newSession(project.id)) }}
+          onClick={() => { runAction(() => shell.newSession(project.id)) }}
         >
           <PlusIcon />
         </button>
@@ -152,7 +160,10 @@ function ProjectTree(props: NavigatorProps & { project: WireProject; open: boole
       {isOpen && sessions.map(summary => (
         <SessionRow
           key={summary.id} summary={summary} active={summary.id === current} shell={shell}
-          open={() => { shell.openSession(summary.id) }}
+          open={() => {
+            if (open) shell.openSession(summary.id)
+            else runAction(() => shell.openProject(project.id, summary.id))
+          }}
         />
       ))}
     </>
@@ -174,13 +185,13 @@ function SessionRow({ summary, active, open, shell }: {
   return (
     <div
       role="button" tabIndex={0} className={`${css.treeRow} ${css.treeChild}`}
-      data-active={active ? '' : undefined} onClick={open} onKeyDown={() => {}}
+      data-active={active ? '' : undefined} onClick={open} onKeyDown={onActivate(open)}
     >
       {renaming
         ? (
           <InlineRename
             className={css.renameInput} value={summary.displayTitle} onClose={() => { setRenaming(false) }}
-            onSave={(title) => { if (title !== '') run(() => shell.renameSession(summary.id, title)) }}
+            onSave={(title) => { if (title !== '') runAction(() => shell.renameSession(summary.id, title)) }}
           />
         )
         : <span className={css.treeLabel} title={summary.displayTitle}>{summary.blank ? t('新对话', 'New chat') : summary.displayTitle}</span>}
@@ -192,7 +203,7 @@ function SessionRow({ summary, active, open, shell }: {
             label: t('删除对话', 'Delete chat'), danger: true,
             run: () => {
               if (!window.confirm(pickText(`删除对话“${summary.displayTitle}”？`, `Delete chat "${summary.displayTitle}"?`))) return
-              run(() => shell.deleteSession(summary.id))
+              runAction(() => shell.deleteSession(summary.id))
             },
           },
         ]}

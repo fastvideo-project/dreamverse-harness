@@ -340,14 +340,17 @@ export class AgentTools {
       name,
       description: [spec.description, ...hints].join(' '),
       parameters,
+      isConcurrencySafe: args => spec.isConcurrencySafe?.(args) === true,
       output: {
         schema: RESULT_SCHEMA,
         render: (_args, value) => formatToolResult(value, spec),
         presentationMeta: (_args, value) => {
           const card = { record: value.record, tool: spec.name, status: value.status, outputs: value.outputs }
           if (value.record === '') return card
+          // A record outside the history leaves the current position where it was, so the result shows no position.
           const shown: ProjectShown = {
-            project: brandString<ProjectId>(value.project), at: brandString<RecordId>(value.scheduled.at(-1) ?? value.record),
+            project: brandString<ProjectId>(value.project),
+            ...spec.outsideHistory === true ? {} : { at: brandString<RecordId>(value.scheduled.at(-1) ?? value.record) },
             records: { [value.record]: value.status as RecordStatus, ...Object.fromEntries(value.scheduled.map(id => [id, 'pending'])) },
           }
           return { ...card, [SEEN_META_KEY]: toJson(shown) }

@@ -201,3 +201,11 @@ describe('ui-shot-render apply', () => {
     expect(hostApply).not.toThrow()
   })
 })
+
+
+it('offers only provider-published discrete durations', () => {
+  const chips = shotRenderBar.chips({ operation: OPERATIONS[0]!,
+    schema: { duration_sec: { min: 4, max: 8, values: [4, 6, 8] } }, params: {} })
+  const duration = chips.find(chip => chip.key === 'duration_sec')
+  expect(duration?.kind === 'menu' ? duration.options.map(option => option.patch['duration_sec']) : []).toEqual([4, 6, 8])
+})

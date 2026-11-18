@@ -22,7 +22,8 @@
   margin: 0;
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
+  text-wrap: pretty;
 }
 
 .error {
@@ -37,14 +38,18 @@
   border-radius: var(--dv-radius-lg);
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
   text-align: center;
+  text-wrap: pretty;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
 
-.importZone:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .importZone:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .importZone[data-over] {
@@ -60,6 +65,7 @@
   margin: 0 0 8px;
   color: var(--dv-text-2);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   font-weight: 500;
   line-height: 16px;
 }
@@ -68,6 +74,24 @@
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
   gap: 8px;
+}
+
+/* One grid cell: the square thumbnail with the asset's name under it. */
+.item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* The name is as wide as the thumbnail and ends in an ellipsis when it is longer. */
+.name {
+  overflow: hidden;
+  color: var(--dv-text);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .thumb {
@@ -82,13 +106,16 @@
   border-radius: var(--dv-radius-md);
   background: var(--dv-surface-3);
   box-shadow: 0 0 0 1px var(--dv-line);
+  outline: 1px solid transparent;
   color: var(--dv-text-2);
   cursor: grab;
   transition: box-shadow 120ms var(--dv-ease);
 }
 
-.thumb:hover {
-  box-shadow: 0 0 0 1px var(--dv-line-strong);
+@media (hover: hover) {
+  .thumb:hover {
+    box-shadow: 0 0 0 1px var(--dv-line-strong);
+  }
 }
 
 .thumbMedia {

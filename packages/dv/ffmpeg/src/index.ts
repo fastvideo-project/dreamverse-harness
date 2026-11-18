@@ -3,6 +3,7 @@
  * reads what ffprobe reports. Components call it from their operations. The runner never stores anything: a command
  * reads input files by path and writes its declared outputs into a directory the caller gives, usually the operation's
  * `scratchDir`, and the operation imports the outputs into the asset pool with `OperationContext.importAsset`.
+ * `lastFrame` takes video bytes instead and works in a temporary directory that it removes.
  *
  * Commands run through `ctx.subprocess` when that service is mounted (the harness's managed process range), else
  * through Node's `child_process`, so the service also works in a bare Cordis root such as a test.
@@ -11,6 +12,7 @@
  */
 import { execFile } from 'node:child_process'
 import { readdirSync, writeFileSync } from 'node:fs'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Service, type Context } from '@deepseek-ai/cordis'
@@ -177,6 +179,27 @@ export default class DvFfmpeg extends Service {
       height: video?.height ?? null,
       hasAudio: streams.some(stream => stream.codec_type === 'audio'),
       codec: video?.codec_name ?? null,
+    }
+  }
+
+  /**
+   * Read the last frame of a video given as bytes. The video goes to a temporary directory that the method removes
+   * before it settles, so the caller gives no directory and keeps no file.
+   * @param video - the MP4 bytes.
+   * @returns the last frame as PNG bytes.
+   * @throws FfmpegError when ffmpeg cannot read the video or writes no frame.
+   */
+  async lastFrame(video: Buffer): Promise<Buffer> {
+    const dir = await mkdtemp(join(tmpdir(), 'dv-ffmpeg-'))
+    try {
+      const input = join(dir, 'video.mp4')
+      await writeFile(input, video)
+      // -sseof seeks into the final second, and -update keeps overwriting the one output frame until the last.
+      const argv = ['ffmpeg', '-y', '-loglevel', 'error', '-sseof', '-1', '-i', '{{in:0}}', '-update', '1', '{{out:last.png}}']
+      const [still] = (await this.run({ argv, inputs: [input], outputs: ['last.png'], dir })).outputs
+      return await readFile(still as string)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
     }
   }
 

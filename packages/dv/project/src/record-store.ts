@@ -8,8 +8,9 @@
  * ```
  *
  * The history list of a project is the `parents[0]` ancestry of its last step (`tip`); `at` is the current position on
- * that list. A new record follows `at` and becomes both `tip` and `at`, so the steps that were after `at` leave the list
- * (they are discarded and stay on disk). The store loads a project at first use and mirrors each change to disk before
+ * that list. A new step follows `at` and becomes both `tip` and `at`, so the steps that were after `at` leave the list
+ * (they are discarded and stay on disk). A record outside the history also follows `at`, but leaves `line.json` as it
+ * is, so it never joins the list and discards nothing. The store loads a project at first use and mirrors each change to disk before
  * it returns. It enforces the record format rules (append only after `at`, status only forward, no update after a
  * record finished) and reports every change to the `onChange` callback after the change is on disk. It does not
  * interpret records or take decisions; the other modules do that and call it while they hold the project lock it
@@ -160,14 +161,45 @@ export class RecordStore {
   }
 
   /**
-   * Append a record line. Rule: `parents` must be `[at]`, else `parent_not_head`; the first record of a project has
-   * `parents: []`. The new record becomes both the last step and the current position.
+   * Append a record line as a step. Rule: `parents` must be `[at]`, else `parent_not_head`; the first record of a
+   * project has `parents: []`. The new record becomes both the last step and the current position.
    * @param project - the project.
    * @param line - the record without `id` and `created_at`.
    * @returns the stored record.
    */
   append(project: ProjectId, line: RecordLineInput): ProjectRecord {
     const loaded = this.loaded(project)
+    const stored = this.writeRecord(project, loaded, line)
+    loaded.line = { tip: stored.id, at: stored.id }
+    writeAtomic(this.file(project, 'line.json'), `${JSON.stringify(loaded.line)}\n`)
+    const current = this.currentForm(loaded, stored)
+    this.onChange(project, { kind: 'record', record: current })
+    this.onChange(project, { kind: 'line', ...loaded.line })
+    return current
+  }
+
+  /**
+   * Append a record line outside the history: the same rule as {@link append}, but `line.json` keeps its `tip` and
+   * `at`, so the record joins no history list and no `line` event follows its `record` event.
+   * @param project - the project.
+   * @param line - the record without `id` and `created_at`; `parents` is `[at]`.
+   * @returns the stored record.
+   */
+  appendOutsideHistory(project: ProjectId, line: RecordLineInput): ProjectRecord {
+    const loaded = this.loaded(project)
+    const current = this.currentForm(loaded, this.writeRecord(project, loaded, line))
+    this.onChange(project, { kind: 'record', record: current })
+    return current
+  }
+
+  /**
+   * Check the parent rule of {@link append}, then write the record line to `records.jsonl` and to memory.
+   * @param project - the project.
+   * @param loaded - the project in memory.
+   * @param line - the record without `id` and `created_at`.
+   * @returns the stored record (not a copy).
+   */
+  private writeRecord(project: ProjectId, loaded: LoadedProject, line: RecordLineInput): ProjectRecord {
     const at = loaded.line?.at
     // Check the parent rule before anything is written.
     if (at === undefined ? line.parents.length !== 0 : line.parents.length !== 1 || line.parents[0] !== at) {
@@ -186,12 +218,7 @@ export class RecordStore {
     appendFileSync(this.file(project, 'records.jsonl'), `${JSON.stringify(stored)}\n`)
     loaded.records.set(stored.id, stored)
     loaded.order.push(stored.id)
-    loaded.line = { tip: stored.id, at: stored.id }
-    writeAtomic(this.file(project, 'line.json'), `${JSON.stringify(loaded.line)}\n`)
-    const current = this.currentForm(loaded, stored)
-    this.onChange(project, { kind: 'record', record: current })
-    this.onChange(project, { kind: 'line', ...loaded.line })
-    return current
+    return stored
   }
 
   /**
@@ -241,11 +268,13 @@ export class RecordStore {
 
   /**
    * @param project - the project.
-   * @returns every record's current form, in write order.
+   * @param keep - which stored records to return; every record when omitted.
+   * @returns the current form of each kept record, in write order.
    */
-  listRecords(project: ProjectId): ProjectRecord[] {
+  listRecords(project: ProjectId, keep?: (record: ProjectRecord) => boolean): ProjectRecord[] {
     const loaded = this.loaded(project)
-    return loaded.order.map(id => this.currentForm(loaded, this.storedRecord(project, loaded, id)))
+    const stored = loaded.order.map(id => this.storedRecord(project, loaded, id))
+    return (keep === undefined ? stored : stored.filter(keep)).map(record => this.currentForm(loaded, record))
   }
 
   /**

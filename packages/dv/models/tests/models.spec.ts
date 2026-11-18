@@ -15,7 +15,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import DvModels, { formatModelKey, modelKey, servesTask, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
+import DvModels, { formatModelKey, modelKey, renderTimings, servesTask, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
 const FACTS: RenderModelFacts = {
@@ -205,6 +205,13 @@ describe('dvModels', () => {
       .toThrow('Unknown model "video/ref2v/other/alpha"; call dv_models_list for the models.')
   })
 
+  it('reads the timings of a rendered video from its timing headers, leaving out absent, malformed and non-finite values', () => {
+    expect(renderTimings(new Headers({ 'x-inference-time-s': '41.5', 'x-stage-durations': '{"denoise": 38.25, "decode": 3, "note": "text"}' })))
+      .toEqual({ inference_s: 41.5, denoise_s: 38.25, decode_s: 3 })
+    expect(renderTimings(new Headers({ 'x-inference-time-s': '41.5', 'x-stage-durations': '{denoise: 38' }))).toEqual({ inference_s: 41.5 })
+    expect(renderTimings(new Headers({ 'x-inference-time-s': 'soon' }))).toEqual({})
+  })
+
   it('keeps a registration while the catalog holds an entry of one of the tasks, and disposes it with the last one', async () => {
     const ctx = await start()
     const events: string[] = []
@@ -269,6 +276,19 @@ describe('dvModels', () => {
     ])
     remove()
     expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
+  })
+
+  it('keeps a prompt skill that entries share registered once until the last of them is removed', async () => {
+    const ctx = await start()
+    const warnings: unknown[] = []
+    ctx.logger.exporter({ export: (message) => { if (message.type === 'warn') warnings.push(message.args[0]) } })
+    const removeT2v = ctx.dvModels.register({ ...entry('t2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    const removeRef2v = ctx.dvModels.register({ ...entry('ref2v', 'extra', 'gamma'), promptSkill: GAMMA_SKILL })
+    removeT2v()
+    expect((await ctx.skills.get('gamma-prompting'))?.content).toBe('# Gamma')
+    removeRef2v()
+    expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
+    expect(warnings).toEqual([])
   })
 
   it('registers the prompt skills of the entries when the skill registry mounts after them', async () => {

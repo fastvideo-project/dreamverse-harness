@@ -672,7 +672,6 @@ function editTimelines(slice: Slice, call: TimelineCall): Timeline[] {
         : timeline)
     }
     case OPERATIONS.soundTrackRemove: {
-      // The track's sounds go, and every later track moves up one.
       const track = Number(params['track'])
       return change(timeline => ({
         ...timeline,

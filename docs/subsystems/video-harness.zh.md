@@ -30,7 +30,7 @@ components     @dv/asset-pool @dv/character       chat references   @dv/chat-ref
 base libraries @dv/generation @dv/reference-kit
   │ ctx.dvModels (Consumers: @dv/shot-render, @dv/image-generate, @dv/audio-generate)
   ▼
-models         @dv/models                 the model catalog dvModels, dv_models_list, dv_models_get, video-model-selection
+models         @dv/models                 the model catalog dvModels, dv_models_list, dv_models_get, dv_models_select, video-model-selection
   ▲ register one entry per task a model serves
   │
 providers      @dv/fastvideo              provider fastvideo: fasth3 for tasks ref2v and t2v, a prompt skill per task
@@ -62,7 +62,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 <a id="model-catalog"></a>
 ## 模型目录
 
-模型目录是 [`@dv/models`](../../packages/dv/models/README.zh.md) 的 `dvModels` 服务，它是一个能力 seam，其 Service Provider 是提供方插件（如 [`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) 和 [`@dv/sglang-omni`](../../packages/dv/sglang-omni/README.zh.md)），其 Consumer 包括 `@dv/shot-render`、[`@dv/image-generate`](../../packages/dv/image-generate/README.zh.md) 和 [`@dv/audio-generate`](../../packages/dv/audio-generate/README.zh.md)。每个镜头、每张图片和每段音频用其 `modality`、`task`、`provider` 和 `model` 所指定的模型目录条目渲染；[`@dv/models` README](../../packages/dv/models/README.zh.md) 定义键、条目、渲染请求、智能体工具，以及添加提供方、模型或服务器的步骤。
+模型目录是 [`@dv/models`](../../packages/dv/models/README.zh.md) 的 `dvModels` 服务，它是一个能力 seam，其 Service Provider 是提供方插件（如 [`@dv/fastvideo`](../../packages/dv/fastvideo/README.zh.md) 和 [`@dv/sglang-omni`](../../packages/dv/sglang-omni/README.zh.md)），其 Consumer 包括 `@dv/shot-render`、[`@dv/image-generate`](../../packages/dv/image-generate/README.zh.md) 和 [`@dv/audio-generate`](../../packages/dv/audio-generate/README.zh.md)。每个镜头、每张图片和每段音频用其 `modality`、`task`、`provider` 和 `model` 所指定的模型目录条目渲染；[`@dv/models` README](../../packages/dv/models/README.zh.md) 定义键、条目、渲染请求、智能体工具，以及添加提供方、模型或服务器的步骤。`dv_models_select` 把一个对话的视频模型选择记录为 `models` 组件中的 `models.select` 操作；智能体在该对话中的渲染必须使用所选模型，项目摘要以 `video_model` 给出它，Auto 时为 null。`models.select`、`models.load` 和 `models.unload` 在历史之外（[历史规则](#history-rules)第 1 条）：撤销和重做从不改变这个选择，这些调用也保留之后的步骤。
 
 `shot.render` 的 precondition 对每个调用方都拒绝：不在模型目录中的模型键、缺少提示词、超出条目事实的参数、多于一个的首帧，以及条目拒绝的渲染请求。每个条目的 `validateGenerationRequest(request)` 负责模型的请求规则，例如输入接受的媒体类型和数量（`fasth3` 在生成任务 `ref2v` 下至少一个参考素材）、模型不接受的首帧，以及无效的 `extra` 值；`shot.render` 组装请求，在写入记录前和真正渲染前各调用一次，自己不检查任何模型规则。
 
@@ -80,6 +80,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
    - 用户的步骤和智能体的步骤在同一个历史列表中，按时间顺序排列。
    - 修改视图不是一步。视图是平移、缩放、选中项、所显示的视图和打开的面板。
    - 修改项目名称不是一步。删除项目不是一步。
+   - 对话的视频模型选择不是一步。加载或卸载模型不是一步。撤销和重做不改变它们，它们也不丢弃之后的步骤。
 2. **撤销、重做和"回到某一步"移动当前位置。**
    - 当前位置是历史列表中的一步。项目显示这一步的状态。
    - 撤销把当前位置往回移一步。Ctrl+Z、撤销按钮和 `dv_proj_undo` 执行撤销。
@@ -96,7 +97,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
    - 生成的素材是某一步生成的素材，例如渲染、静帧或导出。只有当它的那一步在当前位置或之前时，素材库才显示这个生成的素材。
    - 所有素材的文件都留在磁盘上。
 
-`@dv/project` 实现这些规则。每个项目有一个 `line.json` 文件，内容是 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链；`at` 是当前位置。撤销、重做和移到某一步只改变 `at`，不写记录。一次写入把它的记录追加在 `at` 之后，并把 `tip` 和 `at` 都设为这条记录，因此原来在 `at` 之后的步骤离开历史列表；它们的行仍留在 `records.jsonl` 中。运行器取消其中每个尚未结束的步骤，错误为 `error.code: 'discarded'`。`dvProject.undo` 拒绝从第一条记录再往回移（`nothing_to_undo`），也拒绝移到被丢弃的记录（`invalid_params`）；`dvProject.redo` 拒绝从最后一步再往前移（`nothing_to_redo`）。
+`@dv/project` 实现这些规则。每个项目有一个 `line.json` 文件，内容是 `{tip, at}`：`tip` 是最后一步，历史列表是 `tip` 的 `parents[0]` 祖先链；`at` 是当前位置。撤销、重做和移到某一步只改变 `at`，不写记录。一次写入把它的记录追加在 `at` 之后，并把 `tip` 和 `at` 都设为这条记录，因此原来在 `at` 之后的步骤离开历史列表；它们的行仍留在 `records.jsonl` 中。运行器取消其中每个尚未结束的步骤，错误为 `error.code: 'discarded'`。`dvProject.undo` 拒绝从第一条记录再往回移（`nothing_to_undo`），也拒绝移到被丢弃的记录（`invalid_params`）；`dvProject.redo` 拒绝从最后一步再往前移（`nothing_to_redo`）。带 `OperationSpec.outsideHistory` 的操作把记录写在 `at` 之后，但不改变 `line.json`：这条记录从不加入历史列表，不丢弃步骤，也不取消记录。
 
 ## 操作如何运行
 
@@ -104,7 +105,7 @@ bundle         @dv/bundle                 the cordis.patch.yml rows of every pac
 
 ## 项目状态
 
-归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（角色 `character`、场景 `location`、风格 `style`、时间线 `timeline`、画布 `canvas`，即 [`@dv/canvas`](../../packages/dv/canvas/README.zh.md) 从其生产者所注册的记录构建的节点列表），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。
+归约函数读取记录并计算状态；它不写记录。运行器和记录存储是仅有的写入者。当前状态是把以当前位置结尾的链交给归约函数折叠的结果：项目组件从这条记录沿 `parents[0]` 往回走，再把这些记录按从旧到新的顺序交给每个已注册的归约函数，然后把每条历史之外的记录按写入顺序只交给其所属组件的归约函数，因此当前位置不改变切片中的这部分，例如 `models` 的选择。每个组件的归约函数把自己的记录变成 `ProjectState.components` 中自己的切片（角色 `character`、场景 `location`、风格 `style`、时间线 `timeline`、模型 `models`、画布 `canvas`，即 [`@dv/canvas`](../../packages/dv/canvas/README.zh.md) 从其生产者所注册的记录构建的节点列表），项目组件自己的归约函数维护 `proj` 切片：这条链上的记录、过期和被替代的记录，以及创建每个素材的记录。归约函数的 `agentSummary` 把该组件的字段加入 `dv_proj_*` 工具和 `dv:project` 提示词段交给智能体的项目摘要。`agentSummary` 还接收读取摘要的智能体的会话，因此 `video_model` 这样的字段可以因对话而不同。
 
 视图显示的要么是记录，要么是状态。历史面板列出记录：历史列表中的步骤，最新的在前；被丢弃的记录不显示。画布、时间线编辑器和素材库面板显示状态：当前状态，因此撤销、重做或移到某一步会改变它们画出的内容。素材库面板列出当前状态中的每个素材，以及项目中每个导入的素材，包括被丢弃的步骤导入的素材（[历史规则](#history-rules)第 4 条）。没有视图持有项目状态：每个视图获取当前状态，并在实时事件流的每个事件后重新获取。
 
@@ -182,6 +183,8 @@ DreamVerse 的新行为挂在某个包已拥有的扩展点上，就像 DeepSeek
 5. 它带不带给智能体的文字？带的话，按原则中的文字表把文字放到它的主人那里。
 
 最后检查：主人的那一句话仍然成立；代码里没有写死另一个包的插件名；没有依赖违背原则 5 的方向。
+
+通用视频任务 `fl2v` 根据提示词连接独立的 `first_frame` 和 `last_frame` 图像输入，不使用普通参考媒体。任意提供方均可注册此任务的模型目录条目；Shot render 存储两个角色并分别传递 `RenderRequest.firstFrame` 和 `RenderRequest.lastFrame`。校验与提供方要求见[模型请求](../../packages/dv/models/README.zh.md#model-keys)和 [Shot render](../../packages/dv/shot-render/README.zh.md)。
 
 ### 查表
 

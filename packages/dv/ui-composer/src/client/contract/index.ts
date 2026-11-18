@@ -91,6 +91,12 @@ export interface PromptHost {
 export interface DvPromptProps {
   readonly projectId: string
   readonly call: PromptCall
+  /**
+   * The identity of what the call belongs to, such as the record of a canvas take. An editable occurrence keeps its
+   * unsent draft under the project, this id, and the lent call, so two takes with equal calls keep separate drafts. A
+   * host remounts the occurrence, such as with a React key, to switch to another draft id or project.
+   */
+  readonly draftId: string
   /** The project state that the host draws; the tray, the chips and the edits resolve every reference against it. */
   readonly state: WireState
   /** The operation declarations that the host reads; the composer finds the call's operation among them. */
@@ -194,9 +200,13 @@ export interface RemovedInput {
  */
 export interface DvPromptInjected {
   readonly check: (request: OperationRequest) => Promise<OperationCheck>
+  /** Read the model catalog again, for the retry of a failed load. */
+  readonly reloadModels: () => void
   readonly hooks: {
-    /** The model catalog; null until it loads, and loaded again when an occurrence opens while none is open. */
+    /** The model catalog; null until it loads, and loaded again when an occurrence opens unless a load is in flight. */
     readonly models: HostObservable<readonly WireModelEntry[] | null>
+    /** The message of the catalog's last failed load; null while a load is in flight and after a load succeeds. */
+    readonly modelsFailure: HostObservable<string | null>
     /** The parameter bars that plugins registered, `dvComposer.paramBars`. */
     readonly paramBars: HostObservable<readonly ParamBar[]>
     /**

@@ -9,15 +9,13 @@
  * @module @dv/uniserve
  */
 import { readFileSync } from 'node:fs'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
 import type { Context } from '@deepseek-ai/cordis'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
-import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent } from '@dv/models'
+import { renderTimings, type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
 import { FASTH3_OMNI_DESCRIPTION, fasth3OmniProblems, fasth3OmniPrompt, fasth3OmniSchema, type Ref2vaConditions } from './fasth3-omni.ts'
 
 /** `dv-uniserve` configuration. */
@@ -166,50 +164,13 @@ async function readServerFacts(baseUrl: string): Promise<ServerFacts> {
 function renderTarget(
   facts: RenderModelFacts, request: RenderRequest,
 ): { short_edge: number; aspect_ratio: string; duration_seconds: number } {
-  const canvas = Object.entries(facts.frameSizes).flatMap(([ratio, sizes]) => Object.entries(sizes)
+  const canvas = Object.entries(facts.frameSizes ?? {}).flatMap(([ratio, sizes]) => Object.entries(sizes)
     .filter(([, [width, height]]) => width === request.frameWidth && height === request.frameHeight)
     .map(([resolution]) => ({ short_edge: Number.parseInt(resolution, 10), aspect_ratio: ratio })))[0]
   if (canvas === undefined) throw new Error(`UniServe renders no ${String(request.frameWidth)}x${String(request.frameHeight)} canvas.`)
-  const duration = Object.entries(facts.numFramesByDurationSec).find(([, frames]) => frames === request.numFrames)?.[0]
+  const duration = Object.entries(facts.numFramesByDurationSec ?? {}).find(([, frames]) => frames === request.numFrames)?.[0]
   if (duration === undefined) throw new Error(`UniServe renders no video of ${String(request.numFrames)} frames.`)
   return { ...canvas, duration_seconds: Number(duration) }
-}
-
-/**
- * The backend timings of a rendered video, in seconds: `inference_s` from `x-inference-time-s`, and one `<stage>_s` per
- * stage of the JSON object in `x-stage-durations`. An absent header, and a value that is not a finite number, adds no
- * timing.
- * @param headers - the answer's headers.
- * @returns the timings.
- * @throws SyntaxError when `x-stage-durations` is not JSON.
- */
-function renderTimings(headers: Headers): Record<string, number> {
-  const stages = JSON.parse(headers.get('x-stage-durations') ?? '{}') as Record<string, unknown>
-  const values = { inference: Number(headers.get('x-inference-time-s') ?? Number.NaN), ...stages }
-  return Object.fromEntries(Object.entries(values)
-    .filter((value): value is [string, number] => typeof value[1] === 'number' && Number.isFinite(value[1]))
-    .map(([name, seconds]) => [`${name}_s`, seconds]))
-}
-
-/**
- * The last frame of a video as PNG bytes, read by ffmpeg from a temporary copy that is removed afterwards.
- * @param ctx - the plugin context, with `dvFfmpeg`.
- * @param video - the MP4 bytes.
- * @returns the PNG bytes.
- * @throws FfmpegError when ffmpeg cannot read the video or writes no frame.
- */
-async function lastFrame(ctx: Context, video: Buffer): Promise<Buffer> {
-  const dir = await mkdtemp(join(tmpdir(), 'dv-uniserve-'))
-  try {
-    const input = join(dir, 'video.mp4')
-    await writeFile(input, video)
-    // -sseof seeks into the final second, and -update keeps overwriting the one output frame until the last.
-    const argv = ['ffmpeg', '-y', '-loglevel', 'error', '-sseof', '-1', '-i', '{{in:0}}', '-update', '1', '{{out:last.png}}']
-    const [still] = (await ctx.dvFfmpeg.run({ argv, inputs: [input], outputs: ['last.png'], dir })).outputs
-    return await readFile(still as string)
-  } finally {
-    await rm(dir, { recursive: true, force: true })
-  }
 }
 
 /**
@@ -245,7 +206,10 @@ function modelEntry(ctx: Context, config: Config): ModelEntry {
     },
     async validateGenerationRequest(request: RenderRequest): Promise<string[]> {
       const { conditions } = await readFacts()
-      return fasth3OmniProblems(conditions, request, asset => ctx.dvAssetPool.mediaType(asset))
+      return [
+        ...request.lastFrame === null ? [] : ['It takes no last_frame input; this shot has 1.'],
+        ...fasth3OmniProblems(conditions, request, asset => ctx.dvAssetPool.mediaType(asset)),
+      ]
     },
     render(request: RenderRequest, signal?: AbortSignal): AsyncIterable<RenderStreamEvent> {
       // The server receives the references in input order, then the first frame.
@@ -271,7 +235,7 @@ function modelEntry(ctx: Context, config: Config): ModelEntry {
           method: 'POST', headers: { 'content-type': 'application/json' }, body, ...signal === undefined ? {} : { signal },
         })
         const video = Buffer.from(await response.arrayBuffer())
-        yield { kind: 'last_frame', png: await lastFrame(ctx, video) }
+        yield { kind: 'last_frame', png: await ctx.dvFfmpeg.lastFrame(video) }
         yield { kind: 'video_start', mime: response.headers.get('content-type') ?? 'video/mp4' }
         yield { kind: 'chunk', bytes: video }
         yield { kind: 'done', timings: renderTimings(response.headers) }
