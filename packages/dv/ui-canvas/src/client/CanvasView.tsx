@@ -1061,7 +1061,11 @@ export function CanvasView(
   const canvasId = useId()
   const nodeCard = (id: string): Element | null =>
     document.querySelector(`[data-dv-canvas="${canvasId}"] [data-node-id="${id.replace(/["\\]/g, '\\$&')}"]`)
-  const editorZoom = useZoomPresence(editing, nodeCard)
+  // The name panel of a node whose type has `open` has no opener: it is smaller than a large card and shows none of the
+  // card's content, so it scales slightly and fades instead of being stretched from the card's box.
+  const editorOpener = (id: string): Element | null =>
+    graph?.nodes.find(node => node.id === id)?.nodeType.open === undefined ? nodeCard(id) : null
+  const editorZoom = useZoomPresence(editing, editorOpener)
   const editingNode = graph?.nodes.find(node => node.id === editorZoom.shown) ?? null
   const stackedNode = editingNode === null ? null : graph?.nodes.find(node => node.id === stacked) ?? null
   /**

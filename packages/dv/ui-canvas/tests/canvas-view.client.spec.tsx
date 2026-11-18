@@ -25,6 +25,8 @@ afterEach(() => {
   vi.restoreAllMocks()
   vi.useRealTimers()
   forgetCanvasStorage()
+  Reflect.deleteProperty(HTMLElement.prototype, 'animate')
+  Reflect.deleteProperty(HTMLElement.prototype, 'getAnimations')
 })
 
 /**
@@ -2068,6 +2070,37 @@ describe('renaming a node', () => {
     fireEvent.keyDown(field(shown), { key: 'Escape' })
     expect(view.queryByTestId('dv-canvas-node-editor')).toBeNull()
     expect(operationsOf(server.writes)).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('grows an editor out of its node, and scales and fades the name panel, which no node stretches into', async () => {
+    const { runtime, node, open, canvasOf, panel } = await mountAlbum(() => '旅行')
+    await waitFor(() => { expect(node('m1').getAttribute('aria-label')).toBe('旅行') })
+    // jsdom lays out nothing and has no Web Animations API: every element counts as a 200 × 100 box on screen.
+    const opened: Array<{ element: Element; from: Keyframe | undefined }> = []
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 1 })
+    vi.stubGlobal('matchMedia', () => ({ matches: false }))
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      { left: 10, top: 10, width: 200, height: 100, right: 210, bottom: 110, x: 10, y: 10, toJSON: () => ({}) },
+    )
+    Object.defineProperty(HTMLElement.prototype, 'animate', {
+      configurable: true,
+      value: function (this: Element, keyframes: Keyframe[]) {
+        opened.push({ element: this, from: keyframes[0] })
+        return { finished: Promise.resolve(), cancel: () => undefined }
+      },
+    })
+    Object.defineProperty(HTMLElement.prototype, 'getAnimations', { configurable: true, value: () => [] })
+    const fromOf = (element: Element): Keyframe | undefined => opened.find(call => call.element === element)?.from
+    select(node('m1'), canvasOf())
+    fireEvent.keyDown(node('m1'), { key: 'F2' })
+    const shown = await panel()
+    expect(fromOf(shown)).toEqual({ transform: 'scale(0.96)', transformOrigin: '50% 50%', opacity: 0 })
+    fireEvent.keyDown(field(shown), { key: 'Escape' })
+    await waitFor(() => { expect(canvasOf().querySelector('[data-testid="dv-canvas-node-editor"]')).toBeNull() })
+    opened.length = 0
+    const editor = await open('g2')
+    expect(fromOf(editor)).toEqual({ transform: 'translate(0px, 0px) scale(1, 1)', transformOrigin: '0 0', opacity: 1 })
     await runtime.dispose()
   })
 
