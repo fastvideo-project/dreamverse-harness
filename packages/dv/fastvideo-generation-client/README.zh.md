@@ -1,5 +1,5 @@
 ---
-description: "FastVideo POST /v1/videos/sync API 客户端：配置的参考上限、服务器发布的输出事实、带类型的参考、完整 MP4 片段与取消。"
+description: "FastVideo POST /v1/videos/sync API 客户端：配置的模型事实、带类型的参考、完整 MP4 片段与取消。"
 kind: "package-reference"
 ---
 
@@ -11,7 +11,7 @@ kind: "package-reference"
 
 使用本包通过 FastVideo 生成视频片段。客户端用 `GET /v1/model_info` 检查服务的模型，每个片段发送一个内联所有参考的 `POST /v1/videos/sync`，并返回完整 MP4 和后端耗时。取消会关闭 HTTP 请求，但后端可能继续完成已经开始的生成。
 
-服务器在 `GET /v1/model_info` 中以 `video_output_capabilities` 发布时长和画面尺寸。客户端保留服务器的顺序，因此其第一个宽高比和第一个分辨率是渲染默认值。操作者配置所服务的别名和参考上限。
+原生服务器可以在 `GET /v1/model_info` 中发布 `video_output_capabilities`。设置 `discoverOutputCapabilities: true` 后，客户端会验证这些元数据并发现输出尺寸和整数时长，同时保留配置的模型 ID 和参考素材限制。服务器提供配置中的第一个宽高比和第一个分辨率时，它们仍排在最前，因此仍是默认渲染几何；否则使用服务器的顺序。旧服务器不发布元数据时仍使用配置；无效元数据会明确报错。发现功能默认关闭，在明确开启前保留配置的输出选项。
 
 ## 目录
 
@@ -39,31 +39,35 @@ kind: "package-reference"
     baseUrl: http://127.0.0.1:8029
     modelFacts:
       modelId: fasth3
+      frameSizes: { '16:9': { 480p: [832, 480] } }
+      numFramesByDurationSec: { 5: 124 }
       maxReferences: 12
       referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } }
 ```
 
-FastVideo 不发布参考上限，因此操作者把它们和所服务的别名一起写出。配置和 `modelFacts` 拒绝未声明的字段，因此带有未声明字段（如 `modelFacts.frameSizes`）的配置在加载时以指明该字段的 `Error` 失败。
+FastVideo 不提供能力路由，因此操作者写出所服务模型的事实。客户端从 `frameSizes` 的键推导 `aspectRatios` 和 `resolutions`，从 `numFramesByDurationSec` 的键推导 `minDurationSec` 和 `maxDurationSec`。
 
 | 字段 | 默认值 | 含义 |
 | --- | --- | --- |
 | `baseUrl` | 必填 | 生成后端的 HTTP 基础 URL |
 | `task` | `null` | `generateSegment` 作为请求的 `task` 发送的原生 FastVideo 任务选择器，如 `fl2va`；`null` 时不发送 `task` |
 | `modelFacts.modelId` | 必填 | 精确的服务模型别名；`model()` 将它与 `served_model_name` 比较 |
+| `modelFacts.frameSizes` | 必填 | 宽高比到分辨率到 `[width, height]` 的映射；每个宽高比列出相同的分辨率 |
+| `modelFacts.numFramesByDurationSec` | 必填 | 整数秒时长到帧数的映射，覆盖从最短到最长的每个时长，帧数随时长增长 |
 | `modelFacts.maxReferences` | 必填 | 包含首帧的参考总数上限 |
 | `modelFacts.referenceMediaTypes` | 必填 | `image`、`video` 或 `audio` 到 `{maxCount}` 的映射，每项不超过 `maxReferences`；未列出的类型不被接受 |
 
-某个 `referenceMediaTypes` 上限超过 `maxReferences` 时，构造客户端会抛出指明该上限的 `Error`，因此构造客户端的插件在加载时失败。
+事实违反这些规则时，构造客户端会抛出指明不一致之处的 `Error`，因此构造客户端的插件在加载时失败。
 
 ### 服务
 
-- `configuredFacts` 从构造起持有 `ConfiguredFacts`，不发送请求：`modelId`、`maxReferences` 和 `referenceMediaTypes`。它不含输出事实；只有 `model()` 返回输出事实。
-- `model()` 发送 `GET /v1/model_info` 并返回 `ModelFacts`，即配置的事实加上从 `video_output_capabilities` 读出的 `OutputFacts`（`aspectRatios`、`resolutions`、`frameSizes`、`minDurationSec`、`maxDurationSec`、`numFramesByDurationSec`），并在第一次 `served_model_name` 等于 `modelFacts.modelId` 的有效回答之后缓存它们。状态不是 200 时抛出指明路由和状态的 `Error`；响应体不是 JSON 时抛出指明路由的 `Error`；`served_model_name` 缺失或不同时抛出指明两个别名的 `Error`；`video_output_capabilities` 缺失或为 null 时抛出指明路由、所服务模型和该字段的 `Error`，并说明 FastVideo 必须发布它（FastVideo #2085）；无效元数据抛出 `FastVideo returned invalid video output capabilities.`。失败不会缓存，因此下一次调用会再次读取该路由。
+- `facts` 从构造起持有推导出的事实，不发送请求；`model()` 在后端确认所服务的别名后返回同一组事实。
+- `model()` 发送 `GET /v1/model_info`，在第一次 `served_model_name` 等于 `modelFacts.modelId` 的回答之后返回推导出的事实。状态不是 200 时抛出指明路由和状态的 `Error`；响应体不是 JSON 时抛出指明路由的 `Error`；`served_model_name` 缺失或不同时抛出指明两个别名的 `Error`。
 - `generateSegment(request)` 发送一个 `POST /v1/videos/sync`，以完整 MP4 解析为 `{video, mime, timings}`。该请求没有客户端的响应头超时，因为后端在整个视频生成后才发送响应头。响应体保留全局 dispatcher 的响应体超时，因为后端从已完成的 MP4 文件发送响应体。中止 `request.signal` 会取消 HTTP 请求，并以 `signal.reason` 拒绝。
 
 ### 后端 API
 
-API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora", "video_output_capabilities"}`。客户端读取 `schema_version` 1、正数 `fps`、最多 600 秒的 `duration_seconds` `{min, max}`、覆盖从 `min` 到 `max` 每个整秒的 `num_frames_by_duration_seconds`，以及 `recommended_frame_sizes`：最多 64 个 `N:M` 宽高比，每个宽高比把同一组最多 16 个分辨率映射到 `[width, height]`。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
+API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
 
 回答必须带 `video/*` 内容类型；其他内容类型以携带响应体文本的 `Error` 拒绝。`@dv/models` 的 `renderTimings` 读取耗时：`X-Inference-Time-S` 变为 `timings.inference_s`，`X-Stage-Durations` 中 JSON 对象的每个阶段变为 `timings.<stage>_s`；不是 JSON 的 `X-Stage-Durations` 不添加阶段耗时，视频仍保留。HTTP 400 变为 `GenerationSegmentError`；其他 HTTP 失败保留状态和受限长度的后端消息。消息取 `application/json` 响应体的 `error.message`，否则取响应体文本。Python traceback 仅保留最后的异常行；超过 2,048 字符的消息会截断，完整详情留在服务器日志中。
 
@@ -80,11 +84,9 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 | 文件 | 内容 |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `dvFastvideoGeneration` 服务：服务模型检查、请求体、响应检查与耗时 |
-| [`src/model-facts.ts`](src/model-facts.ts) | 配置的事实、其 Loader 校验与推导出的 `ConfiguredFacts` |
-| [`src/output-capabilities.ts`](src/output-capabilities.ts) | `video_output_capabilities` 的校验与从中读出的 `OutputFacts` |
-| [`src/closed-object.ts`](src/closed-object.ts) | 拒绝未声明配置字段的 Loader 校验 |
+| [`src/model-facts.ts`](src/model-facts.ts) | 配置的事实、其 Loader 校验与推导出的 `ModelFacts` |
 | [`src/references.ts`](src/references.ts) | 每种媒体类型的参考字段，按后端读取顺序排列 |
-| [`src/types.ts`](src/types.ts) | 配置的事实、输出事实与模型事实，带参考的片段请求与片段视频 |
+| [`src/types.ts`](src/types.ts) | 模型事实、带参考的片段请求与片段视频 |
 | [`src/errors.ts`](src/errors.ts) | 片段错误 |
 
 `tests/` 目录让客户端连接一个扮演后端的本地 HTTP 服务器来测试它。
@@ -129,9 +131,8 @@ API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_in
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **模型事实从不刷新**——`model()` 在插件生命周期内只成功读取一次 `GET /v1/model_info`。若后端以另一个模型或其他输出选项重启，harness 会一直保留第一次的事实，直到插件重新加载。
-- **配置的参考上限**——FastVideo 不发布客户端读取的参考上限。操作者必须让 `maxReferences` 和 `referenceMediaTypes` 与部署的模型一致。
-- **没有输出元数据的服务器**——早于 `video_output_capabilities`（FastVideo #2085）的 FastVideo 服务器无法服务本客户端；在服务器发布它之前 `model()` 一直失败。
+- **模型事实从不刷新**——`model()` 在插件生命周期内只检查一次服务别名。若后端以另一个模型重启，harness 会一直保留配置的事实，直到插件重新加载。
+- **配置的模型事实**——FastVideo 不提供能力路由。操作者必须让配置的事实与部署的权重及采样设置一致。
 - **完整响应输出**——没有逐步预览；完整 MP4 保留在内存中。
 - **无默认请求期限** — 调用接受可选中止信号。默认原生传输关闭长时间生成及模型加载请求的响应头超时；调用者负责操作期限。
 

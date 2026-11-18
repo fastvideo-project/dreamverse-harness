@@ -8,7 +8,7 @@ import { readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ToolCallId } from '@deepseek-ai/dsh-llm'
 import { Config as FastVideoConfig } from '@dv/fastvideo'
-import { deriveConfiguredFacts } from '@dv/fastvideo-generation-client'
+import { deriveModelFacts } from '@dv/fastvideo-generation-client'
 import type { AssetId, OperationToolValue, ProjectId, RecordId } from '@dv/project'
 import { formatModelKey } from '@dv/models'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -96,9 +96,9 @@ describe('DreamVerse bundle composition', () => {
       } } },
     })
     const fastVideoTasks = Object.values(FastVideoConfig(fastVideoRow?.config as FastVideoConfig).models['fasth3'] ?? {})
-    expect(fastVideoTasks.map(task => deriveConfiguredFacts(task.modelFacts))).toEqual([
-      { modelId: 'fasth3', maxReferences: 12, referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } } },
-      { modelId: 'fasth3', maxReferences: 0, referenceMediaTypes: {} },
+    expect(fastVideoTasks.map(task => deriveModelFacts(task.modelFacts))).toMatchObject([
+      { aspectRatios: ['16:9', '9:16', '1:1'], resolutions: ['768p'], minDurationSec: 5, maxDurationSec: 15 },
+      { aspectRatios: ['16:9', '9:16', '1:1'], resolutions: ['768p'], minDurationSec: 5, maxDurationSec: 15 },
     ])
     // The UniServe row names the server of fasth3 for task ref2v.
     expect(uniserve.config).toEqual({ baseUrl: 'http://10.244.8.35:8000' })

@@ -1,15 +1,14 @@
-/** Validate the native FastVideo `video_output_capabilities` of `GET /v1/model_info` before advertising them. */
-import type { OutputFacts } from './types.ts'
+/** Validate native FastVideo output geometry before advertising it to a caller. */
+import type { ModelFacts } from './types.ts'
 
-/**
- * The output facts that the server publishes, in the server's order.
- * @param value - the `video_output_capabilities` value of `GET /v1/model_info`, present and not null.
- * @returns the aspect ratios, resolutions, frame sizes, duration range and frame count of each duration.
- * @throws Error for metadata that is not schema version 1, has no positive `fps`, a duration range outside 1 to 600
- *   seconds, a missing frame count, more than 64 aspect ratios or 16 resolutions, an aspect ratio that is not `N:M`, a
- *   frame size that is not two positive integers, or aspect ratios with different resolutions.
- */
-export function outputFacts(value: unknown): OutputFacts {
+/** Put the configured default first when the server offers it; keep the server's order otherwise. */
+function moveToFront(keys: string[], first: string | undefined): string[] {
+  return keys.filter(key => key === first).concat(keys.filter(key => key !== first))
+}
+
+/** Preserve reference limits and model identity while discovering native output choices. */
+export function outputFacts(base: ModelFacts, value: unknown): ModelFacts {
+  if (value === undefined || value === null) return base
   const fail = (): never => { throw new Error('FastVideo returned invalid video output capabilities.') }
   const object = (entry: unknown): Record<string, unknown> => {
     if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) return fail()
@@ -44,6 +43,8 @@ export function outputFacts(value: unknown): OutputFacts {
   const inconsistent = Object.values(frameSizes).some(tiers => Object.keys(tiers).length !== resolutions.length
     || resolutions.some(key => !(key in tiers)))
   if (inconsistent) return fail()
-  return { aspectRatios: sizes.map(([aspect]) => aspect), resolutions, frameSizes,
+  // Shot rendering defaults to the first aspect ratio and resolution, so the configured defaults stay first.
+  return { ...base, aspectRatios: moveToFront(sizes.map(([aspect]) => aspect), base.aspectRatios[0]),
+    resolutions: moveToFront(resolutions, base.resolutions[0]), frameSizes,
     minDurationSec: min, maxDurationSec: max, numFramesByDurationSec }
 }
