@@ -3,8 +3,8 @@
  * provider-returned URLs.
  */
 import { setTimeout as delay } from 'node:timers/promises'
-import { imageCatalog, speechCatalog, videoCatalog } from './catalog.ts'
-import type { ImageModel, SpeechModel, VideoModel } from './types.ts'
+import { imageCatalog, speechCatalog, videoCatalog, videoReferences } from './catalog.ts'
+import type { ImageModel, ReferenceMedia, SpeechModel, VideoModel } from './types.ts'
 
 /** One generated image as OpenRouter returns it. */
 export interface OpenRouterImage { bytes: Buffer; mime: string }
@@ -57,9 +57,23 @@ export class OpenRouterApi {
     return (await this.call(path, { signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]) })).json()
   }
 
-  /** Read current choices. */
+  /**
+   * Read current video choices from `videos/models`, with each model's reference media from the models catalog filtered
+   * to video output.
+   * @param signal - aborts both requests.
+   * @returns the usable video models; every model has no reference media when only the models catalog fails.
+   * @throws Error when `videos/models` fails or answers an invalid catalog; the signal's reason on abort.
+   */
   async catalog(signal?: AbortSignal): Promise<VideoModel[]> {
-    return videoCatalog(await this.catalogJson('videos/models', signal))
+    const [models, references] = await Promise.all([
+      this.catalogJson('videos/models', signal),
+      this.catalogJson('models?output_modalities=video', signal).then(videoReferences).catch((error: unknown) => {
+        // A failed models catalog removes only task ref2v; the generation choices come from videos/models.
+        if (signal?.aborted === true) throw error
+        return new Map<string, ReferenceMedia[]>()
+      }),
+    ])
+    return videoCatalog(models, references)
   }
 
   /** Read current image choices. */

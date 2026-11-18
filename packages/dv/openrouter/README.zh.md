@@ -27,13 +27,13 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 
 `models` 将本地别名映射到 OpenRouter 视频模型 ID，`imageModels` 将本地别名映射到 OpenRouter 图片模型 ID，`audioModels` 将本地别名映射到 OpenRouter 语音模型 ID；别名使用小写字母、数字和连字符。`credentialRef` 默认为 `OPENROUTER_API_KEY`，引用现有凭据存储。`baseUrl` 默认为 `https://openrouter.ai/api/v1/`。`pollIntervalMs` 默认为 5000。
 
-选择器仅显示已配置模型。兼容目录条目提供 T2V；目录声明相应端点图像时注册 I2V 和 FL2V。每个图片模型注册为 T2I，因此 `image.generate`（`dv_image_generate`）可以使用它；每个语音模型注册为 T2A，因此 `audio.generate`（`dv_audio_generate`）可以使用它。API 模型不需要下载本地权重或加载 GPU。
+选择器仅显示已配置模型。兼容目录条目提供 T2V；模型目录为该模型列出图片输入时注册 REF2V，视频目录声明相应端点图像时注册 I2V 和 FL2V。每个图片模型注册为 T2I，因此 `image.generate`（`dv_image_generate`）可以使用它；每个语音模型注册为 T2A，因此 `audio.generate`（`dv_audio_generate`）可以使用它。API 模型不需要下载本地权重或加载 GPU。
 
 
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-提供方读取 `videos/models`，校验离散时长和端点输入，向 `videos` 提交一次并轮询返回的任务 ID。它从规范认证内容路由下载视频，并通过共享 ffmpeg 服务提取尾帧。返回的签名 URL 不会被使用。任务以 `failed`、`cancelled` 或 `expired` 结束时，渲染失败并带上该状态以及 OpenRouter 给出的任务 `error` 文本。
+提供方从 `videos/models` 读取每个模型的生成选项，从 `models?output_modalities=video` 读取其参考媒体：`architecture.input_modalities` 中的 `image`、`video` 和 `audio` 项，`videos/models` 不列出这些。仅第二个请求失败时，模型照常加载但没有参考媒体，也不注册 REF2V。REF2V 调用接受一张或多张参考图片，不接受首帧或尾帧，因为存在 `frame_images` 时 OpenRouter 会忽略 `input_references`；每张图片作为 `input_references` 中的 `image_url` 项以 `data:` URL 发送。提供方校验离散时长和端点输入，向 `videos` 提交一次并轮询返回的任务 ID。它从规范认证内容路由下载视频，并通过共享 ffmpeg 服务提取尾帧。返回的签名 URL 不会被使用。任务以 `failed`、`cancelled` 或 `expired` 结束时，渲染失败并带上该状态以及 OpenRouter 给出的任务 `error` 文本。
 
 图片提供方读取 `images/models`，保留输出模态包含 `image`、且列出 `output_format` 选项时其中包含 PNG、JPEG 或 WebP 的条目。图片调用不接受 `size`：OpenRouter 按服务商推导像素尺寸，因此条目的 schema 把模型的 `aspect_ratio`、`resolution`、`quality` 和 `background` 枚举选项列为 `extra`；带 `size`、未列出的 `extra` 键或未列出取值的调用在提交前被拒绝。提供方以 `n: 1` 提交一次 `POST images`，目录列出 `seed` 时带上种子，模型提供 PNG 时带上 `output_format: png`；它把 `data[0].b64_json` 存为 PNG，其他光栅格式通过共享 ffmpeg 服务转换，并从 PNG 读取像素尺寸。
 
@@ -54,15 +54,15 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 
 #### 模型看到的内容
 
-智能体看到提供方 `openrouter`、已配置别名、支持的任务模式、精确时长选项、图片模型的 `extra` 选项、语音模型的声音以及云端取消限制。提示词使用端点标签，而非内部素材引用 URL。
+智能体看到提供方 `openrouter`、已配置别名、支持的任务模式、精确时长选项、图片模型的 `extra` 选项、语音模型的声音、云端取消限制，以及视频模型不接受音频和视频参考。配置了视频模型且技能注册表已挂载时，技能目录列出提示词技能 `openrouter-video-prompting`，描述为 `Prompt rules for OpenRouter cloud video models, tasks t2v, ref2v, i2v and fl2v. OpenRouter video models take no audio or video references for now.`，因此智能体无需列出模型即可知道这一限制；加载该技能返回 [`skills/openrouter-video-prompting.md`](skills/openrouter-video-prompting.md)。提示词使用端点标签，而非内部素材引用 URL。
 
 #### Token 影响
 
-模型元数据出现在目录工具结果中；不会添加隐藏提示词前缀。
+模型元数据出现在目录工具结果中。配置了视频模型时，提示词技能的目录条目在每次请求中约占 55 个 token；加载后的技能约 350 个 token。
 
 #### KV 缓存影响
 
-目录结果追加到对话。每个云端视频、图片或语音请求相互独立。
+目录结果追加到对话。配置第一个视频模型或移除最后一个视频模型时，会增删该技能的目录条目，并改变从技能目录起的缓存前缀。每个云端视频、图片或语音请求相互独立。
 
 ## 已知限制与延期工作
 
@@ -70,7 +70,9 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 
 - OpenRouter 未记录远端视频取消路由。中止仅停止本地监控，不取消付费任务。提交状态不明确时不会自动重试。
 
-- 不会臆造帧率或精确像素尺寸。通用参考媒体任务和模型透传参数需先有公开的逐模型限制，才能启用。
+- 不会臆造帧率或精确像素尺寸。模型透传参数需先有公开的逐模型限制，才能启用。
+
+- 视频模型只接受图片参考：每个视频条目的描述和 `openrouter-video-prompting` 技能告诉智能体音频和视频参考不可用，带音频或视频参考的请求在提交前即被拒绝，即使模型的目录条目列出了音频或视频输入。OpenRouter 的视频 API 以 `data:` URL 接受图片参考，但音频和视频参考只接受公开 HTTPS 链接，本地运行的 harness 没有公开主机就无法提供这种链接。
 
 - 图片模型只从文字生成（T2I）。不传 OpenRouter 的 `input_references`（图片编辑和参考图），因为 `image.generate` 不声明图片输入；不提供 SVG 和 GIF 输出。
 

@@ -1,3 +1,6 @@
+/** A kind of media OpenRouter's video API takes in `input_references`. */
+export type ReferenceMedia = 'image' | 'audio' | 'video'
+
 /** Public OpenRouter video metadata; contains no keys or generated media URLs. */
 export interface VideoModel {
   id: string
@@ -6,6 +9,8 @@ export interface VideoModel {
   resolutions: string[]
   aspectRatios: string[]
   frames: Array<'first_frame' | 'last_frame'>
+  /** The reference media the model takes, from the `input_modalities` of the models catalog; empty when it takes none. */
+  references: ReferenceMedia[]
   audio: boolean
   seed: boolean
 }

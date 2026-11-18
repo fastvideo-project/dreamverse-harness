@@ -1,6 +1,6 @@
 /** Keyless contract tests for the documented OpenRouter video, image and speech APIs. */
 import { describe, expect, it } from 'vitest'
-import { imageCatalog, speechCatalog, videoCatalog } from '../src/catalog.ts'
+import { imageCatalog, speechCatalog, videoCatalog, videoReferences } from '../src/catalog.ts'
 import { OpenRouterApi } from '../src/client.ts'
 
 export const catalog = { data: [{ id: 'fixture/video', name: 'Fixture Video', supported_durations: [4, 6, 8],
@@ -9,10 +9,30 @@ export const catalog = { data: [{ id: 'fixture/video', name: 'Fixture Video', su
 
 describe('OpenRouter video API', () => {
   it('uses published discrete durations and never invents frame counts or dimensions', () => {
-    expect(videoCatalog(catalog)).toEqual([{ id: 'fixture/video', name: 'Fixture Video', durations: [4, 6, 8],
-      resolutions: ['720p'], aspectRatios: ['16:9'], frames: ['first_frame', 'last_frame'], audio: true, seed: true }])
-    expect(videoCatalog({ data: [{ id: 'unknown' }, { ...catalog.data[0], upscale_factor: 2 }] })).toEqual([])
-    expect(() => videoCatalog([])).toThrow('invalid video catalog')
+    expect(videoCatalog(catalog, new Map())).toEqual([{ id: 'fixture/video', name: 'Fixture Video', durations: [4, 6, 8],
+      resolutions: ['720p'], aspectRatios: ['16:9'], frames: ['first_frame', 'last_frame'], references: [], audio: true, seed: true }])
+    expect(videoCatalog(catalog, new Map([['fixture/video', ['image' as const]]]))[0]?.references).toEqual(['image'])
+    expect(videoCatalog({ data: [{ id: 'unknown' }, { ...catalog.data[0], upscale_factor: 2 }] }, new Map())).toEqual([])
+    expect(() => videoCatalog([], new Map())).toThrow('invalid video catalog')
+  })
+
+  it('reads each model\'s reference media from the image, video and audio input modalities of the models catalog', () => {
+    expect(videoReferences({ data: [
+      { id: 'seed/omni', architecture: { input_modalities: ['text', 'audio', 'image', 'video'] } },
+      { id: 'veo/frames', architecture: { input_modalities: ['text', 'image'] } },
+      { id: 'text/only', architecture: { input_modalities: ['text'] } },
+      { id: 'no/architecture' },
+    ] })).toEqual(new Map([['seed/omni', ['image', 'video', 'audio']], ['veo/frames', ['image']]]))
+    expect(() => videoReferences({})).toThrow('invalid video model list')
+  })
+
+  it('keeps the video catalog without reference media when only the models catalog fails', async () => {
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async (input) => {
+      const url = String(input)
+      if (url.endsWith('/videos/models')) return Response.json(catalog)
+      return new Response('{}', { status: 503 })
+    })
+    expect((await client.catalog()).map(model => model.references)).toEqual([[]])
   })
 
   it('submits once and uses canonical authenticated content routes, ignoring response-provided URLs', async () => {

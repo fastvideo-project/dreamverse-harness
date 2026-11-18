@@ -10,7 +10,7 @@ let language: string
 beforeEach(() => { language = document.documentElement.lang; document.documentElement.lang = 'en' })
 afterEach(() => { cleanup(); document.documentElement.lang = language })
 const model: VideoModel = { id: 'google/veo-3.1', name: 'Google Veo 3.1', durations: [4, 6, 8], resolutions: ['720p'],
-  aspectRatios: ['16:9'], frames: ['first_frame', 'last_frame'], audio: true, seed: true }
+  aspectRatios: ['16:9'], frames: ['first_frame', 'last_frame'], references: ['image'], audio: true, seed: true }
 const image: ImageModel = { id: 'black-forest-labs/flux-3-image', name: 'FLUX 3',
   parameters: { aspect_ratio: ['1:1', '16:9'], resolution: ['1K', '2K'] }, outputFormats: ['png', 'jpeg'], seed: true }
 const speech: SpeechModel = { id: 'openai/gpt-4o-mini-tts', name: 'GPT-4o mini TTS', voices: ['alloy', 'nova'] }

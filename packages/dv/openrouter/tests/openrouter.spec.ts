@@ -35,7 +35,7 @@ function isVideoEntry(entry: ModelEntry): entry is ModelEntry<TaskOfPrimitive<'v
 const ffmpeg = process.env['DV_FFMPEG'] ?? 'ffmpeg'
 const ffprobe = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
-async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean | Record<string, string>; speech?: 'mp3' | 'pcm' } = {}) {
+async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean | Record<string, string>; speech?: 'mp3' | 'pcm'; references?: string[] } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dv-openrouter-'))
   cleanup.push(async () => { rmSync(dir, { recursive: true, force: true }) })
   const videoPath = join(dir, 'fixture.mp4')
@@ -63,6 +63,10 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
     else if (path === '/api/v1/videos/models') response.end(JSON.stringify(CATALOG))
     else if (path === '/api/v1/images/models') response.end(JSON.stringify(imageRows))
     else if (path === '/api/v1/models?output_modalities=speech') response.end(JSON.stringify(speechRows))
+    else if (path === '/api/v1/models?output_modalities=video') {
+      response.end(JSON.stringify({ data: options.references === undefined ? []
+        : [{ id: 'fixture/video', architecture: { input_modalities: ['text', ...options.references], output_modalities: ['video'] } }] }))
+    }
     else if (path === '/api/v1/audio/speech') { response.setHeader('content-type', speech.mime); response.end(speech.bytes) }
     else if (path === '/api/v1/images') {
       response.end(JSON.stringify({ data: [{ b64_json: jpeg.toString('base64'), media_type: 'image/jpeg' }] }))
@@ -132,6 +136,11 @@ describe('OpenRouter video provider composition', () => {
     expect(await entry.validateGenerationRequest(input)).toEqual([])
     expect(await entry.validateGenerationRequest({ ...input, lastFrame: null })).toContain('Its last_frame input requires one image.')
     expect(await entry.validateGenerationRequest({ ...input, extra: { bad: true } })).toHaveLength(1)
+    expect(entry.description).toContain('OpenRouter video models take no audio or video references for now.')
+    expect(entry.promptSkill).toMatchObject({ name: 'openrouter-video-prompting',
+      description: expect.stringContaining('OpenRouter video models take no audio or video references for now.') as string })
+    expect(entry.promptSkill?.content).toContain('## No audio or video references for now')
+    expect(await entry.validateGenerationRequest({ ...input, references: [first] })).toEqual(['This OpenRouter task takes no reference input.'])
     expect(requests.filter(request => request.method === 'POST')).toHaveLength(0)
     const events = []
     for await (const event of entry.render(input)) events.push(event)
@@ -142,6 +151,32 @@ describe('OpenRouter video provider composition', () => {
       frame_images: [{ type: 'image_url', frame_type: 'first_frame', image_url: { url: 'data:image/jpeg;base64,RklSU1Q=' } },
         { type: 'image_url', frame_type: 'last_frame', image_url: { url: 'data:image/png;base64,TEFTVA==' } }] })
     expect(requests.every(request => request.key === 'Bearer fixture-key')).toBe(true)
+  })
+
+  it('registers ref2v from the image input the models catalog lists, sends image references as data URLs, and refuses audio and video', async () => {
+    const { ctx, requests, project } = await fixture({ references: ['image', 'audio', 'video'] })
+    expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['t2v', 'ref2v', 'i2v', 'fl2v'])
+    const entry = ctx.dvModels.list().find(row => row.task === 'ref2v')
+    if (entry === undefined || !isVideoEntry(entry)) throw new Error('Missing REF2V entry')
+    expect(entry.description).toContain('Takes reference images with no first or last frame.')
+    expect(await entry.schema()).toMatchObject({ inputs: { reference: { min: 1, media_types: { image: {} } } } })
+    expect(await entry.schema()).not.toHaveProperty('inputs.reference.media_types.audio')
+    const face = ctx.dvAssetPool.importAsset(project.id, Buffer.from('FACE'), { name: 'face.png', mime: 'image/png' }, null)
+    const voice = ctx.dvAssetPool.importAsset(project.id, Buffer.from('VOICE'), { name: 'voice.mp3', mime: 'audio/mpeg' }, null)
+    const input = { prompt: `@[her](dv:asset/${face}) floats`, references: [face], firstFrame: null, lastFrame: null,
+      durationSec: 6, aspectRatio: '16:9', resolution: '720p', seed: 7, extra: {} }
+    expect(await entry.validateGenerationRequest(input)).toEqual([])
+    expect(await entry.validateGenerationRequest({ ...input, references: [] })).toEqual(['Its reference input requires at least one image.'])
+    expect(await entry.validateGenerationRequest({ ...input, references: [face, voice] }))
+      .toEqual([`Asset ${voice} is audio. OpenRouter video models take no audio or video references for now.`])
+    expect(await entry.validateGenerationRequest({ ...input, firstFrame: face })).toEqual(['This task takes no first_frame input.'])
+    const t2v = ctx.dvModels.list().find(row => row.task === 't2v')
+    if (t2v === undefined || !isVideoEntry(t2v)) throw new Error('Missing T2V entry')
+    expect(await t2v.validateGenerationRequest(input)).toContain('This OpenRouter task takes no reference input. Use task ref2v for reference images.')
+    for await (const event of entry.render(input)) void event
+    expect(requests.find(request => request.method === 'POST')?.body).toEqual({ model: 'fixture/video', prompt: 'her floats',
+      duration: 6, aspect_ratio: '16:9', resolution: '720p', seed: 7,
+      input_references: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,RkFDRQ==' } }] })
   })
 
   it('stores a completed cloud video through the ordinary shot workflow without invented frame geometry', async () => {
