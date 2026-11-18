@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to give the DreamVerse agent its workflows. Each workflow is one skill file `skills/<name>/SKILL.md` that holds the order of calls of the workflow, such as `story-directing` (a story rendered shot by shot onto a timeline) and `ad-making` (a short product ad). The package registers no operation and no tool.
+Use this package to give the DreamVerse agent its workflows. Each workflow is one skill file `skills/<name>/SKILL.md` that holds the order of calls of the workflow, such as `story-directing` (a story rendered shot by shot onto a timeline), `ad-making` (a short product ad) and `documentary-making` (a short documentary under one narrator). The package registers no operation and no tool.
 
 ## Table of Contents
 
@@ -45,6 +45,7 @@ To add a workflow, add `skills/<name>/SKILL.md` with the frontmatter fields `nam
 | [`src/index.ts`](src/index.ts) | The plugin: the skill provider over `skills/` |
 | [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | The `story-directing` skill |
 | [`skills/ad-making/SKILL.md`](skills/ad-making/SKILL.md) | The `ad-making` skill |
+| [`skills/documentary-making/SKILL.md`](skills/documentary-making/SKILL.md) | The `documentary-making` skill |
 
 -----
 

@@ -74,7 +74,7 @@ To fix a cut, change its prompt in `ad/spec.md` with `dv_textnode_edit`, wait fo
 
 ## 8. Deliver
 
-When the user gave an audio file to play over a cut, such as music or a recorded voice, first call `dv_timeline_sound_add` with `timeline` = that ratio's timeline, `asset` = the file's asset ID and `start_sec: 0`; the export mixes it over the shot's own sound, up to the cut's end.
+Add the user's music or voice file first: `dv_timeline_sound_add` on each ratio's timeline, `start_sec: 0`.
 
 `dv_timeline_export` with `timeline` = each ratio's timeline. Reply with each link, ratio and length, the copy, the storylines not built, the open notes of `ad/review.md`, and what nobody checked (you saw stills and heard no sound). Offer one next step once, such as another ratio.
 

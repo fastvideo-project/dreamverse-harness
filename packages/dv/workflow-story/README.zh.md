@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-用本包为 DreamVerse 智能体提供工作流。每个工作流是一个技能文件 `skills/<name>/SKILL.md`，保存该工作流的调用顺序，例如 `story-directing`（把一个故事逐个镜头渲染到时间线上）和 `ad-making`（一条简短的产品广告）。本包不注册操作，也不注册工具。
+用本包为 DreamVerse 智能体提供工作流。每个工作流是一个技能文件 `skills/<name>/SKILL.md`，保存该工作流的调用顺序，例如 `story-directing`（把一个故事逐个镜头渲染到时间线上）、`ad-making`（一条简短的产品广告）和 `documentary-making`（一部由一位旁白讲述的短纪录片）。本包不注册操作，也不注册工具。
 
 ## 目录
 
@@ -45,6 +45,7 @@ kind: "package-reference"
 | [`src/index.ts`](src/index.ts) | 插件：`skills/` 上的技能提供方 |
 | [`skills/story-directing/SKILL.md`](skills/story-directing/SKILL.md) | `story-directing` 技能 |
 | [`skills/ad-making/SKILL.md`](skills/ad-making/SKILL.md) | `ad-making` 技能 |
+| [`skills/documentary-making/SKILL.md`](skills/documentary-making/SKILL.md) | `documentary-making` 技能 |
 
 -----
 
