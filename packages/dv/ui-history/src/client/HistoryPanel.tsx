@@ -19,6 +19,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { HostObservable, InjectFace, PropsRenderFactories, PropsRuntime, RenderFactorySlot } from '@deepseek-ai/dsh-client-ui-slots'
 import { errorMessage, type DvClient } from '@dv/ui-kit/api.ts'
 import { useCurrentProject } from '@dv/ui-kit/current-project.ts'
+import { formatElapsed, useElapsedSeconds } from '@dv/ui-kit/elapsed.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import type { Actor, Asset, HistoryEntry, HistoryQuery, ProjectRecord, RecordStatus, WireHistory, WireState } from '@dv/ui-kit/types.ts'
 import { useOperations, useProjectState } from '@dv/ui-kit/useProject.ts'
@@ -344,7 +345,7 @@ function Actions(props: { client: DvClient; projectId: string; canRedo: boolean 
             aria-label={t(move.label[0], move.label[1])} title={t(move.title[0], move.title[1])} className={css.iconButton}
             onClick={() => { run(() => move.key === 'undo' ? client.undo(projectId) : client.redo(projectId)) }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               {move.paths.map(path => <path key={path} d={path} />)}
             </svg>
           </button>
@@ -493,6 +494,11 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
   // The intent the agent gave for its call; a call without one records the operation name, which the label already shows.
   // A human action's intent repeats its label, so it stays in the tooltip.
   const words = record.actor === 'agent' && record.intent !== record.operation ? record.intent : ''
+  const elapsed = useElapsedSeconds(record.started_at, record.status === 'running')
+  // A render that ran for at least a second shows how long it took; a reused result took no time of its own.
+  const tookSeconds = record.status === 'done' && record.cost !== undefined && !record.cost.reused && record.cost.wall_seconds >= 1 ? record.cost.wall_seconds : null
+  // Only a record that ended without output carries a reason worth a line of its own.
+  const reason = (record.status === 'failed' || record.status === 'cancelled') && record.error?.message ? record.error.message : null
   const size = nested ? 28 : 40
   // A step after the current position is clearly greyed: faded text and a black-and-white thumbnail.
   const after = entry.place === 'after'
@@ -530,7 +536,11 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
             <span title={record.error?.message ?? status} className={css.status}>
               <span className={css.dot} style={{ background: STATUS_COLORS[record.status] }} />
               {record.status === 'done' ? null : <span className={record.status === 'failed' ? css.error : undefined}>{status}</span>}
+              {elapsed === null ? null : <span className={css.duration}>{formatElapsed(elapsed)}</span>}
             </span>
+            {tookSeconds === null
+              ? null
+              : <span data-testid="dv-history-duration" className={css.duration}>{t('用时', 'took')} {formatElapsed(tookSeconds)}</span>}
             {entry.place === 'current'
               ? (
                 <span data-testid="dv-history-current" className={css.currentBadge}>
@@ -540,6 +550,9 @@ function EntryRow(props: RowContext & { entry: HistoryEntry; nested: boolean }):
               : null}
             {words === '' ? null : <span title={words} className={css.words}>“{words}”</span>}
           </div>
+          {reason === null
+            ? null
+            : <p data-testid="dv-history-reason" title={reason} className={record.status === 'failed' ? css.reasonFailed : css.reason}>{reason}</p>}
         </div>
         <StepActions onBack={entry.place === 'current' ? null : () => { props.onJump(record.id) }} />
       </div>

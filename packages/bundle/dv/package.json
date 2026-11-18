@@ -52,7 +52,11 @@
     "@dv/ui-style": "workspace:*",
     "@dv/ui-text-node": "workspace:*",
     "@dv/ui-timeline": "workspace:*",
-    "@dv/workflow-story": "workspace:*"
+    "@dv/workflow-story": "workspace:*",
+    "@dv/hardware": "workspace:*",
+    "@dv/ui-hardware": "workspace:*",
+    "@dv/openrouter": "workspace:*",
+    "@dv/ui-openrouter": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -65,6 +69,7 @@
     "@deepseek-ai/dsh-skill": "workspace:*",
     "@deepseek-ai/dsh-system-prompt": "workspace:*",
     "@deepseek-ai/dsh-tool-skill": "workspace:*",
-    "@deepseek-ai/dsh-tools": "workspace:*"
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@dv/fastvideo-generation-client": "workspace:*"
   }
 }

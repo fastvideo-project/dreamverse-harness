@@ -28,8 +28,10 @@ html body [data-dv-chat] [data-composer-card] button[class$='_add'] {
   transition: background-color 120ms var(--dv-ease);
 }
 
-html body [data-dv-chat] [data-composer-card] button[class$='_add']:hover:not(:disabled) {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  html body [data-dv-chat] [data-composer-card] button[class$='_add']:hover:not(:disabled) {
+    background: var(--dv-surface-3);
+  }
 }
 
 /* Send (and stop while the agent runs): the one solid accent button of the screen. The arrow stays white on the
@@ -38,13 +40,15 @@ html body [data-dv-chat] [data-composer-card] button[class$='_primary'] {
   width: 32px;
   height: 32px;
   background: var(--dv-accent);
-  color: #fff;
+  color: var(--dsw-alias-label-primary-foreground);
   transform: none;
   transition: background-color 120ms var(--dv-ease);
 }
 
-html body [data-dv-chat] [data-composer-card] button[class$='_primary']:hover:not(:disabled) {
-  background: var(--dv-accent-hover);
+@media (hover: hover) {
+  html body [data-dv-chat] [data-composer-card] button[class$='_primary']:hover:not(:disabled) {
+    background: var(--dv-accent-hover);
+  }
 }
 
 html body [data-dv-chat] [data-composer-card] button:focus-visible {
@@ -56,4 +60,38 @@ html body [data-dv-chat] [data-composer-card] button:focus-visible {
   html body [data-dv-chat] [data-composer-card] button {
     transition: none;
   }
+}
+
+.dv-video-model { position: relative; display: inline-flex; min-width: 0; }
+.dv-video-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--dv-radius-md, 8px);
+  background: transparent;
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dv-video-model-trigger:hover:not(:disabled) { background: var(--dv-surface-3); }
+.dv-video-model-trigger:disabled { opacity: .6; cursor: default; }
+.dv-video-model-kind { color: var(--dv-text-3); }
+.dv-video-model-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dv-video-model-error {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: min(320px, 70vw);
+  padding: 8px;
+  border: 1px solid var(--dv-line-strong);
+  border-radius: var(--dv-radius-md, 8px);
+  background: var(--dv-surface-2);
+  color: var(--dv-text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }

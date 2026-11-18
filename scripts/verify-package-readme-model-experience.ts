@@ -50,6 +50,7 @@ const SENTENCE_MODEL_EXPERIENCE: Readonly<Record<string, SentenceContract>> = {
   'packages/experimental/client-ui-voice-input': { kind: 'none', reason: 'Inserts reviewable text into the unsent draft without submitting to the Agent.' },
   'packages/dv/mcp-presets': { kind: 'none', reason: 'Offers MCP presets to the roster; a person adds them, and the added servers own every model-facing tool.' },
   'packages/dv/ui-mcp-presets': { kind: 'none', reason: 'Shows MCP tool cards that add presets to the roster; the added servers own every model-facing tool.' },
+  'packages/dv/ui-hardware': { kind: 'none', reason: 'Edits saved hardware workers and credentials; @dv/hardware and the generation providers own every model-facing contribution.' },
   'packages/mcp/mcp-bundle': { kind: 'none', reason: 'Composes the MCP server roster and its dashboard; the roster\'s servers own every model-facing contribution.' },
   'packages/client/ui-mcp-servers': { kind: 'none', reason: 'Edits the MCP server roster from the browser without adding model requests or Session events.' },
   'packages/experimental/voice-input-bundle': { kind: 'none', reason: 'Composes dictation and preparation plugins without adding any model-facing contribution.' },

@@ -109,8 +109,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.button:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .button:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .button:focus-visible {

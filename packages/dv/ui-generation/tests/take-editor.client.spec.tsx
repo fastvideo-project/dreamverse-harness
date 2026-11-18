@@ -8,6 +8,7 @@ import { act, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import type { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type { ProjectRecord, WireOperation, WireState } from '@dv/ui-kit/types.ts'
 import { testRef } from '../../ui-canvas/tests/canvas-runtime.client.tsx'
+import { resetDrafts } from '../../ui-composer/src/client/drafts.ts'
 import { fixtureState, OPERATIONS, record, scriptedFetch, withTestRef } from '../../ui-kit/tests/fixture.client.tsx'
 import { nodeOfRecord } from '@dv/ui-kit/canvas-nodes.ts'
 import { addNode, CLIP_EXTEND, mountKit, nodeAt, recordingHost } from './take-kind.client.ts'
@@ -15,6 +16,8 @@ import { addNode, CLIP_EXTEND, mountKit, nodeAt, recordingHost } from './take-ki
 let runtime: SlotTestRuntime | undefined
 
 beforeEach(() => {
+  // The composer keeps unsent drafts per take for the page's life; a draft of an earlier test must not reach the next.
+  resetDrafts()
   vi.stubGlobal('fetch', scriptedFetch({ state: withTestRef(fixtureState()) }).fetch)
   // jsdom has no layout: the editor measures its selection.
   Range.prototype.getBoundingClientRect = () => new DOMRect()
@@ -33,7 +36,8 @@ afterEach(async () => {
  * @param id - the record ID.
  * @param options - the record changes, a record to append, the declarations the canvas passes, and what the host's
  *   `rerun` returns.
- * @returns the editor's view and the recording host.
+ * @returns the editor's view, the recording host, and `openRecord`, which shows the editor of a record of the same state
+ *   in the same slot, with the declarations it is given.
  */
 async function openEditor(id: string, options: {
   edit?: (record: ProjectRecord) => ProjectRecord
@@ -53,12 +57,14 @@ async function openEditor(id: string, options: {
   ]
   if (options.append !== undefined) addNode(state, options.append.id, 'test_take')
   const operations = options.operations ?? OPERATIONS
-  const shown = nodeOfRecord(state, id)
-  if (shown === null) throw new Error(`no node of ${id}`)
-  const node = nodeAt(mounted.canvas, state, operations, shown, id)
   const host = recordingHost(options.rerun)
-  const slot = runtime.renderSlot('dv.canvas.editor', { node, state, operations, host }, { entryKey: 'test_take' })
-  return { ...slot, host }
+  const openRecord = (recordId: string, declared: WireOperation[] = operations) => {
+    const shown = nodeOfRecord(state, recordId)
+    if (shown === null) throw new Error(`no node of ${recordId}`)
+    const node = nodeAt(mounted.canvas, state, operations, shown, recordId)
+    return mounted.runtime.renderSlot('dv.canvas.editor', { node, state, operations: declared, host }, { entryKey: 'test_take' })
+  }
+  return { ...openRecord(id), host, openRecord }
 }
 
 async function sendButton(view: Awaited<ReturnType<typeof openEditor>>['view'], name: string): Promise<HTMLButtonElement> {
@@ -82,6 +88,24 @@ describe('the take editor', () => {
     })
     await waitFor(() => { expect(container.querySelector('[data-reference-tile="hero@1"]')?.textContent).toContain('Herov1') })
     expect([...container.querySelectorAll('[data-param-chip]')].map(chip => chip.getAttribute('data-param-chip'))).toEqual(['seed', 'aspect', 'loop', 'extra'])
+  })
+
+  it('keeps the draft of a take apart from the draft of another take whose call is equal', async () => {
+    document.documentElement.lang = 'en'
+    const g1 = withTestRef(fixtureState()).components.proj.records.find(each => each.id === 'g1')!
+    const { container, openRecord } = await openEditor('g1', { append: { ...g1, id: 'g9' } })
+    const seedOf = (root: Element): string => root.querySelector<HTMLInputElement>('[data-param-chip="seed"]')?.value ?? ''
+    const seed = await waitFor(() => container.querySelector('[data-param-chip="seed"]')!)
+    fireEvent.change(seed, { target: { value: '5' } })
+    expect(seedOf(container)).toBe('5')
+    // With no declared operation the editor shows no composer, so each switch unmounts the composer as a closed editor does.
+    expect(openRecord('g1', []).container.querySelector('[data-dv-prompt]')).toBeNull()
+    const other = openRecord('g9')
+    await waitFor(() => { expect(other.container.querySelector('[data-composer-input]')?.textContent).toBe('hero walks through the rain at night in the city') })
+    expect(seedOf(other.container)).toBe('')
+    openRecord('g9', [])
+    const again = openRecord('g1')
+    await waitFor(() => { expect(seedOf(again.container)).toBe('5') })
   })
 
   it('draws the player in a box of the full width and 360 px tall for a take whose size is not stored', async () => {

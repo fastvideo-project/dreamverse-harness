@@ -10,7 +10,8 @@ import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@dv/canvas'
 import {
-  formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
+  assertVideoSelection, formatModelKey, type ModelEntry, type ModelExecutionTarget,
+  type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationOutput, OperationResult, OperationSpec, OperationToolCall, ProjectId,
@@ -68,10 +69,10 @@ interface GenerationSpecFields<P extends PrimitiveId> {
   node: { kind: string; column: number }
   primitive: P
   /**
-   * The catalog tasks of the operation, each with its label in Chinese and English. The operation is registered while
+   * The supported subset of catalog tasks, each with its label in Chinese and English. The operation is registered while
    * the catalog serves one of these tasks, and `dvModels.labelTasks` holds the labels while the service lives.
    */
-  tasks: Readonly<Record<TaskOfPrimitive<P>, { zh: string; en: string }>>
+  tasks: Readonly<Partial<Record<TaskOfPrimitive<P>, { zh: string; en: string }>>>
   label: { zh: string; en: string }
   description: string
   /** The params besides the model key, `prompt`, `seed` and `extra`; a declaration may restate `prompt` to describe it. */
@@ -157,6 +158,14 @@ class Unavailable extends Error {
   }
 }
 
+/** Resolve explicit placement before reading capabilities or admitting a generation. */
+function executionTarget(entry: ModelEntry, params: Record<string, unknown>): ModelExecutionTarget | undefined {
+  if (params['worker'] === undefined) return undefined
+  if (typeof params['worker'] !== 'string' || params['worker'].trim() === '') throw new Error('Choose an enabled worker ID or omit worker for automatic placement.')
+  if (entry.workerRouting !== true) throw new Error('This provider does not support explicit worker placement.')
+  return { worker: params['worker'] }
+}
+
 /** The reason for the problems that a model finds in a request. */
 function modelReason(entry: ModelEntry, problems: readonly string[]): string {
   return `Model ${formatModelKey(entry)} cannot generate this: ${problems.join(' ')}`
@@ -203,6 +212,8 @@ export function importOne(run: OperationContext,
 export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>): new (ctx: Context) => Service & GenerationApi {
   // The task names are the keys of the label record; Object.keys loses their type.
   const tasks = Object.keys(spec.tasks) as Array<TaskOfPrimitive<P>>
+  // Under exactOptionalPropertyTypes each key present in the partial record holds a label.
+  const taskLabels = spec.tasks as Readonly<Record<string, { zh: string; en: string }>>
   const operationParams: OperationSpec['params'] = {
     ...KEY_PARAMS, ...spec.params, ...spec.seed === false ? {} : SEED_PARAM, ...EXTRA_PARAM,
   }
@@ -212,7 +223,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
     constructor(ctx: Context) {
       super(ctx, spec.service)
       ctx.effect(() => ctx.dvProject.registerComponent(spec.component), `${spec.service} component`)
-      ctx.effect(() => ctx.dvModels.labelTasks(spec.tasks), `${spec.service} task labels`)
+      ctx.effect(() => ctx.dvModels.labelTasks(taskLabels), `${spec.service} task labels`)
       ctx.effect(() => ctx.dvModels.whileServing(tasks, () => ctx.dvProject.registerOperation(this.operation())),
         `${spec.service} ${spec.operation}`)
       ctx.inject(['dvCanvasNodes'], (canvas) => {
@@ -238,7 +249,8 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
       try {
         const entry = this.ctx.dvModels.resolve(tasks, call.params)
         const unavailable = (error: unknown): never => { throw new Unavailable(entry, error) }
-        const facts = await entry.facts().catch(unavailable)
+        const target = executionTarget(entry, call.params)
+        const facts = await entry.facts(target).catch(unavailable)
         const inputs: RequestInput[] = [
           ...call.inputs.flatMap(({ role, ref }) =>
             this.assetsOf(call.project, state, ref).map(asset => ({ role, ref, resolved_asset: asset }))),
@@ -248,7 +260,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         // An input without an asset yet (its producer has not finished, or the role is chained): execute checks the
         // full request before the model runs.
         if (inputs.some(input => input.resolved_asset === null)) return { reasons: [], end: REFUSAL_END }
-        const problems = await entry.validateGenerationRequest(request).catch(unavailable)
+        const problems = await entry.validateGenerationRequest(request, target).catch(unavailable)
         return { reasons: problems.length === 0 ? [] : [modelReason(entry, problems)], end: REFUSAL_END }
       } catch (error) {
         return { reasons: [messageOf(error)], end: error instanceof Unavailable ? UNAVAILABLE_END : REFUSAL_END }
@@ -278,11 +290,12 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
      */
     private async execute(run: OperationContext): Promise<OperationResult> {
       const entry = this.ctx.dvModels.resolve(tasks, run.params)
-      const facts = await entry.facts()
+      const target = executionTarget(entry, run.params)
+      const facts = await entry.facts(target)
       const { request, seed } = requestOf(spec, facts, run.params, run.inputs)
-      const problems = await entry.validateGenerationRequest(request)
+      const problems = await entry.validateGenerationRequest(request, target)
       if (problems.length > 0) throw new Error(`${modelReason(entry, problems)} ${REFUSAL_END}`)
-      const result = await spec.toOutputs(this.ctx, run, entry.render(request, run.signal), facts, request)
+      const result = await spec.toOutputs(this.ctx, run, entry.render(request, run.signal, target), facts, request)
       return seed === null ? result : { ...result, report: { seed, ...result.report } }
     }
 
@@ -294,12 +307,19 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         params: operationParams,
         inputs: spec.inputs, outputs: spec.outputs, ...toolParams === undefined ? {} : { toolParams },
         deterministic: false, resource: 'gpu',
+        isConcurrencySafe: params => this.ctx.dvModels.list().some(entry => entry.concurrentRenders === true
+          && entry.modality === params['modality'] && entry.task === params['task']
+          && entry.provider === params['provider'] && entry.model === params['model']),
         summarize: record => spec.summarize(record),
         prepareToolCall: async (call) => {
           spec.prepareToolCall?.(call)
+          assertVideoSelection(call.request, call.state)
           await this.refuse(call.request, call.state)
         },
-        precondition: (request, state) => this.refuse(request, state),
+        precondition: (request, state) => {
+          assertVideoSelection(request, state)
+          return this.refuse(request, state)
+        },
         execute: run => this.execute(run),
       }
     }

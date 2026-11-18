@@ -42,7 +42,7 @@ function renderPanel(fetch: typeof globalThis.fetch) {
 const file = (name: string, type: string): File => new File(['x'], name, { type })
 
 describe('AssetsPanel', () => {
-  it('lists every asset of the project from the state alone, with render stills under extracted frames', async () => {
+  it('lists every asset of the project from the state alone, each with its name under it, with render stills under extracted frames', async () => {
     // An undo went back past g9: the state lists its assets, each with the operation that made it, but not its record.
     const state = fixtureState()
     state.assets.push(asset('wide.mp4', 'video/mp4', 'g9', 5, 'shot.render'), asset('wide-last.png', 'image/png', 'g9', null, 'shot.render'))
@@ -55,7 +55,10 @@ describe('AssetsPanel', () => {
     await waitFor(() => { expect(view.container.querySelector('[data-asset-id="shot1.mp4"]')).not.toBeNull() })
     expect(view.container.querySelector('[data-asset-id="wide.mp4"]')).not.toBeNull()
     expect(panel.getByText('Extracted from generation · 3')).toBeTruthy()
-    expect(panel.getByText('Audio · 2')).toBeTruthy()
+    expect(panel.getByText('Audios · 2')).toBeTruthy()
+    // Each thumbnail has its asset's name under it, outside the thumbnail button.
+    const names = panel.getByText('Audios · 2').closest('section')?.querySelectorAll('[data-asset-id] + [aria-hidden="true"]') ?? []
+    expect([...names].map(name => name.textContent).sort()).toEqual(['piece-1.wav', 'piece-2.wav'])
     expect(view.container.querySelector('[data-asset-id="piece-1.wav"]')?.textContent).toBe('2.4s')
     expect(view.container.querySelector('[data-asset-id="piece-2.wav"]')?.textContent).toBe('0.4s')
     // The panel reads no history list.
@@ -69,11 +72,11 @@ describe('AssetsPanel', () => {
     expect(await view.findByText('Failed to load: unknown project p1')).toBeTruthy()
   })
 
-  it('shows None yet for a project without assets, and leaves out the sections that have no assets', async () => {
+  it('shows the empty-state guidance for a project without assets, and leaves out the sections that have no assets', async () => {
     const empty = fixtureState()
     empty.assets = []
     const { view } = renderPanel(scriptedFetch({ state: empty }).fetch)
-    expect(await view.findByText('None yet')).toBeTruthy()
+    expect(await view.findByText('No images, videos or audio yet. Import files above, or generate them in the chat.')).toBeTruthy()
     cleanup()
 
     const imagesOnly = fixtureState()
@@ -103,7 +106,7 @@ describe('the import drop zone', () => {
     const { view, zone } = renderPanel(server.fetch)
     const dropped = [file('a.png', 'image/png'), file('b.mp4', 'video/mp4'), file('c.wav', 'audio/wav'), file('notes.txt', 'text/plain')]
     fireEvent.drop(zone, { dataTransfer: { types: ['Files'], files: dropped } })
-    expect(view.getByText('"notes.txt" is not an image, a video or audio, so it was not imported.')).toBeTruthy()
+    expect(view.getByText('“notes.txt” is not an image, a video or audio, so it was not imported.')).toBeTruthy()
     expect(server.imports.map(held => new URLSearchParams(held.query).toString())).toEqual([
       'project=p1&name=a.png&mime=image%2Fpng&surface=asset_pool&session=s5',
       'project=p1&name=b.mp4&mime=video%2Fmp4&surface=asset_pool&session=s5',
@@ -120,7 +123,7 @@ describe('the import drop zone', () => {
     server.imports[0]?.answer(200, { asset: 'a.png', record: record({ id: 'i1', operation: 'asset.import' }) })
     await waitFor(() => { expect(zone.textContent).toMatch(/^Importing \(1\)…/) })
     server.imports[1]?.answer(507, { error: 'disk full' })
-    expect(await view.findByText('Failed to import "b.mp4": DvApiError: disk full')).toBeTruthy()
+    expect(await view.findByText('Failed to import “b.mp4”: DvApiError: disk full')).toBeTruthy()
     expect(zone.textContent).toMatch(/^Drop images, videos or audio here to import, or click to choose files/)
 
     fireEvent.drop(zone, transfer(file('c.png', 'image/png')))
@@ -144,7 +147,7 @@ describe('the import drop zone', () => {
     expect(server.imports).toEqual([])
   })
 
-  it('opens the file chooser on a click and on Enter, and imports the chosen files', () => {
+  it('opens the file chooser on a click, on Space and on Enter, and imports the chosen files', () => {
     const server = importServer()
     const { view, zone } = renderPanel(server.fetch)
     const chooser = view.container.querySelector('input[type="file"]')
@@ -152,9 +155,10 @@ describe('the import drop zone', () => {
     const opened = vi.fn()
     chooser.addEventListener('click', opened)
     fireEvent.click(zone)
-    fireEvent.keyDown(zone, { key: ' ' })
+    expect(fireEvent.keyDown(zone, { key: ' ' })).toBe(false)
     fireEvent.keyDown(zone, { key: 'Enter' })
-    expect(opened).toHaveBeenCalledTimes(2)
+    fireEvent.keyDown(zone, { key: 'a' })
+    expect(opened).toHaveBeenCalledTimes(3)
 
     fireEvent.change(chooser, { target: { files: [file('chosen.png', 'image/png')] } })
     expect(server.imports.map(held => new URLSearchParams(held.query).get('name'))).toEqual(['chosen.png'])

@@ -53,6 +53,7 @@ export default class DvCanvasNodes extends Service {
       placement: (operation: string) => this.placements.get(operation),
       renameOperation: (kind: string) =>
         [...this.makers.values()].find(maker => maker.kind === kind && maker.renameOperation !== undefined)?.renameOperation,
+      size: (kind: string) => [...this.makers.values()].find(maker => maker.kind === kind)?.size,
     }
     ctx.effect(() => ctx.dvProject.registerComponent('canvas'), 'dvCanvasNodes component')
     ctx.effect(() => ctx.dvProject.registerReducer('canvas', canvasReducer(registered)), 'dvCanvasNodes reducer')
@@ -64,8 +65,8 @@ export default class DvCanvasNodes extends Service {
   /**
    * Name operations whose records make nodes of one kind. One registration per operation: an operation that a maker or
    * a placement already names throws `invalid_params`.
-   * @param maker - the operations, the kind, the column, the optional filter of records, and the optional operation
-   *   that renames what the nodes show.
+   * @param maker - the operations, the kind, the column, the optional default size and filter of records, and the
+   *   optional operation that renames what the nodes show.
    * @returns a function that removes the registration.
    */
   registerMaker(maker: NodeMaker): () => void {

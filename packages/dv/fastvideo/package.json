@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Provider plugin fastvideo of DreamVerse for models on local FastVideo streaming_v2 servers: registers one dvModels entry per configured model (fasth3) and task (ref2v, t2v), each with its input and extra parameter schema and request validation, plus the prompt skill of each entry.",
+  "description": "Provider plugin fastvideo of DreamVerse for models on local FastVideo servers: registers one dvModels entry per configured model (fasth3) and task (ref2v, t2v), each with its input and extra parameter schema and request validation, plus the prompt skill of each entry.",
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json"
@@ -14,8 +14,10 @@
     "@deepseek-ai/dsh-util-values": "workspace:*",
     "@dv/asset-pool": "workspace:*",
     "@dv/fastvideo-generation-client": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
     "@dv/models": "workspace:*",
-    "@dv/project": "workspace:*"
+    "@dv/project": "workspace:*",
+    "@dv/hardware": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -26,7 +28,6 @@
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@deepseek-ai/schemastery": "workspace:~",
-    "@dv/ffmpeg": "workspace:*",
     "@types/node": "^22.20.0"
   }
 }

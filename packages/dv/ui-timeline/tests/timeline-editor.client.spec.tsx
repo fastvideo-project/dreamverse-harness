@@ -310,13 +310,28 @@ describe('TimelineView', () => {
     fireEvent.pointerMove(placeholder, { clientX: 80, clientY: 200 })
     expect(placeholder.style.transform).toBe('translate(80px, 200px)')
     fireEvent.pointerUp(placeholder, { clientX: 80, clientY: 200 })
-    expect(view.getByTestId('dv-timeline-export-waiting').textContent).toBe('还有 2 个片段没就绪，全部就绪后才能导出')
+    expect(view.getByTestId('dv-timeline-export-waiting').textContent).toBe('还有 1 个片段没就绪，全部就绪后才能导出')
+    expect(view.getByTestId('dv-timeline-export-failed').textContent).toBe('有 1 个片段渲染失败；重新渲染或移除后才能导出')
     expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(true)
     // cl8 plays from 7 s and cl9 from 9 s; the preview shows the status of the placeholder at the playhead.
     fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 7.5 * 40 })
     expect(view.getByTestId('dv-timeline-viewer-placeholder').textContent).toBe('视频 上的片段：渲染中…')
     fireEvent.pointerDown(view.getByTestId('dv-timeline-ruler'), { clientX: 9.5 * 40 })
     expect(view.getByTestId('dv-timeline-viewer-placeholder').textContent).toBe('视频 上的片段：渲染失败')
+  })
+
+  it('names a failed clip apart from the clips still rendering, and holds export while only a failed clip remains', async () => {
+    const state = twoTimelines()
+    state.components.proj.records.push(record({ id: 'r9', operation: 'shot.render', status: 'failed', params: {} }))
+    state.components.timeline.timelines[0]?.clips.push(
+      { id: 'cl9' as ClipId, asset: null, source: { record: 'r9' as RecordId, output: 0 }, in_sec: null, out_sec: null, start_sec: 0, track: 0 },
+    )
+    const { fetch } = scriptedFetch({ state: () => state })
+    const view = render(centerView(booted, { client: new DvClient(fetch) }))
+    await view.findByRole('list', { name: '视频轨道' })
+    expect(view.queryByTestId('dv-timeline-export-waiting')).toBeNull()
+    expect(view.getByTestId('dv-timeline-export-failed').textContent).toBe('有 1 个片段渲染失败；重新渲染或移除后才能导出')
+    expect((view.getByText('导出') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('shows English copy and default timeline names when the DSH language is English', async () => {
@@ -410,7 +425,7 @@ describe('timeline editor gestures', () => {
       operation: 'timeline.clip_add', params: { timeline: 't1', asset: 'shot2.mp4', track: 0, start_sec: 2.5 }, intent: '把片段放到 视频 的 00:02.50',
     })
     expect(fireEvent.drop(list, { dataTransfer: assetDrag('ref.png', 'image/png') })).toBe(false)
-    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。音频请拖到声音轨道上。')
+    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。')
     expect(requests()).toHaveLength(1)
     const editor = view.getByTestId('dv-timeline-editor')
     const viewer = view.getByTestId('dv-timeline-viewer')

@@ -61,7 +61,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
   let body: ReactNode
   if (library === null) body = <p className={css.note}>{state.error === null ? t('正在读取…', 'Loading…') : t(`读取失败：${state.error}`, `Failed to load: ${state.error}`)}</p>
   else if (library.images.length + library.videos.length + library.extracted.length + library.audio.length === 0) {
-    body = <p className={css.note}>{t('暂无', 'None yet')}</p>
+    body = <p className={css.note}>{t('还没有素材。在上方导入，或在对话里生成。', 'No images, videos or audio yet. Import files above, or generate them in the chat.')}</p>
   } else {
     body = (
       <>
@@ -71,7 +71,7 @@ export function AssetsPanel(props: AssetsPanelProps): ReactNode {
           title={t('从生成中截取的帧', 'Extracted from generation')} assets={library.extracted} onOpen={onOpen}
           renderFactorySlot={props.renderFactorySlot}
         />
-        <Section title={t('音频', 'Audio')} assets={library.audio} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
+        <Section title={t('音频', 'Audios')} assets={library.audio} onOpen={onOpen} renderFactorySlot={props.renderFactorySlot} />
       </>
     )
   }
@@ -103,7 +103,7 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
     for (const file of accepted) {
       setPending(count => count + 1)
       props.client.importAsset(props.projectId, file, 'asset_pool', props.session)
-        .then(() => { setError(null) }, (failure: unknown) => { setError(t(`「${file.name}」导入失败：${String(failure)}`, `Failed to import "${file.name}": ${String(failure)}`)) })
+        .then(() => { setError(null) }, (failure: unknown) => { setError(t(`「${file.name}」导入失败：${String(failure)}`, `Failed to import “${file.name}”: ${String(failure)}`)) })
         .finally(() => { setPending(count => count - 1) })
     }
   }, [props.client, props.projectId, props.session, t])
@@ -111,7 +111,10 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
   const isFileDrag = (event: DragEvent): boolean => event.dataTransfer.types.includes('Files') && !event.dataTransfer.types.includes(DV_ASSET_DRAG_TYPE)
   return (
     <div
-      role="button" tabIndex={0} onClick={() => input.current?.click()} onKeyDown={(event) => { if (event.key === 'Enter') input.current?.click() }}
+      role="button" tabIndex={0} onClick={() => input.current?.click()} onKeyDown={(event) => {
+        if (event.key === 'Enter') input.current?.click()
+        else if (event.key === ' ') { event.preventDefault(); input.current?.click() }
+      }}
       onDragOver={(event) => { if (isFileDrag(event)) { event.preventDefault(); setOver(true) } }}
       onDragLeave={() => { setOver(false) }}
       onDrop={(event) => { if (!isFileDrag(event)) return; event.preventDefault(); setOver(false); importFiles(event.dataTransfer.files) }}
@@ -123,7 +126,7 @@ function ImportZone(props: { client: DvClient; projectId: string; session: strin
       {error === null ? null : <div className={css.error}>{error}</div>}
       {refused.map(name => (
         <div key={name} className={css.error}>
-          {t(`「${name}」不是图片、视频或音频，没有导入。`, `"${name}" is not an image, a video or audio, so it was not imported.`)}
+          {t(`「${name}」不是图片、视频或音频，没有导入。`, `“${name}” is not an image, a video or audio, so it was not imported.`)}
         </div>
       ))}
       <input ref={input} type="file" accept="image/*,video/*,audio/*" multiple hidden onChange={(event) => { importFiles(event.currentTarget.files); event.currentTarget.value = '' }} />
@@ -165,29 +168,34 @@ function thumbBox(asset: Asset): CSSProperties {
 
 /**
  * One draggable thumbnail, its asset drawn through `dv.media` at purpose 'thumb', with the length of a video or an audio
- * file to one decimal place; dragging it carries the asset ID and its MIME type, clicking it opens the preview.
+ * file to one decimal place, and the asset's name under it, cut with an ellipsis at the thumbnail's width; dragging the
+ * thumbnail carries the asset ID and its MIME type, clicking it opens the preview.
  * @param props - the asset, the preview callback, and the `dv.media` renderer.
- * @returns the thumbnail.
+ * @returns the thumbnail and its name.
  */
 function Thumb(props: ThumbProps & { asset: Asset }): ReactNode {
   const { asset } = props
   const timed = ['video', 'audio'].includes(mediaTypeOf(asset.mime))
   return (
-    <button
-      type="button" draggable title={asset.name} aria-label={asset.name} data-asset-id={asset.id}
-      onDragStart={(event) => {
-        event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id)
-        event.dataTransfer.setData(DV_ASSET_MIME_DRAG_TYPE, asset.mime)
-        event.dataTransfer.effectAllowed = 'copy'
-      }}
-      onClick={(event) => { props.onOpen(asset, event.currentTarget) }}
-      className={css.thumb}
-    >
-      <span className={css.thumbMedia} style={thumbBox(asset)}>{props.renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
-      {timed && asset.duration_sec !== null
-        ? <span className={css.duration}>{asset.duration_sec.toFixed(1)}s</span>
-        : null}
-    </button>
+    <div className={css.item}>
+      <button
+        type="button" draggable title={asset.name} aria-label={asset.name} data-asset-id={asset.id}
+        onDragStart={(event) => {
+          event.dataTransfer.setData(DV_ASSET_DRAG_TYPE, asset.id)
+          event.dataTransfer.setData(DV_ASSET_MIME_DRAG_TYPE, asset.mime)
+          event.dataTransfer.effectAllowed = 'copy'
+        }}
+        onClick={(event) => { props.onOpen(asset, event.currentTarget) }}
+        className={css.thumb}
+      >
+        <span className={css.thumbMedia} style={thumbBox(asset)}>{props.renderFactorySlot('dv.media', { asset, purpose: 'thumb' })}</span>
+        {timed && asset.duration_sec !== null
+          ? <span className={css.duration}>{asset.duration_sec.toFixed(1)}s</span>
+          : null}
+      </button>
+      {/* The button's label already names the asset, so the visible name is hidden from screen readers. */}
+      <span className={css.name} aria-hidden="true">{asset.name}</span>
+    </div>
   )
 }
 

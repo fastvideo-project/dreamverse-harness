@@ -146,6 +146,13 @@ const halfNode = (position: { x: number; y: number; width: number | null; height
   canvas.order.unshift('h1')
 }
 
+/**
+ * @param card - a node's card.
+ * @returns its left, top, width and frame height as drawn.
+ */
+const boxOfCard = (card: HTMLElement): string[] =>
+  [card.style.left, card.style.top, card.style.width, card.querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '']
+
 describe('the canvas over the real kinds', () => {
   it('draws each node at its stored position, shows a reported badge, and writes one canvas.node_position per drag end', async () => {
     const { runtime, node, server, canvasOf } = await mountCanvas()
@@ -256,6 +263,34 @@ describe('the canvas over the real kinds', () => {
     expect(node('g1').getAttribute('data-node-selected')).toBe('true')
     clickEmpty(canvasOf())
     expect(node('g1').getAttribute('data-node-selected')).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('plays the video of a selected node\'s card, pauses it while the node\'s editor is open, and plays it again once the editor closes', async () => {
+    const calls: string[] = []
+    // Each play or pause of a card video, as `<node> play` or `<node> pause`.
+    const log = (video: HTMLMediaElement, action: string): void => {
+      const card = video.closest('[data-node-id]')
+      if (card !== null && video.closest('[data-testid="dv-canvas-node-editor"]') === null) calls.push(`${card.getAttribute('data-node-id') ?? ''} ${action}`)
+    }
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement) {
+      log(this, 'play')
+      return Promise.resolve()
+    })
+    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function (this: HTMLMediaElement) { log(this, 'pause') })
+    const { runtime, view, open } = await mountCanvas({
+      edit: (state) => {
+        state.assets.push(asset('clip.mp4', 'video/mp4', 'u2', 4, 'asset.import'))
+        state.components.proj.records.push(record({ id: 'u2', operation: 'asset.import', params: { name: 'clip.mp4' }, outputs: ['clip.mp4'] }))
+        state.components.proj.created_by['clip.mp4'] = 'u2'
+        addNode(state, 'u2', canvasNode('asset', ['u2'], 0, 400, { asset: 'clip.mp4' }))
+        state.components.canvas.assets['clip.mp4'] = 'u2'
+      },
+    })
+    await open('u2')
+    expect(calls).toEqual(['u2 pause', 'u2 play', 'u2 pause'])
+    fireEvent.click(view.getByRole('button', { name: zh['editor.close'] }))
+    expect(calls.at(-1)).toBe('u2 play')
     await runtime.dispose()
   })
 
@@ -462,20 +497,44 @@ describe('the canvas over the real kinds', () => {
     await runtime.dispose()
   })
 
-  it('a wheel over the open editor leaves the canvas viewport alone; a wheel over empty canvas zooms it', async () => {
+  it('a wheel over the open editor, a ctrl or meta wheel too, leaves the canvas viewport alone; a wheel over empty canvas zooms it', async () => {
     const { runtime, open, canvasOf } = await mountCanvas()
     const editor = await open('g1')
     const canvas = canvasOf()
     const transform = (): string => (canvas.querySelector('div[style*="transform"]') as HTMLElement).style.transform
     const before = transform()
-    const overEditor = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
-    act(() => { (editor.querySelector('li') ?? editor).dispatchEvent(overEditor) })
-    expect(overEditor.defaultPrevented).toBe(false)
-    expect(transform()).toBe(before)
+    for (const modifier of [{}, { ctrlKey: true }, { metaKey: true }]) {
+      const overEditor = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true, ...modifier })
+      act(() => { (editor.querySelector('li') ?? editor).dispatchEvent(overEditor) })
+      expect(overEditor.defaultPrevented).toBe(false)
+      expect(transform()).toBe(before)
+    }
     const overCanvas = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
     act(() => { canvas.dispatchEvent(overCanvas) })
     expect(overCanvas.defaultPrevented).toBe(true)
     expect(transform()).not.toBe(before)
+    await runtime.dispose()
+  })
+
+  it('a ctrl or meta wheel inside a scroll island, such as a touchpad pinch over a card\'s track area, zooms the canvas', async () => {
+    const { runtime, node, canvasOf } = await mountCanvas()
+    await waitFor(() => { node('g1') })
+    const canvas = canvasOf()
+    const transform = (): string => (canvas.querySelector('div[style*="transform"]') as HTMLElement).style.transform
+    const island = document.createElement('div')
+    island.setAttribute('data-dv-scroll-island', '')
+    node('g1').append(island)
+    const before = transform()
+    const plain = new WheelEvent('wheel', { deltaY: 120, bubbles: true, cancelable: true })
+    act(() => { island.dispatchEvent(plain) })
+    expect([plain.defaultPrevented, transform()]).toEqual([false, before])
+    for (const modifier of [{ ctrlKey: true }, { metaKey: true }]) {
+      const zoomed = transform()
+      const pinch = new WheelEvent('wheel', { deltaY: 10, bubbles: true, cancelable: true, ...modifier })
+      act(() => { island.dispatchEvent(pinch) })
+      expect(pinch.defaultPrevented).toBe(true)
+      expect(transform()).not.toBe(zoomed)
+    }
     await runtime.dispose()
   })
 
@@ -1518,9 +1577,7 @@ describe('the node card', () => {
       if (found === null) throw new Error('no north-west handle')
       return found
     }
-    const box = (): string[] => [
-      node('h1').style.left, node('h1').style.top, node('h1').style.width, node('h1').querySelector<HTMLElement>('[data-node-frame]')?.style.height ?? '',
-    ]
+    const box = (): string[] => boxOfCard(node('h1'))
     const drag = (dx: number, dy: number, pointerId: number, button = 0): void => {
       fireEvent.pointerDown(handle(), { button, clientX: 0, clientY: 0, pointerId })
       fireEvent.pointerMove(canvasOf(), { clientX: dx, clientY: dy, pointerId })
@@ -1540,12 +1597,103 @@ describe('the node card', () => {
     await runtime.dispose()
   })
 
+  it('an east edge resizes a window node in width only, and a north edge in height only with its bottom edge in place', async () => {
+    const { runtime, node, canvasOf, server } = await mountCanvas({ edit: halfNode({ x: 100, y: 100, width: 208, height: 104 }) })
+    await mountDescriptors(runtime, { nodeType: halfType({ width: 208, height: 104, minWidth: 120, minHeight: 60 }) })
+    await waitFor(() => { expect(node('h1').getAttribute('aria-label')).toBe('Half') })
+    fireEvent.pointerDown(node('h1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    await waitFor(() => { expect(node('h1').getAttribute('data-node-selected')).toBe('true') })
+    const box = (): string[] => boxOfCard(node('h1'))
+    const drag = (edge: string, dx: number, dy: number, pointerId: number): void => {
+      fireEvent.pointerDown(node('h1').querySelector(`[data-node-handle="${edge}"]`) as Element, { button: 0, clientX: 0, clientY: 0, pointerId })
+      fireEvent.pointerMove(canvasOf(), { clientX: dx, clientY: dy, pointerId })
+      fireEvent.pointerUp(canvasOf(), { pointerId })
+    }
+    drag('e', 50, 30, 2)
+    expect(box()).toEqual(['100px', '100px', '258px', '104px'])
+    drag('n', 40, -20, 3)
+    expect(box()).toEqual(['100px', '80px', '258px', '124px'])
+    await waitFor(() => {
+      expect(server.positionWrites).toEqual([
+        { node: 'h1', x: 100, y: 100, width: 258, height: 104 }, { node: 'h1', x: 100, y: 80, width: 258, height: 124 },
+      ])
+    })
+    await runtime.dispose()
+  })
+
   it('keeps the frame height of a failed take and draws its failed words and 重试 inside the frame', async () => {
     const { runtime, node } = await mountCanvas({ edit: failG1 })
     await waitFor(() => { node('g1') })
     const frame = node('g1').querySelector<HTMLElement>('[data-node-frame]')
     expect(frame?.style.height).toBe('117px')
-    expect(frame?.textContent).toBe('生成失败重试')
+    expect(frame?.textContent).toBe('生成失败：GPU out of memory重试')
+    await runtime.dispose()
+  })
+
+  it('draws the failed words and reason of a failed take on lines of their own, clamped to 3, above a row of its actions', async () => {
+    const { runtime, node } = await mountCanvas({ edit: failG1 })
+    await waitFor(() => { node('g1') })
+    const reason = [...node('g1').querySelectorAll<HTMLElement>('[data-node-frame] span')].find(span => span.textContent === '生成失败：GPU out of memory')
+    expect(reason?.parentElement?.style.flexDirection).toBe('column')
+    expect(reason?.querySelector('button')).toBeNull()
+    expect(reason?.nextElementSibling?.querySelectorAll('button').length).toBe(1)
+    expect([reason?.style.whiteSpace, reason?.style.getPropertyValue('-webkit-line-clamp')]).toEqual(['', '3'])
+    await runtime.dispose()
+  })
+
+  it('reads Queued… on a pending node and the running words on a running node that has no start time, neither with a time', async () => {
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        state.components.proj.records.push(record({ id: 'pa', operation: 'test.paint', status: 'pending' }), record({ id: 'pb', operation: 'test.paint', status: 'running' }))
+        addNode(state, 'pa', canvasNode('paint', ['pa'], 0, 600))
+        addNode(state, 'pb', canvasNode('paint', ['pb'], 300, 600))
+      },
+    })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    await waitFor(() => { node('pb') })
+    expect([node('pa').textContent, node('pb').textContent]).toEqual([expect.stringContaining(zh['node.queued']), expect.stringContaining('渲染中')])
+    expect(node('pa').textContent).not.toMatch(/\d:\d\d/)
+    expect(node('pb').textContent).not.toMatch(/\d:\d\d/)
+    await runtime.dispose()
+  })
+
+  it('counts the time a running node has rendered, once a second, in tabular numerals', async () => {
+    // Only the clock and the tick are fake, so the canvas's fetches and `waitFor` keep their real timeouts.
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-11-09T10:01:12Z'))
+    const startedAt = '2026-11-09T10:00:00Z'
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        state.components.proj.records.push(record({ id: 'pa', operation: 'test.paint', status: 'running', started_at: startedAt }))
+        addNode(state, 'pa', canvasNode('paint', ['pa'], 0, 600))
+      },
+    })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    const timeOf = (): string | undefined => node('pa').querySelector<HTMLElement>('span[style*="tabular-nums"]')?.textContent
+    await waitFor(() => { expect(timeOf()).toBe('1:12') })
+    // The overlay is a flex box, so the running words and the time stay one child element to keep the space between them.
+    const overlay = [...node('pa').querySelectorAll<HTMLElement>('span')].find(span => span.style.display === 'flex' && span.textContent.includes('渲染中'))
+    expect([overlay?.childNodes.length, overlay?.firstElementChild?.textContent]).toEqual([1, '渲染中 1:12'])
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(timeOf()).toBe('1:13')
+    expect(node('pa').textContent).toContain('渲染中')
+    await runtime.dispose()
+  })
+
+  it('draws only the failed words of a failed take whose record carries no error', async () => {
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        failG1(state)
+        state.components.proj.records = state.components.proj.records.map((entry) => {
+          if (entry.id !== 'g1') return entry
+          const { error: _error, ...withoutError } = entry
+          return withoutError
+        })
+      },
+    })
+    await waitFor(() => { node('g1') })
+    expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.textContent).toBe('生成失败重试')
     await runtime.dispose()
   })
 

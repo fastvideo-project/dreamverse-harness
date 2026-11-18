@@ -45,7 +45,7 @@ export interface OperationRequest {
   inputs?: Array<{ role: string; ref: string }>
   params?: Record<string, unknown>
   intent?: string
-  surface: 'canvas' | 'timeline' | 'asset_pool'
+  surface: 'chat' | 'canvas' | 'timeline' | 'asset_pool'
   /** The chat session the view sits beside, recorded as the record's `session`. */
   session?: string
   based_on?: string
@@ -163,10 +163,10 @@ function stringOf(value: unknown, field: string): string {
 
 /**
  * @param value - the raw `surface` of a request.
- * @returns the surface; anything but `timeline` or `asset_pool` counts as the canvas.
+ * @returns the surface; an unrecognized value counts as the canvas.
  */
-function surfaceOf(value: unknown): Surface & ('canvas' | 'timeline' | 'asset_pool') {
-  return value === 'timeline' || value === 'asset_pool' ? value : 'canvas'
+function surfaceOf(value: unknown): Surface & ('chat' | 'canvas' | 'timeline' | 'asset_pool') {
+  return value === 'chat' || value === 'timeline' || value === 'asset_pool' ? value : 'canvas'
 }
 
 /** The values each enumerated history filter accepts. */

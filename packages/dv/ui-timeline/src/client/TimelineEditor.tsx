@@ -70,23 +70,26 @@ export interface TimelineEditorProps {
    * while the selection names none or a timeline that the project lost.
    */
   selected: string | null
-  /** Select the timeline that the user picked or created, or the one shown before a create that failed. */
-  select: (timelineId: string | null) => void
+  /**
+   * Select the timeline that the user picked or created, or the one shown before a create that failed. Absent in a card,
+   * whose editor shows no timeline tabs.
+   */
+  select?: (timelineId: string | null) => void
   /** The clip that the editor selects and seeks to once it shows the clip's timeline, or null. */
   clipFocus?: { timelineId: string; clipId: string } | null
   /** Drop {@link TimelineEditorProps.clipFocus} once the editor took it. */
   takeClipFocus?: () => void
   /**
-   * Draw the editor inside a canvas card instead of a panel: no timeline tabs and no track-area resize, the track area
-   * fills the editor, the preview renders into `viewer` (none while it is null), centered on it and `previewWidth` wide
-   * (default: as wide as `viewer`), with the first ready clip's aspect ratio and a progress bar that a press moves the
-   * playhead along, the editor and the preview draw everything `scale` times larger (default 1) while still filling
-   * their boxes, so their text grows with the node, the menus open inside the editor, and
-   * pointer positions are divided by the canvas zoom that scales the editor; the toolbar ends with 打开编辑器 / Open
-   * editor, which calls `open`. The editor marks its root `data-node-keys`, its ruler, clips, sounds and sound track
-   * headers `data-node-interactive`, so the canvas leaves their keys and presses to it and moves the node on a press
-   * anywhere else; the track area scrolls both ways without a scrollbar, by wheel or touchpad. Absent for the panel of the 时间线 tab and
-   * center view.
+   * Draw the editor inside a canvas card instead of a panel; absent for the panel of the 时间线 tab and center view. A
+   * card has no timeline tabs and no track-area resize, and its track area fills the editor and scrolls both ways
+   * without a scrollbar, by wheel or touchpad. The preview renders into `viewer` (none while it is null), centered on
+   * it and `previewWidth` wide (default: as wide as `viewer`), with the first ready clip's aspect ratio and a progress
+   * bar that a press moves the playhead along. The editor and the preview draw everything `scale` times larger
+   * (default 1) while still filling their boxes, so their text grows with the node. The menus open inside the editor,
+   * pointer positions are divided by the canvas zoom that scales the editor, and the toolbar ends with 打开编辑器 /
+   * Open editor, which calls `open`. The editor marks its root and the preview `data-node-keys`, and its ruler, clips,
+   * sounds and sound track headers `data-node-interactive`, so the canvas leaves their keys and presses to it and
+   * moves the node on a press anywhere else.
    */
   card?: { viewer: HTMLElement | null; open: () => void; previewWidth?: number; scale?: number }
 }
@@ -199,14 +202,15 @@ const EDITOR_CSS = `
 .dv-tl-editor .dv-tl-autohide-scrollbar::-webkit-scrollbar-thumb { background: transparent; border-radius: 4px; }
 .dv-tl-editor .dv-tl-autohide-scrollbar[data-scrolling]::-webkit-scrollbar-thumb { background: var(--dv-line-strong); }
 .dv-tl-editor .dv-tl-btn { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-tl-editor .dv-tl-btn:not(:disabled):hover { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-btn:not(:disabled):hover { background: var(--dv-surface-3); } }
 .dv-tl-editor :focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 1px; }
 .dv-tl-editor .dv-tl-trim { background: var(--dv-line-strong); transition: background-color 120ms var(--dv-ease); }
-.dv-tl-editor .dv-tl-trim:hover { background: var(--dv-accent); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-trim:hover { background: var(--dv-accent); } }
 .dv-tl-editor input[type="range"] { accent-color: var(--dv-accent); }
 .dv-tl-editor .dv-tl-resize { background: var(--dv-line); transition: background-color 120ms var(--dv-ease); }
 .dv-tl-editor .dv-tl-resize::before { content: ""; position: absolute; left: 0; right: 0; top: -4px; bottom: -4px; }
-.dv-tl-editor .dv-tl-resize:hover, .dv-tl-editor .dv-tl-resize[data-dragging="true"] { background: var(--dv-accent); }
+.dv-tl-editor .dv-tl-resize[data-dragging="true"] { background: var(--dv-accent); }
+@media (hover: hover) { .dv-tl-editor .dv-tl-resize:hover { background: var(--dv-accent); } }
 @media (prefers-reduced-motion: reduce) {
   .dv-tl-editor .dv-tl-btn, .dv-tl-editor .dv-tl-trim, .dv-tl-editor .dv-tl-resize { transition: none; }
 }
@@ -226,7 +230,7 @@ const menuItem: CSSProperties = { ...button, border: 'none', display: 'flex', wi
 /** The box of the toolbar's track menu and track layer list, opening under their buttons over the track area. */
 const toolPopoverStyle: CSSProperties = {
   position: 'absolute', left: 0, top: 'calc(100% + 4px)', zIndex: 20, minWidth: 160, padding: 6, background: palette.panel,
-  border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-xl)', boxShadow: 'var(--dv-shadow-2)',
+  border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-menu)', boxShadow: 'var(--dv-shadow-2)',
 }
 /** A one-line note centered over the preview frame. */
 const viewerNote: CSSProperties = {
@@ -298,7 +302,7 @@ function TrackButton({ icon, label, pressed, expanded, onClick }: {
  */
 function Icon({ name }: { name: keyof typeof ICON_PATHS }): ReactNode {
   return (
-    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d={ICON_PATHS[name]} />
     </svg>
   )
@@ -587,7 +591,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const menuRef = useRef<HTMLDivElement | null>(null)
   // The notice of the latest drop the editor refused: a file, a non-video asset on the video track, or a non-audio asset
   // on a sound track. Each refusal sets a new object, so a repeated refusal restarts the notice's timer.
-  const [dropNotice, setDropNotice] = useState<{ text: 'track.fileDrop' | 'track.videoDrop' | 'track.soundDrop' } | null>(null)
+  const [dropNotice, setDropNotice] = useState<{ text: 'track.fileDrop' | 'track.videoDrop' | 'track.videoOnly' | 'track.soundDrop' } | null>(null)
   const [picking, setPicking] = useState(false)
   const pickerRef = useRef<HTMLDivElement | null>(null)
   const addRef = useRef<HTMLButtonElement | null>(null)
@@ -634,6 +638,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     setChosenClip(null); setPicking(false); setPickingSound(false); setExported(null); setMenu(null); setRenaming(null)
     setChosenSound(null); setTrackMenu(null); setRenamingTrack(null)
     setPickTrack(0); setPickAt(null); setToolPopover(null)
+    soundAdds.current += 1; setPendingSound(null)
   }, [timelineId])
 
   useEffect(() => {
@@ -756,7 +761,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // names its timeline.
   const runOperation = (operation: string, params: Record<string, unknown>, intent: string): Promise<boolean> => {
     const named = [
-      'timeline.clip_add', 'timeline.sound_add', 'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute',
+      'timeline.clip_add', 'timeline.sound_track_remove', 'timeline.sound_track_rename', 'timeline.mute',
       'timeline.video_track_remove', 'timeline.track_add', 'timeline.video_track_move',
     ].includes(operation)
     const scoped = timeline === null || !named ? params : { timeline: timeline.id, ...params }
@@ -766,20 +771,41 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   // right-click menu was opened; an uploaded file is imported first and then added the same way.
   const trackEnd = Math.max(0, ...sounds.filter(sound => sound.track === soundTrack).map(sound => sound.startSec + sound.seconds))
   const soundStart = round(pickAt ?? (sounds.some(sound => sound.track === soundTrack) ? trackEnd : player.position))
-  // While a sound add runs, and until the refreshed state shows its sound, every ＋ of the sound tracks is disabled, so
-  // the next add starts after it instead of at the same time. A failed add enables them again.
-  const [addingAt, setAddingAt] = useState<number | null>(null)
-  useEffect(() => { if (addingAt !== null && sounds.length !== addingAt) setAddingAt(null) }, [sounds.length])
-  const addingSound = (work: Promise<boolean>): void => {
-    setAddingAt(sounds.length)
-    void work.then((ok) => { if (!ok) setAddingAt(null) })
+  // Every ＋ of the sound tracks is disabled while a sound add runs, and then until the shown sounds include the sound ID
+  // that its record names, so the next add starts after that sound instead of at the same time. A failed add, a record
+  // that names no sound ID, and a switch to another timeline enable them at once. `pendingSound` is `true` while the add
+  // runs, then the awaited sound ID; `soundAdds` counts the adds and timeline switches, so an add that ends after a
+  // switch to another timeline leaves `pendingSound` alone.
+  const [pendingSound, setPendingSound] = useState<true | string | null>(null)
+  const soundAdds = useRef(0)
+  useEffect(() => {
+    if (sounds.some(sound => sound.sound === pendingSound)) setPendingSound(null)
+  }, [pendingSound, sounds])
+  const addingSound = (work: () => Promise<string | null>): void => {
+    const add = ++soundAdds.current
+    setPendingSound(true)
+    let added: string | null = null
+    void run(async () => { added = await work() }).then((ok) => {
+      if (soundAdds.current === add) setPendingSound(ok ? added : null)
+    })
+  }
+  // A sound add whose record failed, such as one naming an asset that is not audio, throws the record's error, so the
+  // view shows it as its notice and the ＋ buttons are enabled again. A finished record names the new sound ID first in
+  // its `report.sounds`.
+  const writeSound = async (asset: string, at: number, track: number): Promise<string | null> => {
+    const params = { timeline: timelineId, asset, start_sec: at, track }
+    const record = await client.runOperation(request(project, session, { operation: 'timeline.sound_add', params, intent: t('intent.soundAdd', { at: timecode(at) }) }))
+    if (record.status === 'failed') throw new Error(record.error?.message ?? record.status)
+    const reported = record.report?.['sounds']
+    const sound: unknown = Array.isArray(reported) ? reported[0] : undefined
+    return typeof sound === 'string' ? sound : null
   }
   const addSound = (asset: string): void => {
     setPickingSound(false)
     const at = soundStart
-    addingSound(runOperation('timeline.sound_add', { asset, start_sec: at, track: soundTrack }, t('intent.soundAdd', { at: timecode(at) })))
+    addingSound(() => writeSound(asset, at, soundTrack))
   }
-  const removeSound = (sound: (typeof sounds)[number]): void => {
+  const removeSound = (sound: TrackSound): void => {
     setTrackMenu(null)
     void runOperation('timeline.sound_remove', { sound: sound.sound }, t('intent.soundRemove', { name: sound.name }))
       .then((ok) => { if (ok) setChosenSound(null) })
@@ -878,16 +904,16 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       setDropNotice({ text: 'track.soundDrop' })
       return
     }
-    if (timeline === null || addingAt !== null) return
+    if (timeline === null || pendingSound !== null) return
     const at = round(Math.max(0, (event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px))
-    addingSound(runOperation('timeline.sound_add', { asset: dropped.id, start_sec: at, track }, t('intent.soundAdd', { at: timecode(at) })))
+    addingSound(() => writeSound(dropped.id, at, track))
   }
   // A video tile dropped on a video track goes on that track where it was dropped.
   const dropClip = (event: DragEvent<HTMLDivElement>, track: number): void => {
     const dropped = takeDrop(event)
     if (dropped === null) return
     if (dropped.type !== 'video') {
-      setDropNotice({ text: 'track.videoDrop' })
+      setDropNotice({ text: dropped.type === 'audio' ? 'track.videoDrop' : 'track.videoOnly' })
       return
     }
     addClip(dropped.id, track, (event.clientX - event.currentTarget.getBoundingClientRect().left) / screenScale() / px)
@@ -895,22 +921,21 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
   const uploadSound = (file: File): void => {
     setPickingSound(false)
     const at = soundStart
-    addingSound(run(async () => {
+    addingSound(async () => {
       const { asset } = await client.importAsset(project, file, 'asset_pool', session)
-      const params = { timeline: timelineId, asset, start_sec: at, track: soundTrack }
-      await client.runOperation(request(project, session, { operation: 'timeline.sound_add', params, intent: t('intent.soundAdd', { at: timecode(at) }) }))
-    }))
+      return writeSound(asset, at, soundTrack)
+    })
   }
 
   // A created timeline stores no name; `nameOf` shows the numbered default name of its ID.
   const createTimeline = (): void => {
     const id = nextTimelineId(timelines)
     const name = timelineName({ id, name: '' }, numbered)
-    select(id)
+    select?.(id)
     void run(() => client.runOperation(request(project, session, { operation: 'timeline.create', params: { timeline: id, assets: [] }, intent: t('intent.create', { name }) })))
       .then((ok) => {
         if (ok) return
-        select(timelineId)
+        select?.(timelineId)
       })
   }
   const startRename = (entry: Timeline): void => {
@@ -960,9 +985,10 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     void runOperation('timeline.sound_split', { sound: sound.sound, at_sec: atSec }, t('intent.soundSplit', { name: sound.name, at: timecode(player.position) }))
   }
   // Export is one `timeline.export` call: it trims the clips with an in or out point and plays each at its time.
-  // It waits while any clip is a placeholder; the toolbar says how many.
-  const waiting = clips.filter(clip => clip.status !== 'ready').length
-  const exportId = exporting || clips.length === 0 || waiting > 0 ? null : timelineId
+  // It waits while any clip is a placeholder; the toolbar counts the rendering clips and the failed clips in separate notes.
+  const waiting = clips.filter(clip => clip.status === 'rendering').length
+  const failed = clips.filter(clip => clip.status === 'failed').length
+  const exportId = exporting || clips.length === 0 || waiting > 0 || failed > 0 ? null : timelineId
   const exportTimeline = (id: string): void => {
     setExporting(true)
     setExported(null)
@@ -1217,7 +1243,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           <span key={sec} style={{ position: 'absolute', left: sec * px, bottom: 0, width: 1, height: sec % steps.label === 0 ? 9 : 4, background: palette.lineStrong }} />
         ))}
         {ticks.filter(sec => sec % steps.label === 0).map(sec => (
-          <span key={`label-${String(sec)}`} style={{ position: 'absolute', left: sec * px, top: 3, marginLeft: 4, fontFamily: palette.mono, fontSize: 11, lineHeight: '14px', fontVariantNumeric: 'tabular-nums', color: palette.muted, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+          <span key={`label-${String(sec)}`} style={{ position: 'absolute', left: sec * px, top: 3, marginLeft: 4, fontFamily: palette.mono, fontSize: 12, lineHeight: '16px', fontVariantNumeric: 'tabular-nums', color: palette.muted, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
             {timecode(sec).replace(/\.\d+$/, '')}
           </span>
         ))}
@@ -1366,7 +1392,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     if (on.kind === 'videoLane') return [menuButton(t('menu.addVideo'), () => { pickFor(on) }), ...addTracks]
     // The last kind left; a new kind fails to compile here until it gets its items above.
     const lane: Extract<TrackMenu, { kind: 'soundLane' }> = on
-    return [menuButton(t('menu.addSound'), addingAt === null ? () => { pickSoundFor(lane) } : null), ...addTracks]
+    return [menuButton(t('menu.addSound'), pendingSound === null ? () => { pickSoundFor(lane) } : null), ...addTracks]
   }
 
   // Timeline tabs: click selects, double-click renames in place, right-click opens a menu with rename and delete.
@@ -1387,7 +1413,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       ) : (
         <button
           key={entry.id} type="button" role="tab" aria-selected={entry === timeline} data-timeline={entry.id}
-          onClick={() => { select(entry.id) }}
+          onClick={() => { select?.(entry.id) }}
           onDoubleClick={() => { startRename(entry) }}
           onContextMenu={(event) => {
             event.preventDefault()
@@ -1405,7 +1431,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
       ))}
       <button type="button" className="dv-tl-btn" onClick={createTimeline} style={{ ...button, ...textButton }}>{t('tabs.new')}</button>
       {menu !== null ? (
-        <div ref={menuRef} role="menu" style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-xl)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
+        <div ref={menuRef} role="menu" style={{ position: 'fixed', left: menu.x, top: menu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-menu)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
           <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { startRename(menu.entry) }} style={menuItem}>{t('tabs.rename')}</button>
           <button type="button" role="menuitem" className="dv-tl-btn" onClick={() => { deleteTimeline(menu.entry) }} style={{ ...menuItem, color: palette.danger }}>{t('tabs.delete')}</button>
         </div>
@@ -1434,7 +1460,11 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
     }
   const frameStyle: CSSProperties = card === undefined ? { height: '100%', maxWidth: '100%', aspectRatio: '16 / 9' } : { width: '100%', aspectRatio: cardRatio }
   const viewer = (
-    <section ref={viewerBox} aria-label={t('viewer.aria')} data-testid="dv-timeline-preview" style={viewerStyle}>
+    <section
+      ref={viewerBox} aria-label={t('viewer.aria')} data-testid="dv-timeline-preview" style={viewerStyle}
+      // The portaled preview of a card sits outside the editor's root, so it carries the class and the key mark itself.
+      {...card === undefined ? {} : { className: 'dv-tl-editor', 'data-node-keys': '' }}
+    >
       <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <div
           ref={frame} data-testid="dv-timeline-viewer"
@@ -1576,6 +1606,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         : null}
       <span style={{ flex: 1 }} />
       {waiting > 0 ? <span data-testid="dv-timeline-export-waiting" style={{ color: palette.muted, fontSize: 12, lineHeight: '16px', marginRight: 6 }}>{t('tool.exportWaiting', { count: waiting })}</span> : null}
+      {failed > 0 ? <span data-testid="dv-timeline-export-failed" style={{ color: palette.danger, fontSize: 12, lineHeight: '16px', marginRight: 6 }}>{t('tool.exportFailed', { count: failed })}</span> : null}
       <button
         type="button" className="dv-tl-btn" style={buttonStyle(exportId === null)} disabled={exportId === null}
         onClick={exportId === null ? undefined : () => { exportTimeline(exportId) }}
@@ -1718,7 +1749,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
           <TrackButton icon="delete" label={t('track.deleteNamed', { name: trackName(track) })} onClick={timeline === null || headerBusy ? null : () => { removeTrack(track) }} />
           <TrackButton
             icon="add" label={t('track.addSound')} expanded={pickingSound && soundTrack === track}
-            onClick={timeline === null || addingAt !== null ? null : (event) => {
+            onClick={timeline === null || pendingSound !== null ? null : (event) => {
               soundAddRef.current = event.currentTarget
               anchorBeside(event.currentTarget)
               setPicking(false); setSoundTrack(track); setPickAt(null); setPickingSound(!pickingSound || soundTrack !== track)
@@ -1754,7 +1785,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
               ...placedBlockGeometry(sound, soundDrag?.id === sound.sound ? soundDrag : null),
             }}
           >
-            {/* As in common editors, the file name sits in its own strip above the waveform, cut with an ellipsis. */}
+            {/* The file name sits in its own strip above the waveform, cut with an ellipsis. */}
             <span style={{ flex: 'none', height: SOUND_NAME_HEIGHT, padding: '0 4px', fontSize: 11, lineHeight: `${String(SOUND_NAME_HEIGHT)}px`, color: palette.fg, background: palette.panel, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {sound.name}
             </span>
@@ -1896,7 +1927,7 @@ export function TimelineEditor(props: TimelineEditorProps): ReactNode {
         ))}
       </div>
       {trackMenu !== null ? (
-        <div ref={trackMenuRef} role="menu" style={{ position: card === undefined ? 'fixed' : 'absolute', left: trackMenu.x, top: trackMenu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-xl)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
+        <div ref={trackMenuRef} role="menu" style={{ position: card === undefined ? 'fixed' : 'absolute', left: trackMenu.x, top: trackMenu.y, zIndex: 20, background: palette.panel, border: `1px solid ${palette.line}`, borderRadius: 'var(--dv-radius-menu)', padding: 6, boxShadow: 'var(--dv-shadow-2)', minWidth: 140 }}>
           {menuItems(trackMenu.on)}
         </div>
       ) : null}

@@ -148,6 +148,38 @@ describe('a timeline node on the canvas', () => {
     expect([rulerClick.defaultPrevented, canvasOf().querySelector('[data-testid="dv-canvas-node-menu"]') !== null]).toEqual([true, true])
   })
 
+  it('styles the preview above the node as the editor, and keeps the keys of its buttons from the canvas', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const { node, canvasOf, server } = await mountTimelineCanvas((state) => { placeTimeline(state, 'k1', 't1') })
+    await waitFor(() => { node('k1') })
+    fireEvent.pointerDown(node('k1'), { button: 0, clientX: 5, clientY: 5, pointerId: 1 })
+    fireEvent.pointerUp(canvasOf(), { pointerId: 1 })
+    const preview = await waitFor(() => node('k1').querySelector('[data-node-above] [data-testid="dv-timeline-preview"]') as HTMLElement)
+    const speed = within(preview).getByTestId('dv-timeline-speed')
+    fireEvent.keyDown(speed, { key: 'Delete' })
+    fireEvent.keyDown(speed, { key: 'Backspace' })
+    expect(confirm).not.toHaveBeenCalled()
+    expect(operationsOf(server.writes)).toEqual([])
+    // The preview sits outside the editor's root, so it carries the editor's class for its button styles itself.
+    expect([preview.classList.contains('dv-tl-editor'), speed.classList.contains('dv-tl-btn')]).toEqual([true, true])
+  })
+
+  it('keeps the card\'s editor on its timeline, with no control that selects or creates another, which writes nothing', async () => {
+    const { node, server } = await mountTimelineCanvas((state) => {
+      const [timeline] = state.components.timeline.timelines
+      if (timeline === undefined) return
+      state.components.timeline.timelines.push({ ...timeline, id: 't2' as TimelineId, name: '片尾', clips: [] })
+      placeTimeline(state, 'k1', 't1')
+    })
+    await waitFor(() => { expect(node('k1').querySelector('[data-timeline-card="t1"]')).not.toBeNull() })
+    const editor = within(node('k1').querySelector('[data-timeline-card="t1"]') as HTMLElement).getByTestId('dv-timeline-editor')
+    expect([within(editor).queryByRole('tablist'), within(editor).queryByRole('tab'), within(editor).queryByRole('button', { name: zh['tabs.new'] })]).toEqual([null, null, null])
+    act(() => { server.notify() })
+    await act(() => Promise.resolve())
+    expect(node('k1').querySelector('[data-timeline-card="t1"]')).not.toBeNull()
+    expect(operationsOf(server.writes)).toEqual([])
+  })
+
   it('shows a deleted timeline, an empty one, and opens the timeline view on a double click on the caption', async () => {
     const { node, canvasOf, show } = await mountTimelineCanvas((state) => {
       const [timeline] = state.components.timeline.timelines

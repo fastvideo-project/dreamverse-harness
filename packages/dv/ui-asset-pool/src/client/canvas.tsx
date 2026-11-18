@@ -37,8 +37,8 @@ const player: CSSProperties = { display: 'flex', borderRadius: 'var(--dv-radius-
 
 /**
  * The card body of an asset node: the asset through `dv.media`, filling the frame, playing while the node is selected
- * when it is a video. An image or a video of known size shows bare; any other asset, such as an audio waveform or a
- * file card, and a missing asset sit on the card surface.
+ * with its editor closed when it is a video. An image or a video of known size shows bare; any other asset, such as an
+ * audio waveform or a file card, and a missing asset sit on the card surface.
  * @param props - the node, its assets, whether it is selected, and the Factory renderer.
  * @returns the element.
  */

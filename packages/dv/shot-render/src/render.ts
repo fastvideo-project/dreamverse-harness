@@ -20,10 +20,10 @@ export function number(value: unknown, fallback: number): number {
 export interface ShotGeometry {
   aspectRatio: string
   resolution: string
-  width: number
-  height: number
+  width?: number
+  height?: number
   durationSec: number
-  numFrames: number
+  numFrames?: number
 }
 
 /**
@@ -37,16 +37,22 @@ export interface ShotGeometry {
 export function shotGeometry(facts: RenderModelFacts, params: Record<string, unknown>): ShotGeometry {
   const aspectRatio = text(params['aspect_ratio'], facts.aspectRatios[0] ?? '')
   const resolution = text(params['resolution'], facts.resolutions[0] ?? '')
-  const size = facts.frameSizes[aspectRatio]?.[resolution]
-  if (size === undefined) {
+  const size = facts.frameSizes?.[aspectRatio]?.[resolution]
+  if (!facts.aspectRatios.includes(aspectRatio) || !facts.resolutions.includes(resolution)
+    || (facts.frameSizes !== undefined && size === undefined)) {
     throw new Error(`aspect_ratio and resolution must be one of ${facts.aspectRatios.join(', ')} at ${facts.resolutions.join(', ')}.`)
   }
   const durationSec = number(params['duration_sec'], facts.minDurationSec)
-  const numFrames = facts.numFramesByDurationSec[String(durationSec)]
-  if (numFrames === undefined) {
-    throw new Error(`duration_sec must be a whole number from ${facts.minDurationSec} to ${facts.maxDurationSec}.`)
+  const numFrames = facts.numFramesByDurationSec?.[String(durationSec)]
+  const supported = facts.durationsSec === undefined ? numFrames !== undefined : facts.durationsSec.includes(durationSec)
+  if (!Number.isInteger(durationSec) || !supported) {
+    throw new Error(facts.durationsSec === undefined
+      ? `duration_sec must be a whole number from ${facts.minDurationSec} to ${facts.maxDurationSec}.`
+      : `duration_sec must be one of ${facts.durationsSec.join(', ')} seconds.`)
   }
-  return { aspectRatio, resolution, width: size[0], height: size[1], durationSec, numFrames }
+  return { aspectRatio, resolution, durationSec,
+    ...size === undefined ? {} : { width: size[0], height: size[1] },
+    ...numFrames === undefined ? {} : { numFrames } }
 }
 
 /** The MIME type without parameters, as the asset pool records it. */

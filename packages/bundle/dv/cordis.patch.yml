@@ -13,12 +13,24 @@
 - insert:
     # The model catalog: the models dv_shot_render and plans can name, which the agent reads through dv_models_list and
     # dv_models_get.
+    - id: dv-hardware
+      name: '@dv/hardware'
+
+    - id: dv-ui-hardware
+      name: '@dv/ui-hardware'
+    - id: dv-openrouter
+      name: '@dv/openrouter'
+
+    - id: dv-ui-openrouter
+      name: '@dv/ui-openrouter'
+
     - id: dv-models
       name: '@dv/models'
 
-    # Models on the cluster's FastVideo streaming_v2 servers, one server per task. A model or task left out of `models`
-    # is not registered; a deployment with other servers replaces this row's config in its profile patch. The row is
-    # disabled, so dv-uniserve serves fasth3 for task ref2v; a deployment sets `disabled: false` to mount it.
+    # Models on FastVideo servers, one server per task, each with the facts of its served model. A model or task left
+    # out of `models` is not registered. The row is disabled, so dv-uniserve serves fasth3 for task ref2v; a deployment
+    # sets `disabled: false` and replaces these local URLs and FastH3 facts with its servers' own in its profile
+    # patch.
     - id: dv-fastvideo
       name: '@dv/fastvideo'
       disabled: true
@@ -26,9 +38,21 @@
         models:
           fasth3:
             ref2v:
-              baseUrl: http://10.244.19.118:8029
+              baseUrl: http://127.0.0.1:8029
+              modelFacts:
+                modelId: fasth3
+                frameSizes: { '16:9': { 768p: [1344, 768] }, '9:16': { 768p: [768, 1344] }, '1:1': { 768p: [768, 768] } }
+                numFramesByDurationSec: { 5: 124, 6: 158, 7: 175, 8: 192, 9: 226, 10: 243, 11: 277, 12: 294, 13: 328, 14: 345, 15: 362 }
+                maxReferences: 12
+                referenceMediaTypes: { image: { maxCount: 9 }, video: { maxCount: 3 }, audio: { maxCount: 3 } }
             t2v:
-              baseUrl: http://10.244.16.130:8031
+              baseUrl: http://127.0.0.1:8031
+              modelFacts:
+                modelId: fasth3
+                frameSizes: { '16:9': { 768p: [1344, 768] }, '9:16': { 768p: [768, 1344] }, '1:1': { 768p: [768, 768] } }
+                numFramesByDurationSec: { 5: 124, 6: 158, 7: 175, 8: 192, 9: 226, 10: 243, 11: 277, 12: 294, 13: 328, 14: 345, 15: 362 }
+                maxReferences: 0
+                referenceMediaTypes: {}
 
     # FastH3 Omni 8-Step V1 on the cluster's UniServe server: the provider of fasth3 for task ref2v. A deployment with
     # another server replaces this row's config.
@@ -280,9 +304,9 @@
 - id: ui-reference
   disabled: true
 
-# The model is fixed by agent-default-model; the composer shows no model picker and no /model command.
+# agent-default-model initializes each session; the operator picker changes its route for the next request.
 - id: ui-model-selection
-  disabled: true
+  disabled: false
 
 # Completed turns show no token-usage pill; the composer statistics are hidden by @dv/ui-shell.
 - id: ui-chat

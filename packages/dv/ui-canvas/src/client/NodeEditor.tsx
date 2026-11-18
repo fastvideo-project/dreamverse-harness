@@ -461,7 +461,7 @@ function EditorPanel(props: NodeEditorProps): ReactNode {
                     style={{ ...titleText, maxWidth: '100%', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '0 6px', border: 'none', borderRadius: 'var(--dv-radius-sm)', cursor: 'text' }}
                   >
                     <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none', color: 'var(--dv-text-2)' }}><path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4" /></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.57} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flex: 'none', color: 'var(--dv-text-2)' }}><path d="M4 20h4L19 9l-4-4L4 16v4zM13 7l4 4" /></svg>
                   </button>
                 </h2>
               )
@@ -476,10 +476,10 @@ function EditorPanel(props: NodeEditorProps): ReactNode {
             <button key={action.id} type="button" className="dv-canvas-soft" style={button} disabled={view.rerunning} onClick={() => { action.run(view, props.hosts.action(action.id)) }}>{action.label()}</button>
           ))}
           <button type="button" className="dv-canvas-btn dv-canvas-danger" aria-label={t('node.remove')} title={t('node.remove')} style={{ ...button, width: 32, padding: 0 }} onClick={props.onRemove}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
           </button>
           <button type="button" className="dv-canvas-btn" aria-label={t('editor.close')} title={t('editor.close')} style={{ ...button, width: 32, padding: 0, color: 'var(--dv-text-2)' }} onClick={onClose}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
           </button>
         </div>
       </header>
@@ -523,7 +523,7 @@ function EditorPanel(props: NodeEditorProps): ReactNode {
         style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, padding: 0, border: 'none', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text-3)', cursor: 'nwse-resize', touchAction: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         onPointerDown={begin({ right: true, bottom: true })} {...gestureHandlers} onKeyDown={onResizeKey}
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.25} strokeLinecap="round" aria-hidden="true"><path d="M9 3 3 9M9 6.5 6.5 9" /></svg>
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true"><path d="M9 3 3 9M9 6.5 6.5 9" /></svg>
       </button>
     </section>
   )
@@ -550,7 +550,7 @@ function VersionStrip({ node, version, viewAt, state, t, onChoose, renderFactory
   const thumb: CSSProperties = {
     position: 'relative', flex: 'none', width: 56, height: 40, padding: 0, borderRadius: 'var(--dv-radius-sm)', overflow: 'hidden',
     display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--dv-surface-3)', color: 'var(--dv-text-2)',
-    border: 'none', cursor: 'pointer', fontFamily: 'var(--dv-font-mono)', fontSize: 11,
+    border: 'none', cursor: 'pointer', fontFamily: 'var(--dv-font-mono)', fontSize: 12,
   }
   return (
     <div data-testid="dv-canvas-version-strip" style={{ margin: '0 0 12px' }}>

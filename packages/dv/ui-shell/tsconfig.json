@@ -27,6 +27,9 @@
       "path": "../../client/ui-layout"
     },
     {
+      "path": "../../client/ui-primitives"
+    },
+    {
       "path": "../../client/ui-renderer"
     },
     {

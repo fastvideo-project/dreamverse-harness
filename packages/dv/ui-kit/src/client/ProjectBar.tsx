@@ -40,7 +40,7 @@ const control: CSSProperties = {
 /** Hover and keyboard focus of the bar's controls, which inline styles cannot express. */
 const BAR_CSS = `
 .dv-kit-bar-control { transition: background-color 120ms var(--dv-ease); }
-.dv-kit-bar-control:hover:not(:disabled) { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-kit-bar-control:hover:not(:disabled) { background: var(--dv-surface-3); } }
 .dv-kit-bar-control:disabled { opacity: 0.4; cursor: default; }
 .dv-kit-bar-control:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .dv-kit-bar-control { transition: none; } }

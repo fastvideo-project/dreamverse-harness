@@ -25,7 +25,7 @@ import { placeClips, timelinesOf } from './timelines.ts'
 /** The node type key of a placed timeline, the kind that `@dv/timeline` registers `timeline.place` under. */
 export const TIMELINE_NODE_KIND = 'timeline'
 
-/** The default frame size of a timeline node, in canvas units. */
+/** The default frame size of a timeline node, in canvas units, the `size` of `@dv/timeline`'s node maker. */
 const CARD_SIZE = { width: 640, height: 390 }
 
 /**
@@ -68,7 +68,7 @@ function placedTimeline(state: WireState, record: Pick<ProjectRecord, 'params'>)
  * @param timeline - the timeline ID.
  * @returns the node ID, or null when no node shows the timeline.
  */
-export function timelineNodeOf(state: WireState, timeline: string): string | null {
+function timelineNodeOf(state: WireState, timeline: string): string | null {
   const records = new Map(state.components.proj.records.map(record => [record.id, record]))
   const canvas = state.components.canvas
   return canvas.order.find((id) => {
@@ -156,7 +156,7 @@ export function timelineAddSection(t: TimelineTranslate): AddMenuSection {
  *   client, the timeline dictionary's translate, and the call that shows the timeline in the 时间线 view.
  * @returns the element.
  */
-export function TimelineCard(props: PropsRuntime<'dv.canvas.card'> & CardServices): ReactNode {
+function TimelineCard(props: PropsRuntime<'dv.canvas.card'> & CardServices): ReactNode {
   const { node, state, textScale, t } = props
   const timeline = placedTimeline(state, node.record)
   if (timeline === null) {
@@ -222,16 +222,13 @@ function CardEditor(
       <div style={{ flex: 1, minHeight: 0 }}>
         <TimelineEditor
           client={client} t={t} project={state.project.id} session={session} state={state} run={run}
-          selected={timeline.id} select={keepSelection}
+          selected={timeline.id}
           card={{ viewer: above, open: () => { show(timeline.id) }, scale, ...previewWidth === undefined ? {} : { previewWidth } }}
         />
       </div>
     </div>
   )
 }
-
-/** The card shows one timeline, so the editor's selection never changes. */
-function keepSelection(): void {}
 
 /**
  * The `dv.canvas.card` entry of timeline nodes: {@link TimelineCard} with the plugin's services, which slot entries do
