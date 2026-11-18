@@ -403,7 +403,7 @@ describe('timeline reducer', () => {
     ])
     // The summary reads only the records of the state, for the status of each placeholder's render.
     const state = { components: { proj: { records: [running, failed] } } } as unknown as ProjectState
-    const summary = timelineReducer.agentSummary?.(slice, { url: asset => `/dv/assets/${asset}` }, state)
+    const summary = timelineReducer.agentSummary?.(slice, { url: asset => `/dv/assets/${asset}` }, state, 's1' as never)
     expect(summary).toEqual({
       timelines: [{
         // A new timeline lists its empty sound track 0, and no sounds.
@@ -708,7 +708,7 @@ describe('video tracks under the main video track', () => {
     // The summary reads only the records of the state, for the status of placeholder clips.
     const state: ProjectState = { components: { proj: { records: [] } } } as never
     const summarize = (from: ComponentStates['timeline']): Array<Record<string, unknown>> => {
-      const summary = timelineReducer.agentSummary?.(from, { url: asset => `/assets/${asset}` }, state) as { timelines: Array<Record<string, unknown>> }
+      const summary = timelineReducer.agentSummary?.(from, { url: asset => `/assets/${asset}` }, state, 's1' as never) as { timelines: Array<Record<string, unknown>> }
       return summary.timelines
     }
     expect(summarize(slice)[0]?.['video_tracks']).toEqual([

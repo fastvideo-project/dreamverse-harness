@@ -147,6 +147,50 @@ describe('the model catalog', () => {
   })
 })
 
+describe('the model catalog failure', () => {
+  it('records the message of a failed load, clears it when a reload succeeds, and records none for a load that succeeds', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce([{ modality: 'video' }])
+    const catalog = catalogSource(load)
+    expect(catalog.failure.getSnapshot()).toBeNull()
+    const seen = vi.fn()
+    catalog.failure.subscribe(seen)
+    catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('offline') })
+    expect(catalog.getSnapshot()).toBeNull()
+    catalog.reload()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    expect(catalog.failure.getSnapshot()).toBeNull()
+    expect(seen).toHaveBeenCalled()
+  })
+
+  it('starts no second load while a load is in flight, so no older answer can replace a newer one', async () => {
+    let answer: (catalog: unknown[]) => void = () => {}
+    const load = vi.fn().mockReturnValueOnce(new Promise((resolve) => { answer = resolve })).mockResolvedValueOnce([{ modality: 'video' }])
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})
+    catalog.reload()
+    expect(load).toHaveBeenCalledTimes(1)
+    answer([{ modality: 'audio' }])
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'audio' }]) })
+    catalog.reload()
+    await vi.waitFor(() => { expect(catalog.getSnapshot()).toEqual([{ modality: 'video' }]) })
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+
+  it('clears the message while a reload runs, and records the message of a reload that fails again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('still offline'))
+    const catalog = catalogSource(load)
+    catalog.subscribe(() => {})
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('offline') })
+    catalog.reload()
+    expect(catalog.failure.getSnapshot()).toBeNull()
+    await vi.waitFor(() => { expect(catalog.failure.getSnapshot()).toBe('still offline') })
+    expect(load).toHaveBeenCalledTimes(2)
+  })
+})
+
 describe('the parameter bars', () => {
   it('refuse a second bar of an operation, naming the package that holds it', async () => {
     const ctx = new Context()

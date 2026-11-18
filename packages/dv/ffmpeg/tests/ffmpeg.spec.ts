@@ -121,6 +121,31 @@ describe.skipIf(!hasFfmpeg)('dvFfmpeg with ffmpeg', () => {
     await expect(fixture.ffmpeg.probe(text)).rejects.toThrow(FfmpegError)
   })
 
+  it('reads the last frame of video bytes as PNG bytes and removes its temporary directory', async () => {
+    const fixture = await start()
+    const halves = await fixture.ffmpeg.run({
+      argv: ['ffmpeg', '-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=16x16:d=1:r=10', '-f', 'lavfi', '-i', 'color=c=blue:s=16x16:d=1:r=10',
+        '-filter_complex', '[0:v][1:v]concat=n=2:v=1', '-pix_fmt', 'yuv420p', '{{out:halves.mp4}}'],
+      inputs: [], outputs: ['halves.mp4'], dir: fixture.dir,
+    })
+    const run = vi.spyOn(fixture.ffmpeg, 'run')
+    const png = await fixture.ffmpeg.lastFrame(readFileSync(halves.outputs[0] as string))
+    expect(png.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+    const temporary = run.mock.calls[0]?.[0].dir as string
+    expect(existsSync(temporary)).toBe(false)
+    run.mockRestore()
+    writeFileSync(join(fixture.dir, 'last.png'), png)
+    const pixel = await fixture.ffmpeg.run({
+      argv: ['ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '{{out:pixel.rgb}}'],
+      inputs: [join(fixture.dir, 'last.png')], outputs: ['pixel.rgb'], dir: fixture.dir,
+    })
+    const [red, , blue] = readFileSync(pixel.outputs[0] as string)
+    expect((blue ?? 0) > 200 && (red ?? 255) < 50).toBe(true)
+    const failing = vi.spyOn(fixture.ffmpeg, 'run')
+    await expect(fixture.ffmpeg.lastFrame(Buffer.from('not a video'))).rejects.toThrow(FfmpegError)
+    expect(existsSync(failing.mock.calls[0]?.[0].dir as string)).toBe(false)
+  })
+
   it('runs through the harness subprocess service when it is mounted, and terminates on timeout', async () => {
     const subprocess = new FakeSubprocess()
     const fixture = await start(subprocess)

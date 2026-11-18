@@ -1,7 +1,8 @@
 /**
  * The reducer registry and project state. Components register one reducer per component key; the state at a record
  * is the result of passing every record of its chain (`ancestors` in the record store),
- * oldest first, through every registered reducer. Project registers its own reducer, {@link projReducer}, for the
+ * oldest first, through every registered reducer, then every record outside the history (`OperationSpec.outsideHistory`),
+ * in write order, through the reducer of its component only. Project registers its own reducer, {@link projReducer}, for the
  * `proj` slice.
  *
  * Reference kinds register here too: each answers for the versions of its kind from its owner's slice.
@@ -17,7 +18,7 @@ import { versionRefOf } from './grammar.ts'
 import { ProjectError } from './shared.ts'
 import type {
   AssetId, AssetStore, ComponentStates, ProjectId, ProjectInfo, ProjectRecord, ProjectState, RecordId, RecordInput, RecordInputRef,
-  Reducer, ReferenceKindSpec,
+  Reducer, ReferenceKindSpec, SessionId,
 } from './types.ts'
 
 /** The `proj` slice. */
@@ -162,8 +163,9 @@ export class ReducerRegistry {
 
   /**
    * @param store - the record store, read for chains and project metadata.
+   * @param outsideHistory - whether a record's operation is a setting outside the history; read at call time.
    */
-  constructor(private readonly store: RecordStore) {}
+  constructor(private readonly store: RecordStore, private readonly outsideHistory: (record: ProjectRecord) => boolean) {}
 
   /**
    * Register a component's reducer. One reducer per key: a second registration of a key throws `reducer_exists`.
@@ -248,20 +250,23 @@ export class ReducerRegistry {
    * The state at any record; the runner uses it for the state at a record's parent.
    * @param project - the project.
    * @param head - the record to compute the state at.
-   * @returns the state of the chain ending at `head`.
+   * @returns the state of the chain ending at `head`, with every record outside the history written so far.
    */
   stateAt(project: ProjectId, head: RecordId): ProjectState {
-    return this.reduceChain(this.store.getProject(project), this.store.ancestors(project, head))
+    return this.reduceChain(
+      this.store.getProject(project), this.store.ancestors(project, head), this.store.listRecords(project, this.outsideHistory),
+    )
   }
 
   /**
-   * Pass a list of records through every reducer, starting from each reducer's initial slice. Pure: the same records
-   * always give the same state.
+   * Pass a list of records through every reducer, starting from each reducer's initial slice, then each record outside
+   * the history through the reducer of its component only. Pure: the same records always give the same state.
    * @param info - the project's metadata.
    * @param records - a chain, oldest first; must not be empty.
-   * @returns the state at the last record.
+   * @param outside - the records outside the history, in write order.
+   * @returns the state at the last record of the chain.
    */
-  reduceChain(info: ProjectInfo, records: ProjectRecord[]): ProjectState {
+  reduceChain(info: ProjectInfo, records: ProjectRecord[], outside: ProjectRecord[] = []): ProjectState {
     const last = records.at(-1)
     if (last === undefined) throw new ProjectError('invalid_params', `Project ${info.id} has no record to compute a state from.`)
     const slices = new Map<keyof ComponentStates, AnySlice>()
@@ -272,6 +277,12 @@ export class ReducerRegistry {
         slices.set(key, this.reduceSlice(reducer, slices.get(key) ?? reducer.initial(), record, slices))
       }
     }
+    // A setting outside the history belongs to its own component; the history position does not change it.
+    for (const record of outside) {
+      const key = record.component as keyof ComponentStates
+      const reducer = this.reducers.get(key)
+      if (reducer !== undefined) slices.set(key, this.reduceSlice(reducer, slices.get(key) ?? reducer.initial(), record, slices))
+    }
     return { project: info, head: last.id, components: componentStates(slices) }
   }
 
@@ -280,13 +291,14 @@ export class ReducerRegistry {
    * other components in the alphabetical order of their keys, so the order never depends on which plugin mounted first.
    * @param state - a project state.
    * @param assets - the asset store, for asset URLs.
+   * @param session - the session whose agent reads the summary.
    * @returns one field object per such reducer.
    */
-  agentSummaries(state: ProjectState, assets: Pick<AssetStore, 'url'>): Array<Record<string, JsonValue>> {
+  agentSummaries(state: ProjectState, assets: Pick<AssetStore, 'url'>, session: SessionId): Array<Record<string, JsonValue>> {
     const sortKey = (key: string): string => (key === 'proj' ? '' : key)
     return [...this.reducers].sort(([a], [b]) => sortKey(a).localeCompare(sortKey(b)))
       .flatMap(([key, reducer]) => (
-        reducer.agentSummary === undefined ? [] : [reducer.agentSummary(sliceOf(state, key, reducer), assets, state)]))
+        reducer.agentSummary === undefined ? [] : [reducer.agentSummary(sliceOf(state, key, reducer), assets, state, session)]))
   }
 
   /**

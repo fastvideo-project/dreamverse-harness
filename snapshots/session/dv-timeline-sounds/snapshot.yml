@@ -1,0 +1,10 @@
+version: 1
+scenario: dv-timeline-sounds
+profile: headless
+composition: dv-timeline
+recording: live
+header:
+  class: dv-timeline
+  pin: true
+workspace:
+  final: true

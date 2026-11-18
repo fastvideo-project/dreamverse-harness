@@ -34,16 +34,16 @@ function mediaSize(sizing: Extract<NodeSizing, { kind: 'media' }>, width: number
  * the opposite side stays in place.
  * @param sizing - the node type's sizing of the node.
  * @param origin - the node's box when the drag started.
- * @param corner - the dragged handle.
+ * @param handle - the dragged handle.
  * @param dx - the pointer's horizontal movement in canvas units.
  * @param dy - the pointer's vertical movement in canvas units.
  * @returns the box.
  */
-export function resizedBox(sizing: NodeSizing, origin: NodePosition, corner: ResizeHandle, dx: number, dy: number): NodePosition {
-  const west = corner.endsWith('w')
-  const north = corner.startsWith('n')
-  const across = west || corner.endsWith('e')
-  const along = north || corner.startsWith('s')
+export function resizedBox(sizing: NodeSizing, origin: NodePosition, handle: ResizeHandle, dx: number, dy: number): NodePosition {
+  const west = handle.endsWith('w')
+  const north = handle.startsWith('n')
+  const across = west || handle.endsWith('e')
+  const along = north || handle.startsWith('s')
   const width = across ? origin.width + (west ? -dx : dx) : origin.width
   const height = along ? origin.height + (north ? -dy : dy) : origin.height
   const horizontal = across && (!along || Math.abs(dx) >= Math.abs(dy) * (sizing.kind === 'media' ? sizing.aspectRatio.ratio : 1))

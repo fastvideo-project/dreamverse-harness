@@ -21,6 +21,7 @@ import { fixtureState, MODELS, OPERATIONS, scriptedFetch, withTestRef } from '..
 import { apply as mediaApply, inject as mediaInject } from '../../ui-media/src/client/index.ts'
 import { shotRenderBar } from '../../ui-shot-render/src/client/param-bar.ts'
 import type { DvPromptProps, PromptCall, PromptHost } from '../src/client/contract/index.ts'
+import { draftKey, readDraft, resetDrafts } from '../src/client/drafts.ts'
 import { projectMentionSource } from '../src/client/mention.ts'
 import { composerStack } from './composer-stack.client.ts'
 
@@ -30,12 +31,18 @@ const HERO = '@[Hero](dv:test_ref/hero)'
 const SHOT_BAR = { ...shotRenderBar, operation: 'shot.render', owner: '@dv/ui-shot-render', copy: { ...shotRenderBar.copy, sending: ['渲染中…', 'Rendering…'] as const } }
 const KEY = { modality: 'video', task: 'ref2v', provider: 'fastvideo', model: 'fasth3' }
 
+/** The fixture's operations, with the `first_frame` and `last_frame` inputs of `shot.render` that the host lends. */
+const LENT_OPERATIONS: WireOperation[] = OPERATIONS.map(operation => operation.name !== 'shot.render' ? operation : {
+  ...operation, inputs: { ...operation.inputs, first_frame: { type: 'image', description: 'First frame' }, last_frame: { type: 'image', description: 'Last frame' } },
+})
+
 const STILL: WireOperation = {
   ...OPERATIONS[0]!, name: 'test_still.generate', label: { zh: '生成静帧', en: 'Generate still' },
   params: { prompt: { type: 'string', required: true, description: 'What to make.' }, seed: { type: 'integer', description: 'Seed.' } },
 }
 
 beforeEach(() => {
+  resetDrafts()
   // jsdom has no layout: the menu scrolls its highlighted row into view, and the editor measures its selection.
   Element.prototype.scrollIntoView = vi.fn()
   // jsdom has no ClipboardEvent, which the editor's cut and copy read.
@@ -58,6 +65,8 @@ interface MountOptions {
   holdChecks?: boolean
   /** The model catalog waits until the test releases it. */
   holdModels?: boolean
+  /** The model catalog read fails while `down` is true. */
+  modelsDown?: { down: boolean }
   /** The host's send refuses with this message. */
   refuseSend?: string
   /** The host's import refuses with this message. */
@@ -102,6 +111,7 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     const answer = scripted.fetch(input, init)
     requested.push(path)
     if (options.holdState === true && path === '/api/dv/state') return new Promise((resolve) => { heldStates.push(() => { resolve(answer) }) })
+    if (options.modelsDown?.down === true && path === '/api/dv/models') return Promise.resolve(new Response(JSON.stringify({ error: 'The model service is down.' }), { status: 503, headers: { 'content-type': 'application/json' } }))
     if (options.holdModels === true && path === '/api/dv/models') return new Promise((resolve) => { heldModels.push(() => { resolve(answer) }) })
     if (options.holdChecks === true && path === '/api/dv/operation/check') {
       return new Promise((resolve, reject) => { checks.push({ answer: (body) => { resolve(json(body)) }, fail: reject }) })
@@ -142,8 +152,10 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     if (options.refuseSend !== undefined) return Promise.reject(new Error(options.refuseSend))
     return options.holdSend === true ? new Promise<void>((resolve) => { answers.push(resolve) }) : Promise.resolve()
   }
-  const props = (shown: PromptCall, state: WireState): DvPromptProps => ({
-    projectId: 'p1', call: shown, state, operations: [...OPERATIONS, STILL], readOnly: options.readOnly === true, host,
+  // The record the host lends the call from; a test changes it to open another take with an equal call.
+  let draftId = 'r1'
+  const props = (shown: PromptCall, state: WireState, projectId: string): DvPromptProps => ({
+    projectId, draftId, call: shown, state, operations: [...LENT_OPERATIONS, STILL], readOnly: options.readOnly === true, host,
     surface: options.surface ?? 'canvas',
     ...options.noSend === true || options.readOnly === true ? {} : { onSubmit },
   })
@@ -154,14 +166,17 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
   }
   let setCall: (next: PromptCall) => void = () => {}
   let setLent: (next: WireState) => void = () => {}
+  let setProject: (next: string) => void = () => {}
   await runtime.root.declare({}, ({ renderFactorySlot }: PropsRuntime<'root'> & PropsRenderFactories): ReactNode => {
     const [shown, update] = useState(call)
     const [state, lend] = useState<WireState>(lent)
+    const [project, chooseProject] = useState('p1')
+    setProject = chooseProject
     setCall = update
     setLent = lend
     return (
       <>
-        <section data-testid="take">{renderFactorySlot('dv.prompt', props(shown, state))}</section>
+        <section data-testid="take">{renderFactorySlot('dv.prompt', props(shown, state, project))}</section>
         <section data-testid="bare">{renderFactorySlot('conversation.prompt', { model: bare })}</section>
       </>
     )
@@ -173,6 +188,9 @@ async function mount(call: PromptCall, options: MountOptions = {}) {
     releaseState: () => { act(() => { heldStates.splice(0).forEach((release) => { release() }) }) },
     releaseModels: () => { act(() => { heldModels.splice(0).forEach((release) => { release() }) }) },
     setCall: (next: PromptCall) => { act(() => { setCall(next) }) },
+    setProject: (next: string) => { act(() => { setProject(next) }) },
+    /** Lend the next render's call from another record, as another take of an equal call does. */
+    lendFrom: (id: string) => { draftId = id },
     /** Lend a new state object of the same project, as the host's next fetch does. */
     relend: () => { act(() => { setLent(structuredClone(lent)) }) },
   }
@@ -263,6 +281,7 @@ describe('dv.prompt on the real stack', () => {
     }
     const { take, sent } = await mount(stored)
     await waitFor(() => { expect(take.querySelector('[data-reference-tile="hero@1"]')?.getAttribute('data-cited')).toBe('false') })
+    expect(within(take.querySelector('[data-reference-tile="hero@1"]') as HTMLElement).getByText('Uncited')).toBeDefined()
     fireEvent.click(await sendOf(take, 'Render new version'))
     await waitFor(() => { expect(sent).toEqual([stored]) })
   })
@@ -311,6 +330,38 @@ describe('references and the model catalog', () => {
     expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
     fireEvent.change(within(take).getByTestId('dv-prompt-model'), { target: { value: 'fastvideo/fasth3/ref2v' } })
     await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+  })
+})
+
+describe('the model list failure', () => {
+  const FAILED = '[data-testid="dv-composer-models-failed"]'
+
+  it('says the model list failed to load, and offers Try again, which shows the model control once the read succeeds', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const modelsDown = { down: true }
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { modelsDown })
+    const alert = await found(take, FAILED)
+    expect(alert.textContent).toContain("Couldn't load the model list")
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
+    modelsDown.down = false
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    await waitFor(() => { expect(take.querySelector(FAILED)).toBeNull() })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+  })
+
+  it('takes the alert down while Try again loads, and shows it again when the read fails again', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] }, { modelsDown: { down: true } })
+    const alert = await found(take, FAILED)
+    fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }))
+    expect(take.querySelector(FAILED)).toBeNull()
+    expect((await found(take, FAILED)).textContent).toContain("Couldn't load the model list")
+  })
+
+  it('never shows it when the first load succeeds', async () => {
+    const { take } = await mount({ operation: 'shot.render', params: { ...KEY, prompt: 'rain' }, inputs: [] })
+    await waitFor(() => { expect(within(take).getByRole('button', { name: 'Add asset' })).toBeTruthy() })
+    expect(take.querySelector(FAILED)).toBeNull()
   })
 })
 
@@ -523,6 +574,142 @@ describe('the failures of the host', () => {
   })
 })
 
+describe('the unsent draft of a take', () => {
+  const STILL_CALL: PromptCall = { operation: STILL.name, params: { prompt: 'a lamp' }, inputs: [] }
+  const seedOf = (take: HTMLElement): string => take.querySelector<HTMLInputElement>('[data-param-chip="seed"]')?.value ?? ''
+  const editSeed = (take: HTMLElement, value: string): void => { fireEvent.change(take.querySelector('[data-param-chip="seed"]')!, { target: { value } }) }
+  /** Close the editor and open it again on the same stack, as the canvas does for Escape and a click on empty canvas. */
+  const reopen = (mounted: Awaited<ReturnType<typeof mount>>): HTMLElement => {
+    mounted.view.unmount()
+    return mounted.runtime.renderRoot().getByTestId('take')
+  }
+
+  it('restores the typed prompt and parameters when the same take opens again, starts another lent call clean, and restores the draft when the host lends the call again', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    act(() => { box(mounted.take).focus() })
+    pasteText(mounted.take, ' on a desk')
+    await waitFor(() => { expect(box(mounted.take).textContent).toBe('a lamp on a desk') })
+    const again = reopen(mounted)
+    await waitFor(() => { expect(box(again).textContent).toBe('a lamp on a desk') })
+    expect(seedOf(again)).toBe('5')
+    mounted.setCall({ operation: STILL.name, params: { prompt: 'a chair' }, inputs: [] })
+    await waitFor(() => { expect(box(again).textContent).toBe('a chair') })
+    expect(seedOf(again)).toBe('')
+    mounted.setCall(STILL_CALL)
+    await waitFor(() => { expect(seedOf(again)).toBe('5') })
+  })
+
+  it('keeps identical calls in different projects in separate editor drafts', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    mounted.setProject('p2')
+    await waitFor(() => { expect(seedOf(mounted.take)).toBe('') })
+    editSeed(mounted.take, '7')
+    mounted.setProject('p1')
+    await waitFor(() => { expect(seedOf(mounted.take)).toBe('5') })
+    mounted.setProject('p2')
+    await waitFor(() => { expect(seedOf(mounted.take)).toBe('7') })
+  })
+
+  it('keeps a separate draft for another take whose call is equal', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    mounted.lendFrom('r2')
+    mounted.view.unmount()
+    const other = mounted.runtime.renderRoot()
+    expect(seedOf(other.getByTestId('take'))).toBe('')
+    mounted.lendFrom('r1')
+    other.unmount()
+    expect(seedOf(mounted.runtime.renderRoot().getByTestId('take'))).toBe('5')
+  })
+
+  it('drops the draft once its send succeeds', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(mounted.sent).toHaveLength(1) })
+    await waitFor(() => { expect(mounted.take.querySelector('button[disabled]')).toBeNull() })
+    expect(seedOf(reopen(mounted))).toBe('')
+  })
+
+  it('drops the draft when the edits go back to the lent call', async () => {
+    const mounted = await mount(STILL_CALL)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '7')
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(STILL_CALL)))).toBeDefined()
+    editSeed(mounted.take, '')
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(STILL_CALL)))).toBeUndefined()
+    expect(seedOf(reopen(mounted))).toBe('')
+  })
+
+  it('drops the draft when a typed value is edited back to the lent call\'s value', async () => {
+    // A typed seed moves to the end of the edited params, so the edited call back at seed 5 differs from this lent call
+    // only in the order of its param keys.
+    const seeded: PromptCall = { operation: STILL.name, params: { seed: 5, prompt: 'a lamp' }, inputs: [] }
+    const mounted = await mount(seeded)
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '6')
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(seeded)))).toBeDefined()
+    editSeed(mounted.take, '5')
+    expect(readDraft(draftKey('p1', 'r1', JSON.stringify(seeded)))).toBeUndefined()
+  })
+
+  it('restores a draft that was mid-send as an ordinary draft, never as sending, whose send waits for a new check', async () => {
+    const mounted = await mount(STILL_CALL, { holdSend: true, holdChecks: true })
+    await waitFor(() => { expect(mounted.checks).toHaveLength(1) })
+    act(() => { mounted.checks[0]?.answer({ problems: [] }) })
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    await waitFor(() => { expect(mounted.checks).toHaveLength(2) })
+    act(() => { mounted.checks[1]?.answer({ problems: [] }) })
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(mounted.sent).toHaveLength(1) })
+    const again = reopen(mounted)
+    expect(seedOf(again)).toBe('5')
+    expect(within(again).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled).toBe(true)
+    await waitFor(() => { expect(mounted.checks).toHaveLength(3) })
+    act(() => { mounted.checks[2]?.answer({ problems: [] }) })
+    const button = await sendOf(again, 'Generate a new version')
+    expect(button.disabled).toBe(false)
+  })
+
+  it('keeps the edits of a reopened editor when a send from the closed editor succeeds later', async () => {
+    const mounted = await mount(STILL_CALL, { holdSend: true })
+    await sendOf(mounted.take, 'Generate a new version')
+    editSeed(mounted.take, '5')
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(mounted.sent).toHaveLength(1) })
+    mounted.view.unmount()
+    const again = mounted.runtime.renderRoot()
+    editSeed(again.getByTestId('take'), '7')
+    await act(async () => { mounted.answers.splice(0).forEach((answer) => { answer() }) })
+    again.unmount()
+    expect(seedOf(mounted.runtime.renderRoot().getByTestId('take'))).toBe('7')
+  })
+
+  it('checks a restored draft again before its send, and shows no failure from before the editor closed', async () => {
+    const mounted = await mount(STILL_CALL, { holdChecks: true, refuseSend: 'The GPU queue is full.' })
+    await waitFor(() => { expect(mounted.checks).toHaveLength(1) })
+    editSeed(mounted.take, '5')
+    await waitFor(() => { expect(mounted.checks).toHaveLength(2) })
+    act(() => { mounted.checks[1]?.answer({ problems: [] }) })
+    fireEvent.click(await sendOf(mounted.take, 'Generate a new version'))
+    await waitFor(() => { expect(within(mounted.take).getByRole('alert').textContent).toBe('Failed: The GPU queue is full.') })
+    const again = reopen(mounted)
+    expect(seedOf(again)).toBe('5')
+    expect(within(again).queryByRole('alert')).toBeNull()
+    expect(within(again).getByRole<HTMLButtonElement>('button', { name: 'Generate a new version' }).disabled).toBe(true)
+    await waitFor(() => { expect(mounted.checks).toHaveLength(3) })
+    act(() => { mounted.checks[2]?.answer({ problems: [] }) })
+    await sendOf(again, 'Generate a new version')
+  })
+})
+
 describe('the version kinds of the canvas', () => {
   it('keeps the editor read-only until the composer knows the canvas\'s version kinds', async () => {
     const { take, runtime } = await mount({ operation: STILL.name, params: { prompt: 'rain' }, inputs: [] }, { lateCanvas: true })
@@ -648,6 +835,49 @@ describe('the modes of an occurrence', () => {
     await sendOf(take, 'Render new version')
     expect([within(take).queryByRole('button', { name: 'Add asset' }), within(take).queryByTestId('dv-prompt-upload')]).toEqual([null, null])
     expect(box(take).getAttribute('contenteditable')).toBe('true')
+  })
+
+  it('picks and replaces distinct first/last roles for any catalog provider without changing the prompt or references', async () => {
+    const key = { modality: 'video', task: 'fl2v', provider: 'another-provider', model: 'keyframe-model' }
+    const model: WireModelEntry = { ...MODELS[0]!, ...key, schema: { inputs: {
+      first_frame: { min: 1, max: 1, media_types: { image: {} } }, last_frame: { min: 1, max: 1, media_types: { image: {} } },
+    } } }
+    const stored = { operation: 'shot.render', params: { ...key, prompt: 'A door opens' }, inputs: [{ role: 'reference', ref: 'ref.png' }] }
+    const { take, host, sent } = await mount(stored, { models: [model] })
+    fireEvent.click(await waitFor(() => within(take).getByRole('button', { name: 'Choose last frame' })))
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['shot1-last.png', 'export-last.png']) })
+    await waitFor(() => { expect(within(take).getByRole('alert').textContent).toContain('Choose one endpoint image.') })
+    expect(take.querySelector('[data-reference-tile="shot1-last.png"]')).toBeNull()
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['shot1-last.png']) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose first frame' }))
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['ref.png']) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose last frame' }))
+    expect(host.pickAssets?.mock.calls.at(-1)?.[0]).toEqual(['shot1-last.png'])
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['export-last.png']) })
+    await waitFor(() => { expect(take.querySelector('[data-reference-tile="export-last.png"]')?.textContent).toContain('Last frame') })
+    fireEvent.click(await sendOf(take, 'Render new version'))
+    await waitFor(() => { expect(sent).toEqual([{ ...stored, inputs: [
+      ...stored.inputs, { role: 'last_frame', ref: 'export-last.png' }, { role: 'first_frame', ref: 'ref.png' },
+    ] }]) })
+    expect(within(take).queryByRole('button', { name: 'Add asset' })).toBeNull()
+  })
+
+  it('keeps the frames on an empty frame pick, and a pick replaces every input of that frame role', async () => {
+    const key = { modality: 'video', task: 'l2v', provider: 'another-provider', model: 'keyframe-model' }
+    const lastFrame = { min: 1, max: 1, media_types: { image: {} } }
+    const model: WireModelEntry = { ...MODELS[0]!, ...key, schema: { inputs: { last_frame: lastFrame } } }
+    const stored = { operation: 'shot.render', params: { ...key, prompt: 'A door closes' }, inputs: [
+      { role: 'last_frame', ref: 'shot1-last.png' }, { role: 'last_frame', ref: 'ref.png' },
+    ] }
+    const { take, host, sent } = await mount(stored, { models: [model] })
+    fireEvent.click(await waitFor(() => within(take).getByRole('button', { name: 'Choose last frame' })))
+    expect(within(take).queryByRole('button', { name: 'Choose first frame' })).toBeNull()
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1]([]) })
+    fireEvent.click(within(take).getByRole('button', { name: 'Choose last frame' }))
+    expect(host.pickAssets?.mock.calls.at(-1)?.[0]).toEqual(['shot1-last.png', 'ref.png'])
+    act(() => { host.pickAssets?.mock.calls.at(-1)?.[1](['export-last.png']) })
+    fireEvent.click(await sendOf(take, 'Render new version'))
+    await waitFor(() => { expect(sent).toEqual([{ ...stored, inputs: [{ role: 'last_frame', ref: 'export-last.png' }] }]) })
   })
 
   it('imports uploaded files through the host and sends each as a reference in file order; a change without files imports nothing', async () => {

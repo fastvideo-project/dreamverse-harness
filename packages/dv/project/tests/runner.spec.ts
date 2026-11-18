@@ -17,6 +17,13 @@ import type {
   AssetId, ProjectId, ProjectRecord, RecordOrigin, RunRequest,
 } from '../src/types.ts'
 
+declare module '@dv/project' {
+  interface ComponentStates {
+    /** The slice of the test setting outside the history: the `prompt` of each choice, in write order. */
+    runner_setting?: { values: string[] }
+  }
+}
+
 /**
  * An operation spec with test defaults: one optional `prompt` and `seed` parameter, the `reference` input role, not
  * deterministic, unlimited resource, and an execute function that creates nothing.
@@ -323,6 +330,36 @@ describe('Runner', () => {
     expect(files(m, project)).toBe(before)
   })
 
+  it('records a setting outside the history without a step, and folds it whatever the current position', async () => {
+    const m = startModules()
+    const project = await createTestProject(m)
+    m.runner.registerComponent('runner_setting')
+    m.reducers.register('runner_setting', {
+      initial: () => ({ values: [] }),
+      reduce: (slice, record) => (record.operation === 'runner_setting.choose' ? { values: [...slice?.values ?? [], String(record.params.prompt)] } : slice),
+    })
+    m.runner.registerOperation(operation({ name: 'runner_setting.choose', component: 'runner_setting', outsideHistory: true }))
+    // A setting of a component without a reducer changes no slice.
+    m.runner.registerOperation(operation({ name: 'shot.load', component: 'shot', outsideHistory: true }))
+    m.runner.registerOperation(operation({ name: 'shot.render', component: 'shot' }))
+    const step = await m.runner.run(request(project, 'shot.render'))
+    await m.store.lock(project, () => m.history.undo(project))
+    const line = m.store.line(project)
+    const events = m.events.length
+
+    const chosen = await m.runner.run(request(project, 'runner_setting.choose', userOrigin(), { params: { prompt: 'pika' } }))
+    await m.runner.run(request(project, 'shot.load'))
+
+    expect(chosen.record?.status).toBe('done')
+    expect(m.store.line(project)).toEqual(line)
+    expect(m.events.slice(events).some(({ event }) => event.kind === 'line')).toBe(false)
+    expect(m.history.list({ project }).map(entry => entry.record.operation)).toEqual(['shot.render', 'proj.create'])
+    expect(m.reducers.getState(project).components.runner_setting).toEqual({ values: ['pika'] })
+    await m.store.lock(project, () => m.history.redo(project))
+    expect(m.store.line(project)?.at).toBe(step.record?.id)
+    expect(m.reducers.getState(project).components.runner_setting).toEqual({ values: ['pika'] })
+  })
+
   it('registers an operation only after a plugin registers its component', () => {
     const m = startModules()
     expect(() => m.runner.registerOperation(operation({ name: 'image.generate', component: 'image' })))
@@ -424,8 +461,8 @@ describe('Runner', () => {
 
     // A new process loads the same root and recovers.
     const store = new RecordStore(m.folders, () => undefined)
-    const reducers = new ReducerRegistry(store)
     const holder: { runner: Runner | null } = { runner: null }
+    const reducers = new ReducerRegistry(store, record => holder.runner?.isOutsideHistory(record) ?? false)
     const scheduler = new Scheduler(store, (id, record) => (holder.runner as Runner).execute(id, record), { cpu: 1, gpu: 1 })
     holder.runner = new Runner({ store, reducers, scheduler, assets: m.assets })
     reducers.register('proj', projReducer)

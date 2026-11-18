@@ -251,7 +251,7 @@ export interface CardOwner {
   state: WireState
   /** The chat session the canvas sits beside, for a body that writes on its own; null for none. */
   session: string | null
-  /** Whether the node is selected; a video body plays while it is. */
+  /** Whether the node is selected and its editor is closed; a video body plays while it is. */
   selected: boolean
   /**
    * While the node is selected, an empty element above its caption, as wide as its frame and in canvas units, into which
