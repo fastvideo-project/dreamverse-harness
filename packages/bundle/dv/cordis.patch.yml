@@ -139,6 +139,10 @@
       name: '@dv/api'
       config:
         keepaliveMs: 15000
+        # The user skill library: $DSH_HOME/dreamverse-skills, default ~/.dsh/dreamverse-skills. The DreamVerse preset's
+        # skill-filesystem row scans the same directory.
+        skillLibraryDir: &dreamverse-skill-library !!js >-
+          (() => { const p = process.getBuiltinModule('node:path'); const h = process.getBuiltinModule('node:os').homedir(); const d = process.env.DSH_HOME?.trim() ? process.env.DSH_HOME : p.join(h, '.dsh'); return p.join(p.resolve(d === '~' ? h : d.startsWith('~/') ? p.join(h, d.slice(2)) : d), 'dreamverse-skills'); })()
 
     - id: dv-ui-composer
       name: '@dv/ui-composer'
@@ -249,8 +253,7 @@
             config:
               includeDefaultRoots: false
               customSkillDirs:
-                - !!js >-
-                  (() => { const p = process.getBuiltinModule('node:path'); const h = process.getBuiltinModule('node:os').homedir(); const d = process.env.DSH_HOME?.trim() ? process.env.DSH_HOME : p.join(h, '.dsh'); return p.join(p.resolve(d === '~' ? h : d.startsWith('~/') ? p.join(h, d.slice(2)) : d), 'dreamverse-skills'); })()
+                - *dreamverse-skill-library
                 - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('@dv/bundle/package.json')), 'skills')
           - id: tool-skill
             name: '@deepseek-ai/dsh-tool-skill'

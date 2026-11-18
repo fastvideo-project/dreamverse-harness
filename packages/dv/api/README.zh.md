@@ -39,7 +39,7 @@ kind: "package-reference"
 | --- | --- | --- |
 | `keepaliveMs` | `15000` | 空闲事件流多久发一行注释，让代理保持连接 |
 
-用户技能通过认证的 `GET /api/dv/skills` 读取已保存列表，通过 `POST /api/dv/skills/upload?filename=...` 上传 Markdown 或 ZIP 原始请求体。技能库目录为 `$DSH_HOME/dreamverse-skills`，默认 `~/.dsh/dreamverse-skills`。安装前校验 UTF-8 指令、元数据、归档路径和解压限制，保留附带文件，并原子发布完整目录。重名返回 `409 skill_exists`；无效上传返回 `400 invalid_skill`，不影响已有技能。配置 `skillUploadBytes`、`skillExtractedBytes`、`skillArchiveFiles` 分别默认为 8388608、33554432、256。DreamVerse 预设会扫描该目录；使用其他预设时需将它加入文件系统技能提供方的扫描目录。
+用户技能通过认证的 `GET /api/dv/skills` 读取已保存列表，通过 `POST /api/dv/skills/upload?filename=...` 上传 Markdown 或 ZIP 原始请求体。必填配置 `skillLibraryDir` 指定技能库目录；DreamVerse bundle 将其设为 `$DSH_HOME/dreamverse-skills`（默认 `~/.dsh/dreamverse-skills`）。安装前校验 UTF-8 指令、元数据、归档路径和解压限制，保留附带文件，并原子发布完整目录。重名返回 `409 skill_exists`；无效上传返回 `400 invalid_skill`，不影响已有技能。配置 `skillUploadBytes`、`skillExtractedBytes`、`skillArchiveFiles` 分别默认为 8388608、33554432、256。DreamVerse 预设通过 YAML 别名扫描同一目录；使用其他预设时需将它加入文件系统技能提供方的扫描目录。
 
 | 路由 | 方法 | 请求 | 响应 |
 | --- | --- | --- | --- |

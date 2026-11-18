@@ -5,6 +5,7 @@
  */
 import { existsSync, readdirSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { AddressInfo } from 'node:net'
 import { brandString } from '@deepseek-ai/dsh-brand'
@@ -95,7 +96,7 @@ async function start(): Promise<Fixture> {
   const web = new FakeWebServer()
   base.context.provide('connection', connection)
   base.context.provide('webServer', web)
-  await base.context.plugin(DvApi, { keepaliveMs: 50 }).await()
+  await base.context.plugin(DvApi, { keepaliveMs: 50, skillLibraryDir: join(tmpdir(), 'dv-api-unused-skills') }).await()
   let calls = 0
   const fixture: Fixture = {
     ...base, dvApi: base.context.dvApi, handlers: base.context.dvApi.api, connection, web,

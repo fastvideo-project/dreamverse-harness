@@ -8,8 +8,6 @@
  * @module @dv/api
  */
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { join } from 'node:path'
-import { resolveDshHome } from '@deepseek-ai/dsh-home-paths'
 import type {} from '@deepseek-ai/dsh-skill'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
@@ -44,6 +42,8 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Milliseconds between keep-alive comments on the event stream. */
   keepaliveMs: number
+  /** Directory of the user skill library; a filesystem skill provider must also scan it for the skills to load. */
+  skillLibraryDir: string
   /** Maximum compressed user skill upload bytes. */
   skillUploadBytes?: number
   /** Maximum uncompressed user skill bundle bytes. */
@@ -55,6 +55,7 @@ export interface Config {
 /** Runtime schema of {@link Config}. */
 export const Config: z<Config, Required<Config>> = z.object({
   keepaliveMs: z.number().default(15_000),
+  skillLibraryDir: z.string().required(),
   skillUploadBytes: z.natural().min(1).default(8 * 1024 * 1024),
   skillExtractedBytes: z.natural().min(1).default(32 * 1024 * 1024),
   skillArchiveFiles: z.natural().min(1).default(256),
@@ -133,7 +134,7 @@ export default class DvApi extends Service {
       return answer(() => run(body))
     }
     return [
-      ...userSkillRoutes(new UserSkillStore(join(resolveDshHome(), 'dreamverse-skills'), {
+      ...userSkillRoutes(new UserSkillStore(this.config.skillLibraryDir, {
         uploadBytes: this.config.skillUploadBytes,
         extractedBytes: this.config.skillExtractedBytes,
         files: this.config.skillArchiveFiles,
