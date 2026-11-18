@@ -48,7 +48,7 @@ describe('generation hardware', () => {
     cleanup.push(async () => { await prompt.dispose() })
     const text = renderPrompt(await ctx.systemPrompt.assemble())
     expect(text).toContain('call dv_hardware_list immediately')
-    expect(text).toContain('pass worker to dv_shot_render')
+    expect(text).toContain('pass the worker ID as worker')
     expect(text).toContain('A pinned operation never falls back')
     expect(text).toContain('GPU {{literal}}')
     expect(text).toContain('"id":"gpu"')

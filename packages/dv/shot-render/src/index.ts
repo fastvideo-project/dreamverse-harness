@@ -76,7 +76,7 @@ const CONTINUE_FROM_PARAM: ParameterSchemaSpec = {
  * `defineGeneration` adds with its shared descriptions: the shot's geometry.
  */
 const RENDER_PARAMS: OperationSpec['params'] = {
-  worker: { type: 'string', description: 'Exact enabled worker ID from dv_hardware_list. Omit for automatic placement. A pinned render never falls back to another worker.' },
+  worker: { type: 'string', description: 'The exact ID of an enabled worker. Omit for automatic placement. A pinned render never falls back to another worker.' },
   duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
   resolution: { type: 'string', description: 'One of the model resolutions; default the first.' },

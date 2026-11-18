@@ -2224,9 +2224,9 @@ importers:
       '@dv/ui-openrouter':
         specifier: workspace:*
         version: link:../../dv/ui-openrouter
-      '@dv/ui-runtime-settings':
+      '@dv/ui-hardware':
         specifier: workspace:*
-        version: link:../../dv/ui-runtime-settings
+        version: link:../../dv/ui-hardware
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../../dv/ui-shell
@@ -8729,7 +8729,7 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
-  packages/dv/ui-runtime-settings:
+  packages/dv/ui-hardware:
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~

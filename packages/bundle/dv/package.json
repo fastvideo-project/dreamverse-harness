@@ -54,7 +54,7 @@
     "@dv/ui-timeline": "workspace:*",
     "@dv/workflow-story": "workspace:*",
     "@dv/hardware": "workspace:*",
-    "@dv/ui-runtime-settings": "workspace:*",
+    "@dv/ui-hardware": "workspace:*",
     "@dv/openrouter": "workspace:*",
     "@dv/ui-openrouter": "workspace:*"
   },

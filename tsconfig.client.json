@@ -133,7 +133,7 @@
     { "path": "./packages/context/file-reference" },
     { "path": "./packages/dv/project/tsconfig.client.json" },
     { "path": "./packages/dv/models/tsconfig.client.json" },
-    { "path": "./packages/dv/ui-runtime-settings" },
+    { "path": "./packages/dv/ui-hardware" },
     { "path": "./packages/dv/hardware/tsconfig.client.json" },
     { "path": "./packages/dv/reference-kit/tsconfig.client.json" },
     { "path": "./packages/dv/character/tsconfig.client.json" },

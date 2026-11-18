@@ -60,7 +60,7 @@
         },
         "worker": {
           "type": "string",
-          "description": "Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
+          "description": "The exact ID of an enabled worker. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
         },
         "reason": {
           "type": "string",
@@ -111,7 +111,7 @@
         },
         "worker": {
           "type": "string",
-          "description": "Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
+          "description": "The exact ID of an enabled worker. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
         },
         "reason": {
           "type": "string",
@@ -162,7 +162,7 @@
         },
         "worker": {
           "type": "string",
-          "description": "Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
+          "description": "The exact ID of an enabled worker. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device."
         },
         "reason": {
           "type": "string",

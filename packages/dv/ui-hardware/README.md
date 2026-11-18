@@ -1,4 +1,4 @@
-# @dv/ui-runtime-settings
+# @dv/ui-hardware
 
 English | [中文](README.zh.md)
 
@@ -10,7 +10,7 @@ Generation models reads the selected worker's native catalog and exposes explici
 
 ## Composition
 
-Mount `@dv/hardware`, the normal Harness settings and credential services, and a generation provider. The DreamVerse bundle includes this browser companion. Build its client artifact with `pnpm --filter @dv/ui-runtime-settings bundle` before launching the normal `dsh` profile.
+Mount `@dv/hardware`, the normal Harness settings and credential services, and a generation provider. The DreamVerse bundle includes this browser companion. Build its client artifact with `pnpm --filter @dv/ui-hardware bundle` before launching the normal `dsh` profile.
 
 ## Runtime invariants
 

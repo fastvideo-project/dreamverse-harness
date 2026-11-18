@@ -350,7 +350,7 @@ function modelEntry(
     })
     if (target === undefined) return workers
     const selected = workers.find(worker => worker.id === target.worker)
-    if (selected === undefined) throw new Error(`Worker "${target.worker}" is not enabled for FastVideo. Call dv_hardware_list and select an enabled worker.`)
+    if (selected === undefined) throw new Error(`Worker "${target.worker}" is not enabled for FastVideo. Select an enabled worker.`)
     return [selected]
   }
   const modelFacts = (target?: ModelExecutionTarget): Promise<ModelFacts> => {

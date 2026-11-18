@@ -88,7 +88,7 @@ export function installModelControls(ctx: Context, models: DvModels): void {
           task: { type: 'string', required: true, description: 'The task from dv_models_list.' },
           provider: { type: 'string', required: true, description: 'The provider from dv_models_list.' },
           model: { type: 'string', required: true, description: 'The model from dv_models_list.' },
-          worker: { type: 'string', description: 'Exact worker ID from dv_hardware_list. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device.' },
+          worker: { type: 'string', description: 'The exact ID of an enabled worker. Omit for provider-wide status or automatic load placement. Specify worker to unload only that device.' },
         },
         inputs: {}, outputs: [], deterministic: false, resource: action === 'status' ? 'none' : 'gpu',
         ...action === 'status' ? { readOnly: true } : { outsideHistory: true },

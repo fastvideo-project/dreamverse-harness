@@ -161,7 +161,7 @@ class Unavailable extends Error {
 /** Resolve explicit placement before reading capabilities or admitting a generation. */
 function executionTarget(entry: ModelEntry, params: Record<string, unknown>): ModelExecutionTarget | undefined {
   if (params['worker'] === undefined) return undefined
-  if (typeof params['worker'] !== 'string' || params['worker'].trim() === '') throw new Error('Choose a worker ID from dv_hardware_list or omit worker for automatic placement.')
+  if (typeof params['worker'] !== 'string' || params['worker'].trim() === '') throw new Error('Choose an enabled worker ID or omit worker for automatic placement.')
   if (entry.workerRouting !== true) throw new Error('This provider does not support explicit worker placement.')
   return { worker: params['worker'] }
 }

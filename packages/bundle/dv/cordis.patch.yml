@@ -16,8 +16,8 @@
     - id: dv-hardware
       name: '@dv/hardware'
 
-    - id: dv-ui-runtime-settings
-      name: '@dv/ui-runtime-settings'
+    - id: dv-ui-hardware
+      name: '@dv/ui-hardware'
     - id: dv-openrouter
       name: '@dv/openrouter'
 

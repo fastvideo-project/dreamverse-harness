@@ -1,4 +1,4 @@
-# @dv/ui-runtime-settings
+# @dv/ui-hardware
 
 [English](README.md) | 中文
 
@@ -10,7 +10,7 @@
 
 ## 组合
 
-挂载 `@dv/hardware`、常规的 Harness 设置和凭据服务，以及一个生成 provider。DreamVerse bundle 包含这个浏览器配套组件。启动常规 `dsh` profile 之前，用 `pnpm --filter @dv/ui-runtime-settings bundle` 构建它的客户端产物。
+挂载 `@dv/hardware`、常规的 Harness 设置和凭据服务，以及一个生成 provider。DreamVerse bundle 包含这个浏览器配套组件。启动常规 `dsh` profile 之前，用 `pnpm --filter @dv/ui-hardware bundle` 构建它的客户端产物。
 
 ## 运行时不变量
 
