@@ -70,17 +70,17 @@ If `dv_asset_grab_still` is in your tool list, call it once per still with `inpu
 
 Write the notes to `ad/review.md` with `dv_textnode_write` and `from: [ad/spec.md]`, one line per problem as `t=4.2s · where · problem → exact change · what stays`, ranked. P0 breaks the ad: misspelled or doubled copy, a wrong color, a banned item, a wrong ratio. P1 weakens it: over 3 s with nothing new, a soft ending. P2 is polish. Never score the cut.
 
-To fix a cut, change its prompt in `ad/spec.md` with `dv_textnode_edit`, wait for the user to agree, then call `dv_shot_render` with `based_on` = the cut's render, wait with `dv_proj_wait`, and call `dv_timeline_update` with `timeline` = that ratio's timeline and `inputs.clip` = output #0 of the new render.
+To fix a cut, change its prompt in `ad/spec.md` with `dv_textnode_edit`; once the user agrees, call `dv_shot_render` with `based_on` = the cut's render, wait with `dv_proj_wait`, and call `dv_timeline_update` with `timeline` = that ratio's timeline and `inputs.clip` = output #0 of the new render.
 
 ## 8. Deliver
 
-Add the user's music or voice file first: `dv_timeline_sound_add` on each ratio's timeline, `start_sec: 0`.
+If the user gave a music or voice file, add it first: `dv_timeline_sound_add` on each ratio's timeline, `start_sec: 0`.
 
-`dv_timeline_export` with `timeline` = each ratio's timeline. Reply with each link, ratio and length, the copy, the storylines not built, the open notes of `ad/review.md`, and what nobody checked (you saw stills and heard no sound). Offer one next step once, such as another ratio.
+`dv_timeline_export` with `timeline` = each ratio's timeline. Reply with each link, ratio and length, the copy, the storylines not built, the open notes of `ad/review.md`, and what nobody checked (you saw stills and heard no sound). Offer one next step, such as another ratio.
 
 ## What this procedure cannot do
 
-When the user asks for one of these, say so before writing the spec:
+If the user asks for one of these, say so before the spec:
 
 - Titles, captions, a logo or an end card over the picture: no text lane; the model draws the copy.
 - A product picture made from the photo: the image model takes text only.
