@@ -32,9 +32,9 @@ export function assetLabelParts(state: WireState, asset: Pick<Asset, 'id' | 'nam
   const id = canvas.assets[asset.id] ?? nodeOfRecord(state, asset.created_by ?? undefined)
   const node = id === null ? undefined : canvas.nodes[id]
   if (node === undefined || node.name === null) return [asset.name]
-  const finished = node.versions.map(version => proj.records.find(record => record.id === version))
+  const newest = node.versions.map(version => proj.records.find(record => record.id === version))
     .findLast(record => record?.outputs[0] !== undefined)
-  const main = node.asset ?? finished?.outputs[0]
+  const main = node.asset ?? newest?.outputs[0]
   return main === asset.id ? [node.name] : [node.name, asset.name]
 }
 
