@@ -33,9 +33,9 @@ export interface ProjToolDeps {
   assets(): AssetStore
   /**
    * The `agentSummary` fields of every reducer that defines it: Project's `proj` slice first, then the other components
-   * in the alphabetical order of their keys.
+   * in the alphabetical order of their keys, for the agent of `session`.
    */
-  agentSummaries(state: ProjectState): Array<Record<string, JsonValue>>
+  agentSummaries(state: ProjectState, session: SessionId): Array<Record<string, JsonValue>>
   /** The agent turn a tool call belongs to, or null outside any turn. */
   turnOf(exec: Pick<ToolRunContext, 'agent'>): TurnId | null
   /** The working directory of a chat session, or null for a session that is not live or records none. */
@@ -105,14 +105,15 @@ function originOf(deps: ProjToolDeps, exec: Pick<ToolRunContext, 'agent' | 'call
  * @param projectId - the project.
  * @param state - the project state.
  * @param options - `written`: the record the tool call wrote, or null for a read; `reports`: whether each recent record
- *   carries its `report` (the tools' summaries do, the project state message does not).
+ *   carries its `report` (the tools' summaries do, the project state message does not); `session`: the session whose
+ *   agent reads the summary.
  * @returns the summary. Throws `invalid_params` when two summaries use the same field name.
  */
 export function projectSummary(
   project: DvProject, deps: ProjToolDeps, projectId: ProjectId, state: ProjectState,
-  options: { written: RecordId | null; reports: boolean },
+  options: { written: RecordId | null; reports: boolean; session: SessionId },
 ): JsonValue {
-  const { written, reports } = options
+  const { written, reports, session } = options
   const { proj } = state.components
   const assets = deps.assets()
   const summary: Record<string, unknown> = {
@@ -130,7 +131,7 @@ export function projectSummary(
     supersedes: record.supersedes,
   }))
   // Component fields sit between the record count and the stale records; no field may name two things.
-  for (const fields of [...deps.agentSummaries(state), { stale, recent }]) {
+  for (const fields of [...deps.agentSummaries(state, session), { stale, recent }]) {
     for (const [name, value] of Object.entries(fields)) {
       if (Object.hasOwn(summary, name)) throw new ProjectError('invalid_params', `Two project summaries use the field ${name}.`)
       summary[name] = value
@@ -220,13 +221,13 @@ function seenMeta(value: JsonValue): { [SEEN_META_KEY]: JsonValue } {
  */
 export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinition[] {
   const projectOf = (exec: ToolRunContext): ProjectId => callProject(project.sessionProject(sessionOf(exec)))
-  // The project's current state, led by the record a write wrote.
-  const summary = (projectId: ProjectId, record: RecordId | null = null): JsonValue =>
-    projectSummary(project, deps, projectId, project.getState(projectId), { written: record, reports: true })
+  // The project's current state as the calling session's agent reads it, led by the record a write wrote.
+  const summary = (exec: ToolRunContext, projectId: ProjectId, record: RecordId | null = null): JsonValue =>
+    projectSummary(project, deps, projectId, project.getState(projectId), { written: record, reports: true, session: sessionOf(exec) })
   // The summary after a write, led by the newest record the call wrote.
   const written = (exec: ToolRunContext, projectId: ProjectId): JsonValue => {
     const [entry] = project.listHistory({ project: projectId, tool_call: exec.callId, limit: 1 })
-    return summary(projectId, entry?.record.id ?? null)
+    return summary(exec, projectId, entry?.record.id ?? null)
   }
   const historyOutput = {
     schema: STATE_SCHEMA, render: (_args: unknown, value: JsonValue): ContentBlock[] => [{ type: 'text', text: JSON.stringify(value, null, 1) }],
@@ -261,7 +262,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       execute: async (args, exec) => {
         const projectId = projectOf(exec)
         await project.renameProject(projectId, args.title)
-        return summary(projectId)
+        return summary(exec, projectId)
       },
     }),
     defineTool({
@@ -270,7 +271,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
         + 'and recent records.',
       parameters: {},
       output: stateOutput,
-      execute: (_args, exec) => Promise.resolve(summary(projectOf(exec))),
+      execute: (_args, exec) => Promise.resolve(summary(exec, projectOf(exec))),
     }),
     defineTool({
       name: 'dv_proj_history_list',
@@ -306,7 +307,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       execute: async (args, exec) => {
         const projectId = projectOf(exec)
         await (args.to === undefined ? project.undo(projectId) : project.moveTo(projectId, brandString<RecordId>(args.to)))
-        return summary(projectId)
+        return summary(exec, projectId)
       },
     }),
     defineTool({
@@ -317,7 +318,7 @@ export function projTools(project: DvProject, deps: ProjToolDeps): ToolDefinitio
       execute: async (_args, exec) => {
         const projectId = projectOf(exec)
         await project.redo(projectId)
-        return summary(projectId)
+        return summary(exec, projectId)
       },
     }),
     defineTool({

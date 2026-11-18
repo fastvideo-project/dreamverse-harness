@@ -1,0 +1,16 @@
+# DreamVerse timeline composition: the shipped headless profile and default
+# composition own startup; the fixture adds the Workspace registry and the
+# DreamVerse project, asset pool, and timeline services. The recording
+# endpoint accepts thinking only with a token budget, so this live patch
+# restates the base model fields with thinking disabled.
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    thinking: disabled
+    reasoningEffort: 'off'
+    models:
+      - id: deepseek-v4-flash
+      - id: deepseek-v4-pro
+
+- insert:
+    - name: ./fixture.mjs

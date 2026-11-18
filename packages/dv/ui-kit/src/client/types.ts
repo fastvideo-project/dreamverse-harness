@@ -308,7 +308,7 @@ export interface OperationRequest {
   inputs?: Array<{ role: string; ref: string }>
   params?: Record<string, unknown>
   intent?: string
-  surface: 'canvas' | 'timeline' | 'asset_pool'
+  surface: 'chat' | 'canvas' | 'timeline' | 'asset_pool'
   /** The chat session the view sits beside, recorded as the record's `session`. */
   session?: string
   based_on?: string
@@ -328,6 +328,10 @@ export interface WireModelEntry {
   provider: string
   model: string
   description: string
+  /** Optional creator-facing name; the stable model key still identifies the model. */
+  display_name?: string
+  /** Providers without model lifecycle support omit this field. */
+  runtime?: { installed: boolean; loaded: boolean; loading: boolean; busy: boolean } | null
   /** The entry's `schema()`, whose fields its primitive owns; null when the backend cannot be reached. */
   schema: unknown
 }

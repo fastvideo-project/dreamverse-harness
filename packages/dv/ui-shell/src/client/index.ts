@@ -1,13 +1,15 @@
 /**
  * Browser half of the DreamVerse shell: `dvCenter`, which shows a view of the open project in the workspace center and
  * hands the view a request; the center workspace in place of DSH's main Conversation, the DreamVerse
- * navigator and brand in the left sidebar, the DreamVerse theme, the 对话 / 轨迹 right-panel tabs and the right panel's
- * default width, DSH's New Session action redirected into the open project, the `dv:trajectory-focus` link that opens
- * 轨迹 at one tool call, and the Ctrl+Z and Shift+Ctrl+Z keys that undo and redo one step of the open project.
+ * navigator and brand in the left sidebar, the toast of a failed navigation action on the shell overlay, the DreamVerse
+ * theme, the 对话 / 轨迹 right-panel tabs and the right panel's default width, DSH's New Session action redirected into
+ * the open project, the `dv:trajectory-focus` link that opens 轨迹 at one tool call, and the Ctrl+Z and Shift+Ctrl+Z
+ * keys that undo and redo one step of the open project.
  *
  * @module @dv/ui-shell/client
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-slots'
@@ -16,6 +18,7 @@ import { createActions } from './actions.ts'
 import { CenterPanel, type ShellInjected } from './Center.tsx'
 import { applyChrome } from './chrome.tsx'
 import { BrandName, Navigator } from './Navigator.tsx'
+import { ActionFailureToast, clearActionFailure } from './notice.tsx'
 import { followPanelEntries } from './panels.ts'
 import { applyRightPanelWidth } from './right-panel.ts'
 import { followSlotTabs } from './slot-tabs.ts'
@@ -56,6 +59,13 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register(
     { name: 'sidebar.brand.name', priority: -1 }, BrandName,
   )), 'ui-shell: brand')
+  ctx.effect(() => {
+    const unregister = ctx.slots.inject('shell.overlay', () => ctx.slots.register(
+      { name: 'shell.overlay', id: 'dv.shell.failure' }, ActionFailureToast,
+    ))
+    // The failure lives in a module store, which outlives the plugin.
+    return () => { unregister(); clearActionFailure() }
+  }, 'ui-shell: navigation failure toast')
   applyChrome(ctx)
   followPanelEntries(ctx)
   followSlotTabs(ctx, 'dv.explore')

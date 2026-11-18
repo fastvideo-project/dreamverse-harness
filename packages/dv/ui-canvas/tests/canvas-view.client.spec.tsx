@@ -1545,7 +1545,73 @@ describe('the node card', () => {
     await waitFor(() => { node('g1') })
     const frame = node('g1').querySelector<HTMLElement>('[data-node-frame]')
     expect(frame?.style.height).toBe('117px')
-    expect(frame?.textContent).toBe('生成失败重试')
+    expect(frame?.textContent).toBe('生成失败：GPU out of memory重试')
+    await runtime.dispose()
+  })
+
+  it('draws the failed words and reason of a failed take on lines of their own, clamped to 3, above a row of its actions', async () => {
+    const { runtime, node } = await mountCanvas({ edit: failG1 })
+    await waitFor(() => { node('g1') })
+    const reason = [...node('g1').querySelectorAll<HTMLElement>('[data-node-frame] span')].find(span => span.textContent === '生成失败：GPU out of memory')
+    expect(reason?.parentElement?.style.flexDirection).toBe('column')
+    expect(reason?.querySelector('button')).toBeNull()
+    expect(reason?.nextElementSibling?.querySelectorAll('button').length).toBe(1)
+    expect([reason?.style.whiteSpace, reason?.style.getPropertyValue('-webkit-line-clamp')]).toEqual(['', '3'])
+    await runtime.dispose()
+  })
+
+  it('reads Queued… on a pending node and the running words on a running node that has no start time, neither with a time', async () => {
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        state.components.proj.records.push(record({ id: 'pa', operation: 'test.paint', status: 'pending' }), record({ id: 'pb', operation: 'test.paint', status: 'running' }))
+        addNode(state, 'pa', canvasNode('paint', ['pa'], 0, 600))
+        addNode(state, 'pb', canvasNode('paint', ['pb'], 300, 600))
+      },
+    })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    await waitFor(() => { node('pb') })
+    expect([node('pa').textContent, node('pb').textContent]).toEqual([expect.stringContaining(zh['node.queued']), expect.stringContaining('渲染中')])
+    expect(node('pa').textContent).not.toMatch(/\d:\d\d/)
+    expect(node('pb').textContent).not.toMatch(/\d:\d\d/)
+    await runtime.dispose()
+  })
+
+  it('counts the time a running node has rendered, once a second, in tabular numerals', async () => {
+    // Only the clock and the tick are fake, so the canvas's fetches and `waitFor` keep their real timeouts.
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
+    vi.setSystemTime(new Date('2026-11-09T10:01:12Z'))
+    const startedAt = '2026-11-09T10:00:00Z'
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        state.components.proj.records.push(record({ id: 'pa', operation: 'test.paint', status: 'running', started_at: startedAt }))
+        addNode(state, 'pa', canvasNode('paint', ['pa'], 0, 600))
+      },
+    })
+    await mountDescriptors(runtime, { nodeType: PAINT })
+    const timeOf = (): string | undefined => node('pa').querySelector<HTMLElement>('span[style*="tabular-nums"]')?.textContent
+    await waitFor(() => { expect(timeOf()).toBe('1:12') })
+    // The overlay is a flex box, so the running words and the time stay one child element to keep the space between them.
+    const overlay = [...node('pa').querySelectorAll<HTMLElement>('span')].find(span => span.style.display === 'flex' && span.textContent.includes('渲染中'))
+    expect([overlay?.childNodes.length, overlay?.firstElementChild?.textContent]).toEqual([1, '渲染中 1:12'])
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(timeOf()).toBe('1:13')
+    expect(node('pa').textContent).toContain('渲染中')
+    await runtime.dispose()
+  })
+
+  it('draws only the failed words of a failed take whose record carries no error', async () => {
+    const { runtime, node } = await mountCanvas({
+      edit: (state) => {
+        failG1(state)
+        state.components.proj.records = state.components.proj.records.map((entry) => {
+          if (entry.id !== 'g1') return entry
+          const { error: _error, ...withoutError } = entry
+          return withoutError
+        })
+      },
+    })
+    await waitFor(() => { node('g1') })
+    expect(node('g1').querySelector<HTMLElement>('[data-node-frame]')?.textContent).toBe('生成失败重试')
     await runtime.dispose()
   })
 

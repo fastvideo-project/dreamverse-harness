@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** The plugin's MCP tab in the entry page's 探索 section under the real slot runtime, and its removal on dispose. */
-import { cleanup } from '@testing-library/react'
+import { cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type {} from '@dv/ui-shell/contract'
@@ -27,6 +27,21 @@ describe('ui-mcp-presets apply', () => {
     await plugin.dispose()
     expect(runtime.slots.entries('dv.explore')).toEqual([])
     expect(view.queryByRole('button', { name: '开启 MCP' })).toBeNull()
+    await runtime.dispose()
+  })
+
+  it('in English, says a failed switch failed and points to the Plugins page', async () => {
+    document.documentElement.lang = 'en'
+    const runtime = await SlotTestRuntime.create()
+    runtime.remote.provideNamespaces({
+      pluginManager: { setBundleEnabled: () => Promise.resolve({ ok: false, error: new Error('bundle missing') }) },
+    })
+    await runtime.root.declare({ 'dv.explore': { kind: 'list', scope: 'root' } }, props => <>{props.renderSlot('dv.explore', {})}</>)
+    await runtime.mount({ inject: [...inject], apply })
+    const view = runtime.renderRoot()
+    fireEvent.click(view.getByRole('button', { name: 'Turn on MCP' }))
+    const alert = await view.findByRole('alert')
+    expect([alert.textContent, alert.title]).toEqual(['Could not turn on MCP. Try again, or check the Plugins page.', 'bundle missing'])
     await runtime.dispose()
   })
 })

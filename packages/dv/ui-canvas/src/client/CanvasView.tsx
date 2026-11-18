@@ -103,17 +103,20 @@ const GRID = 20
 // outlines its frame alone, so the outline matches the frame's selection ring instead of also wrapping the caption.
 const CANVAS_CSS = `
 .dv-canvas-btn { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); } }
 .dv-canvas-btn:focus-visible, .dv-canvas-soft:focus-visible, [data-node-id]:focus-visible > [data-node-frame] { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 [data-node-id]:focus-visible { outline: none; }
 .dv-canvas-title { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-canvas-title:hover, .dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+.dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-canvas-title:hover { background: var(--dv-surface-3); } }
 .dv-canvas-title:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 .dv-canvas-title > svg { opacity: 0; }
-.dv-canvas-title:hover > svg, .dv-canvas-title:focus-visible > svg { opacity: 1; }
+.dv-canvas-title:focus-visible > svg { opacity: 1; }
+@media (hover: hover) { .dv-canvas-title:hover > svg { opacity: 1; } }
+@media (hover: none) { .dv-canvas-title > svg { opacity: 1; } }
 .dv-canvas-soft { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
 .dv-canvas-danger { color: var(--dv-text-2); }
-.dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); }
+@media (hover: hover) { .dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); } }
 @media (prefers-reduced-motion: reduce) { .dv-canvas-btn, .dv-canvas-title { transition: none; } }
 `
 
@@ -951,7 +954,7 @@ export function CanvasView(
     boxShadow: dragOver ? 'inset 0 0 0 2px var(--dv-accent)' : 'none',
   }
   const floating: CSSProperties = {
-    background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)', zIndex: 5,
+    background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)', outline: '1px solid transparent', zIndex: 5,
   }
   const toolButton: CSSProperties = {
     height: 28, minWidth: 28, border: 'none', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text-2)', padding: '0 6px', cursor: 'pointer',
@@ -1157,11 +1160,11 @@ export function CanvasView(
         </button>
         <span aria-hidden="true" style={{ width: 1, height: 16, margin: '0 2px', background: 'var(--dv-line)' }} />
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
         </button>
         <span style={{ minWidth: 44, textAlign: 'center', fontFamily: 'var(--dv-font-mono)', fontVariantNumeric: 'tabular-nums', fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>{`${String(Math.round(viewport.zoom * 100))}%`}</span>
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomIn')} title={t('canvas.zoomIn')} style={toolButton} onClick={() => { zoomBy(1.2) }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         </button>
         <button type="button" className="dv-canvas-btn" style={{ ...toolButton, padding: '0 8px' }} onClick={() => { autoFit.current = true; fit(); scheduleSave() }}>{t('canvas.fit')}</button>
       </div>

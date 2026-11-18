@@ -28,7 +28,7 @@ kind: "package-reference"
 
 编辑器还有一条工具栏和一把标尺，每个片段带生产它的记录的最后一帧。拖动片段即移动，拖动片段边缘即裁剪，工具栏在播放头处拆分片段，其 撤销 和 重做 图标按钮把项目的当前位置往回或往前移一步（不论这一步是哪个视图做的），不写记录，当前位置是最后一步时 重做 不可用，Delete 键移除选中的片段。预览下方的控制栏左侧是时间码；中间是后退 5 秒、播放或暂停、前进 5 秒（编辑器获得焦点时，J、L、Shift+← 和 Shift+→ 也能跳 5 秒）；右侧是播放速度按钮和全屏按钮，播放速度按钮在 0.5×、1×、1.5×、2× 之间循环，并在浏览器标签页的会话内保持所选速度。原声轨道按每个片段的播放区间画出它的波形。拖动预览和工具栏之间的分隔线（或在分隔线上按 ArrowUp 和 ArrowDown）可改变轨道区的高度，浏览器把它记在 `localStorage` 键 `dv-timeline-track-height` 下；预览至少保留 160 px。
 
-音轨位于 原声 / Original audio 轨道下方。每条音轨的标题显示它的名称，没有名称时显示 声音 {n} / Sound {n}；名称下方一行是它的按钮。双击标题，或在其右键菜单中选 重命名 / Rename，会打开名称输入框：按 Enter 或离开输入框时保存，按 Esc 取消；同一菜单中的 删除音轨 / Delete track，或标题上的删除按钮，删除该音轨及其声音。标题上的喇叭按钮通过 `timeline.mute` 把该音轨静音或取消静音，预览中静音音轨的声音不出声并调暗；视频 / Video 标题上的喇叭按钮对片段自带的声音做同样的事，并把 原声 / Original audio 轨道调暗，片段自带声音被静音的时间线导出后没有声音。项目没有时间线时，喇叭按钮不可用。最后一条音轨下方的 ＋ 添加音轨 / Add track 添加一条空音轨；显示着这样一条空音轨时，它不可用。每条音轨末尾的 ＋ 打开 添加声音 / Add sound 对话框，它显示新声音的开始位置，并列出 上传本地音频 / Upload local audio 和项目的音频素材（最新的在前）；上传会先把所选文件导入素材库，再添加它。新声音从该音轨上最后一个声音结束的地方开始；音轨为空时从播放头处开始。从添加开始到新声音显示出来之前，各个 ＋ 不可用。每个声音是一个与其播放时长等宽的块，波形上方的一条横栏显示文件名。点一个声音会选中它；按 Delete 或 Backspace、点工具栏的 删除声音 / Delete sound 按钮，或在其右键菜单中选 删除 / Delete，会移除它。预览播放时，每个声音按播放速度与画面同步播放。时间线有声音时，工具栏在 导出 旁边显示 导出暂不包含声音 / Export does not include sounds yet。
+音轨位于 原声 / Original audio 轨道下方。每条音轨的标题显示它的名称，没有名称时显示 声音 {n} / Sound {n}；名称下方一行是它的按钮。双击标题，或在其右键菜单中选 重命名 / Rename，会打开名称输入框：按 Enter 或离开输入框时保存，按 Esc 取消；同一菜单中的 删除音轨 / Delete track，或标题上的删除按钮，删除该音轨及其声音。标题上的喇叭按钮通过 `timeline.mute` 把该音轨静音或取消静音，预览中静音音轨的声音不出声并调暗；视频 / Video 标题上的喇叭按钮对片段自带的声音做同样的事，并把 原声 / Original audio 轨道调暗，片段自带声音被静音的时间线导出后没有声音。项目没有时间线时，喇叭按钮不可用。最后一条音轨下方的 ＋ 添加音轨 / Add track 添加一条空音轨；显示着这样一条空音轨时，它不可用。每条音轨末尾的 ＋ 打开 添加声音 / Add sound 对话框，它显示新声音的开始位置，并列出 上传本地音频 / Upload local audio 和项目的音频素材（最新的在前）；上传会先把所选文件导入素材库，再添加它。新声音从该音轨上最后一个声音结束的地方开始；音轨为空时从播放头处开始。从添加开始到其记录指定的声音显示出来之前，各个 ＋ 不可用；添加失败、记录未指定声音或编辑器切换到另一条时间线时，它们立即恢复可用。每个声音是一个与其播放时长等宽的块，波形上方的一条横栏显示文件名。点一个声音会选中它；按 Delete 或 Backspace、点工具栏的 删除声音 / Delete sound 按钮，或在其右键菜单中选 删除 / Delete，会移除它。预览播放时，每个声音按播放速度与画面同步播放。时间线有声音时，工具栏在 导出 旁边显示 导出暂不包含声音 / Export does not include sounds yet。
 
 ```yaml
 - id: dv-ui-timeline
@@ -43,14 +43,14 @@ Host 半边不注册任何东西。浏览器半边注册 `dv-timeline` 标签类
 | 拖动片段 | `timeline.clip_move {clip, to}`（`to` 是从 1 开始的位置） |
 | 拆分 | 对播放头下的片段做 `timeline.clip_split {clip, at_sec}` |
 | 对选中片段按 Delete | `timeline.clip_remove {clip}` |
-| 把素材拖到轨道上，或用 ＋ 选择 | `timeline.clip_insert {timeline, at, asset}`；拖到这里的非视频素材不发送任何东西，并显示 视频轨道只接受视频。音频请拖到声音轨道上。 / The video track takes videos only. Drag audio onto a sound track. |
+| 把素材拖到轨道上，或用 ＋ 选择 | `timeline.clip_insert {timeline, at, asset}`；拖到这里的非视频素材不发送任何东西；音频显示 视频轨道只接受视频。音频请拖到声音轨道上。 / The video track takes videos only. Drag audio onto a sound track.，其他媒体显示 视频轨道只接受视频。 / The video track takes videos only. |
 | ＋ 新建、重命名、删除标签 | `timeline.create {timeline, assets: []}`（不带名称，标签显示 时间线 {n} / Timeline {n}）、`timeline.rename {timeline, name}`、`timeline.delete {timeline}` |
 | 在音轨上点 ＋，再选一个音频素材或 上传本地音频 / Upload local audio | `timeline.sound_add {timeline, asset, start_sec, track}`；上传时先通过 `/api/dv/assets/import`（`surface: asset_pool`）导入文件 |
 | 把素材库里的音频素材拖到音轨上 | `timeline.sound_add {timeline, asset, start_sec, track}`，`start_sec` 为放下的位置；另一次添加声音还在进行时，或项目没有时间线时，这次拖放不发送任何东西；非音频素材不发送任何东西，并显示 声音轨道只接受音频。 / A sound track takes audio only. 编辑器从拖动数据的 `application/x-dv-asset-mime` 值读取媒体类型。 |
 | 对选中的声音按 Delete 或 Backspace、点工具栏的 删除声音 / Delete sound，或在其右键菜单中选 删除 / Delete | `timeline.sound_remove {sound}`（`sound` 是声音 ID） |
 | 重命名音轨 | `timeline.sound_track_rename {timeline, track, name}`；名称为空或未改变时不发送 |
 | 删除音轨 / Delete track | `timeline.sound_track_remove {timeline, track}`；只在本视图中显示的空音轨直接消失，不写记录 |
-| 导出 | 一次 `timeline.export {timeline}` 调用；链接打开导出的视频 |
+| 导出 | 一次 `timeline.export {timeline}` 调用；链接打开导出的视频。片段正在渲染时导出保持禁用，工具栏会提示尚未就绪；片段失败时，工具栏使用危险色和 `dv-timeline-export-failed` 标记，提示重新渲染或移除片段 |
 | 对选中的过期片段点"仍然保留" | 对创建该片段素材的记录调用 `POST /api/dv/stale/accept`（`proj.stale_accept`） |
 
 每条记录都带 `surface: 'timeline'`、视图旁边的对话（存为记录的 `session`；记录是项目当前位置之后的一步），以及一句用 DSH 界面语言说明手势的意图。`TimelineView` 显示打开项目的中间区域字段 `timeline` 指定的时间线，否则显示第一条时间线；用户在那里选中或新建的时间线经所有者属性 `note` 设置该字段，因此 shell 把它写进 URL，会话切换器的封面也跟随它。标签主体为每个项目保留自己的所选时间线，不影响中间区域。`TimelineView` 通过 `@dv/ui-kit/locale.ts` 跟随 `<html lang>`；切换时间线标签会停止播放，并重置预览和播放头。点一个片段会选中它，不发送任何请求。＋ 的选择窗口打开时获得焦点。用关闭按钮、焦点在窗口里、在 ＋ 上或在包含窗口的元素上时按 Esc、点击窗口外面或用 Tab 移出窗口来关闭它时，不插入素材。添加声音 / Add sound 对话框打开时同样获得焦点，用同样的方式关闭，不添加声音。素材没有时长时片段按五秒画；声音的素材没有时长时，按其 `<audio>` 元素测出的时长画，测不出时按五秒画。轨道延伸到最后一个片段或声音的结束处，取较晚者。

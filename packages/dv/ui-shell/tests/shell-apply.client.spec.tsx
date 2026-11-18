@@ -2,7 +2,7 @@
 /**
  * The shell plugin in a slot test runtime with stand-ins for the DSH layout, right panel and navigation services.
  */
-import { act, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -15,6 +15,7 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { WorkspaceId } from '@deepseek-ai/dsh-workspace/types'
 import type { WireProject } from '@dv/ui-kit/types.ts'
 import { DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
+import type { ShellActions } from '../src/client/actions.ts'
 
 const PROJECTS: WireProject[] = [{ id: 'p1', title: 'Launch film', created_at: '2026-01-05T12:00:00Z', path: '/dv/p1' }]
 
@@ -22,6 +23,7 @@ const runtimes: SlotTestRuntime[] = []
 
 afterEach(async () => {
   for (const runtime of runtimes.splice(0)) await runtime.dispose()
+  vi.useRealTimers()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.resetModules()
@@ -84,6 +86,7 @@ async function mountShell() {
     'sidebar.workspaces': { kind: 'single', scope: 'root' },
     'sidebar.brand.name': { kind: 'single', scope: 'root' },
     'sidebar.right.pane.tab': { kind: 'keyed', scope: 'session', inject: { hooks: { tabInfo: tabInfoFactory } } },
+    'shell.overlay': { kind: 'list', scope: 'root' },
   })
   const shell = await runtime.mount({ inject: [...inject], apply })
   await waitFor(() => { expect(store.getShell().projects).toEqual(PROJECTS) })
@@ -147,6 +150,54 @@ describe('the shell plugin', () => {
     await bench.shell.dispose()
     expect(bench.runtime.slots.entries('main.conversation')).toEqual([])
     expect(bench.runtime.slots.entries('sidebar.right.pane.tab')).toEqual([])
+  })
+
+  it('opens a navigator chat of another project with that project, also one older than its latest chat, and a chat of the open project without reopening it', async () => {
+    // Record the shell's openProject calls, so the test can tell a project switch from a chat switch in the open project.
+    const openProject = vi.fn<ShellActions['openProject']>()
+    vi.doMock('../src/client/actions.ts', async (importOriginal) => {
+      const actual = await importOriginal<typeof import('../src/client/actions.ts')>()
+      return {
+        ...actual,
+        createActions: (...args: Parameters<typeof actual.createActions>) => {
+          const actions = actual.createActions(...args)
+          openProject.mockImplementation((projectId, sessionId) => actions.openProject(projectId, sessionId))
+          return { ...actions, openProject }
+        },
+      }
+    })
+    try {
+      const bench = await mountShell()
+      const project: WireProject = { id: 'p2', title: 'Music video', created_at: '2026-02-05T12:00:00Z', path: '/dv/p2' }
+      bench.server.projects = [...PROJECTS, project]
+      await bench.runtime.sessions.add({ id: 's2', summary: { displayTitle: 'Chorus', updatedAt: 2 } })
+      await bench.runtime.sessions.add({ id: 's3', summary: { displayTitle: 'Finale', updatedAt: 3 } })
+      await bench.runtime.workspaces.update((draft) => {
+        draft.phase = 'ready'
+        draft.items = [...draft.items, { workspaceId: 'p2' as WorkspaceId, path: '/dv/p2', title: 'Music video', sessionIds: ['s2' as SessionId, 's3' as SessionId], createdAt: '', updatedAt: '' }]
+      })
+      act(() => { bench.store.setShell({ projectId: 'p1' }) })
+      const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+      await waitFor(() => { expect(navigator.view.getByText('Music video')).toBeDefined() })
+
+      fireEvent.click(navigator.view.getByRole('button', { name: 'Show chats' }))
+      fireEvent.click(navigator.view.getByText('Chorus'))
+      await waitFor(() => { expect(bench.openSession).toHaveBeenLastCalledWith('s2') })
+      expect(openProject).toHaveBeenCalledTimes(1)
+      expect(openProject).toHaveBeenCalledWith('p2', 's2')
+      expect(bench.store.getShell().projectId).toBe('p2')
+
+      // A chat of the open project switches only the chat: openSession, and no openProject once pending work settles.
+      bench.openSession.mockClear()
+      openProject.mockClear()
+      fireEvent.click(navigator.view.getByText('Finale'))
+      await waitFor(() => { expect(bench.openSession).toHaveBeenCalledWith('s3') })
+      await act(async () => { await new Promise((resolve) => { setTimeout(resolve, 0) }) })
+      expect(openProject).not.toHaveBeenCalled()
+      expect(bench.store.getShell().projectId).toBe('p2')
+    } finally {
+      vi.doUnmock('../src/client/actions.ts')
+    }
   })
 
   it('starts DSH\'s New Session in the open project, as the entry page\'s blank chat in a fresh folder without one, and logs a failed start', async () => {
@@ -254,5 +305,129 @@ describe('the shell plugin', () => {
     act(() => { bench.mounted.set('s5' as SessionId) })
     focusTrajectory({ session: 's5', toolCall: 'c6' })
     expect(opened()).toHaveLength(3)
+  })
+})
+
+describe('the navigator', () => {
+  /** Mount the shell and give the project p1 one chat session, then render the navigator. */
+  async function mountNavigator() {
+    const bench = await mountShell()
+    await bench.runtime.sessions.add({ id: 'c1', summary: { blank: false, displayTitle: 'Chat one', updatedAt: 1 } })
+    await bench.runtime.workspaces.update((draft) => {
+      draft.items = draft.items.map(item => item.workspaceId === 'p1' ? { ...item, sessionIds: ['c1' as SessionId] } : item)
+    })
+    const navigator = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+    bench.runtime.renderSlot('shell.overlay', {})
+    return { bench, navigator, view: navigator.view }
+  }
+
+  it('toggles, opens and selects with Enter and Space on the caret, the project title and the chat row, and leaves keys typed inside the row alone', async () => {
+    const { bench, view } = await mountNavigator()
+    const caret = view.getByRole('button', { name: 'Show chats' })
+    fireEvent.keyDown(caret, { key: 'Enter' })
+    await waitFor(() => { expect(view.getByRole('button', { name: 'Hide chats' }).getAttribute('aria-expanded')).toBe('true') })
+    fireEvent.keyDown(view.getByRole('button', { name: 'Hide chats' }), { key: ' ' })
+    await waitFor(() => { expect(view.getByRole('button', { name: 'Show chats' }).getAttribute('aria-expanded')).toBe('false') })
+    fireEvent.keyDown(view.getByRole('button', { name: 'Show chats' }), { key: 'a' })
+    expect(view.queryByRole('button', { name: 'Hide chats' })).toBeNull()
+
+    const title = view.getByTitle('Launch film')
+    fireEvent.keyDown(title, { key: ' ' })
+    await waitFor(() => { expect(bench.store.getShell().projectId).toBe('p1') })
+    expect(view.getByRole('button', { name: 'Hide chats' })).toBeDefined()
+
+    const row = view.getByTitle('Chat one').parentElement!
+    fireEvent.keyDown(within(row).getByRole('button', { name: 'Conversation menu' }), { key: 'Enter' })
+    expect(bench.openSession).toHaveBeenCalledTimes(1)
+    bench.openSession.mockClear()
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(bench.openSession).toHaveBeenLastCalledWith('c1')
+  })
+
+  it('lists every project after All projects, and the button then reads Show less', async () => {
+    const bench = await mountShell()
+    bench.server.projects = Array.from({ length: 13 }, (_, i): WireProject => ({
+      id: `p${String(i + 1)}`, title: `Project ${String(i + 1)}`, created_at: `2026-01-${String(i + 1).padStart(2, '0')}T12:00:00Z`, path: `/dv/p${String(i + 1)}`,
+    }))
+    await act(async () => { await bench.runtime.workspaces.update((draft) => { draft.items = [...draft.items] }) })
+    await waitFor(() => { expect(bench.store.getShell().projects).toHaveLength(13) })
+    const { view } = bench.runtime.renderSlot('sidebar.workspaces', { wide: true, expandSidebar: () => {} })
+    expect(view.queryByTitle('Project 1')).toBeNull()
+    fireEvent.click(view.getByRole('button', { name: 'All projects' }))
+    expect(view.getByTitle('Project 1')).toBeDefined()
+    fireEvent.click(view.getByRole('button', { name: 'Show less' }))
+    expect(view.queryByTitle('Project 1')).toBeNull()
+  })
+
+  it('shows the reason a failed action gave in the overlay toast, which outlives the navigator, until a later action succeeds', async () => {
+    const { bench, navigator, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const serverFetch = globalThis.fetch
+    vi.stubGlobal('fetch', ((input, init) => {
+      if (input === '/api/dv/projects' && init?.method === 'POST') return Promise.resolve(new Response(JSON.stringify({ error: 'disk full' }), { status: 500 }))
+      return serverFetch(input, init)
+    }) satisfies typeof fetch)
+    fireEvent.click(view.getByRole('button', { name: 'Create project' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toContain("Couldn't complete that: ")
+    expect(alert.textContent).toContain('disk full')
+    expect(navigator.container.querySelector('[role="alert"]')).toBeNull()
+    navigator.update({ wide: false, expandSidebar: () => {} })
+    expect(navigator.container.textContent).toBe('')
+    expect(screen.getByRole('alert')).toBe(alert)
+
+    navigator.update({ wide: true, expandSidebar: () => {} })
+    bench.runtime.sessions.stubCreate(() => Promise.resolve('blank-p1' as SessionId))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
+    expect(bench.store.getShell().projectId).toBe('p1')
+  })
+
+  it('keeps a failure toast when an action that started before the failure succeeds', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let open: (session: SessionId) => void = () => {}
+    bench.runtime.sessions.stubCreate(() => new Promise((resolve) => { open = resolve }))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert.textContent).toBe("Couldn't complete that: host offline")
+    await act(async () => { open('blank-p1' as SessionId); await Promise.resolve() })
+    await waitFor(() => { expect(bench.store.getShell().projectId).toBe('p1') })
+    expect(screen.getByRole('alert')).toBe(alert)
+  })
+
+  it('removes the failure toast once it has faded', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.useFakeTimers()
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByRole('alert').textContent).toBe("Couldn't complete that: host offline")
+    await act(async () => { await vi.advanceTimersByTimeAsync(6999) })
+    expect(screen.queryByRole('alert')).not.toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('shows no failure toast from before a dispose once the plugin is applied again', async () => {
+    const { bench, view } = await mountNavigator()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    bench.runtime.sessions.stubCreate(() => Promise.reject(new Error('host offline')))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    expect((await screen.findByRole('alert')).textContent).toBe("Couldn't complete that: host offline")
+    // An action still pending at the dispose rejects after the plugin is applied again.
+    let refuse: (error: Error) => void = () => {}
+    bench.runtime.sessions.stubCreate(() => new Promise((_resolve, reject) => { refuse = reject }))
+    fireEvent.click(view.getByRole('button', { name: 'New chat' }))
+    await bench.shell.dispose()
+    const { apply, inject } = await import('../src/client/index.ts')
+    await bench.runtime.mount({ inject: [...inject], apply })
+    await waitFor(() => { expect(bench.runtime.slots.entries('shell.overlay')).toHaveLength(1) })
+    expect(screen.queryByRole('alert')).toBeNull()
+    await act(async () => { refuse(new Error('host gone')); await Promise.resolve() })
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })

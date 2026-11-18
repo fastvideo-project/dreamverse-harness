@@ -24,13 +24,14 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-left: auto;
+  margin-inline-start: auto;
 }
 
 .list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   border-top: 1px solid var(--dv-line);
 }
 
@@ -38,7 +39,8 @@
   margin: 8px 0;
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
+  text-wrap: pretty;
 }
 
 .notice {
@@ -69,8 +71,10 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.button:hover:not(:disabled) {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .button:hover:not(:disabled) {
+    background: var(--dv-surface-3);
+  }
 }
 
 .button:disabled {
@@ -95,9 +99,11 @@
   transition: background-color 120ms var(--dv-ease), color 120ms var(--dv-ease);
 }
 
-.iconButton:hover:not(:disabled) {
-  background: var(--dv-surface-3);
-  color: var(--dv-text);
+@media (hover: hover) {
+  .iconButton:hover:not(:disabled) {
+    background: var(--dv-surface-3);
+    color: var(--dv-text);
+  }
 }
 
 .iconButton:disabled {
@@ -122,15 +128,16 @@
   position: absolute;
   z-index: 20;
   top: 100%;
-  right: 0;
+  inset-inline-end: 0;
   display: flex;
   flex-direction: column;
   min-width: 140px;
   margin-top: 4px;
   padding: 6px;
-  border-radius: var(--dv-radius-xl);
+  border-radius: var(--dv-radius-menu);
   background: var(--dv-surface-1);
   box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2);
+  outline: 1px solid transparent;
 }
 
 .menuItem {
@@ -143,14 +150,16 @@
   font: inherit;
   font-size: 13px;
   line-height: 20px;
-  text-align: left;
+  text-align: start;
   white-space: nowrap;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
 
-.menuItem:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .menuItem:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .loadMore {
@@ -170,8 +179,10 @@
   cursor: pointer;
 }
 
-.link:hover {
-  text-decoration: underline;
+@media (hover: hover) {
+  .link:hover {
+    text-decoration: underline;
+  }
 }
 
 /* The fold toggle lines up with the row text above it: approval rows have no thumbnail. */
@@ -197,8 +208,10 @@
   padding: 4px 8px 4px 24px;
 }
 
-.row:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .row:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .row[aria-selected='true'] {
@@ -237,8 +250,9 @@
   flex: none;
   color: var(--dv-text-2);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
   line-height: 16px;
-  text-align: right;
+  text-align: end;
   white-space: nowrap;
 }
 
@@ -251,6 +265,30 @@
   font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
+}
+
+.reason,
+.reasonFailed {
+  display: -webkit-box;
+  margin: 2px 0 0;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.reason {
+  color: var(--dv-text-2);
+}
+
+.reasonFailed {
+  color: var(--dv-danger);
+}
+
+.duration {
+  font-variant-numeric: tabular-nums;
 }
 
 .status {
@@ -303,7 +341,7 @@
 .detailWords {
   color: var(--dv-text-2);
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
   white-space: pre-wrap;
 }
 

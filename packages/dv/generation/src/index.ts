@@ -10,7 +10,7 @@ import { randomInt } from 'node:crypto'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import type {} from '@dv/canvas'
 import {
-  formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
+  assertVideoSelection, formatModelKey, type ModelEntry, type PrimitiveId, type PrimitiveTypes, type TaskOfPrimitive,
 } from '@dv/models'
 import type {
   AssetId, OperationContext, OperationInput, OperationOutput, OperationResult, OperationSpec, OperationToolCall, ProjectId,
@@ -68,10 +68,10 @@ interface GenerationSpecFields<P extends PrimitiveId> {
   node: { kind: string; column: number }
   primitive: P
   /**
-   * The catalog tasks of the operation, each with its label in Chinese and English. The operation is registered while
+   * The supported subset of catalog tasks, each with its label in Chinese and English. The operation is registered while
    * the catalog serves one of these tasks, and `dvModels.labelTasks` holds the labels while the service lives.
    */
-  tasks: Readonly<Record<TaskOfPrimitive<P>, { zh: string; en: string }>>
+  tasks: Readonly<Partial<Record<TaskOfPrimitive<P>, { zh: string; en: string }>>>
   label: { zh: string; en: string }
   description: string
   /** The params besides the model key, `prompt`, `seed` and `extra`; a declaration may restate `prompt` to describe it. */
@@ -203,6 +203,8 @@ export function importOne(run: OperationContext,
 export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>): new (ctx: Context) => Service & GenerationApi {
   // The task names are the keys of the label record; Object.keys loses their type.
   const tasks = Object.keys(spec.tasks) as Array<TaskOfPrimitive<P>>
+  // Under exactOptionalPropertyTypes each key present in the partial record holds a label.
+  const taskLabels = spec.tasks as Readonly<Record<string, { zh: string; en: string }>>
   const operationParams: OperationSpec['params'] = {
     ...KEY_PARAMS, ...spec.params, ...spec.seed === false ? {} : SEED_PARAM, ...EXTRA_PARAM,
   }
@@ -212,7 +214,7 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
     constructor(ctx: Context) {
       super(ctx, spec.service)
       ctx.effect(() => ctx.dvProject.registerComponent(spec.component), `${spec.service} component`)
-      ctx.effect(() => ctx.dvModels.labelTasks(spec.tasks), `${spec.service} task labels`)
+      ctx.effect(() => ctx.dvModels.labelTasks(taskLabels), `${spec.service} task labels`)
       ctx.effect(() => ctx.dvModels.whileServing(tasks, () => ctx.dvProject.registerOperation(this.operation())),
         `${spec.service} ${spec.operation}`)
       ctx.inject(['dvCanvasNodes'], (canvas) => {
@@ -297,9 +299,13 @@ export function defineGeneration<P extends PrimitiveId>(spec: GenerationSpec<P>)
         summarize: record => spec.summarize(record),
         prepareToolCall: async (call) => {
           spec.prepareToolCall?.(call)
+          assertVideoSelection(call.request, call.state)
           await this.refuse(call.request, call.state)
         },
-        precondition: (request, state) => this.refuse(request, state),
+        precondition: (request, state) => {
+          assertVideoSelection(request, state)
+          return this.refuse(request, state)
+        },
         execute: run => this.execute(run),
       }
     }

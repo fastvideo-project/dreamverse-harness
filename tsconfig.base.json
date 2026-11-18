@@ -349,6 +349,8 @@
       "@dv/location": ["./packages/dv/location/src/index.ts"],
       "@dv/location/types": ["./packages/dv/location/src/types.ts"],
       "@dv/mcp-presets": ["./packages/dv/mcp-presets/src/index.ts"],
+      "@dv/openrouter": ["./packages/dv/openrouter/src/index.ts"],
+      "@dv/openrouter/types": ["./packages/dv/openrouter/src/types.ts"],
       "@dv/models": ["./packages/dv/models/src/index.ts"],
       "@dv/models/types": ["./packages/dv/models/src/types.ts"],
       "@dv/project": ["./packages/dv/project/src/index.ts"],

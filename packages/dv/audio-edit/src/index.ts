@@ -71,8 +71,7 @@ function inputAudio(context: Pick<OperationContext, 'inputs'>): AssetId {
 }
 
 /**
- * The pauses that ffmpeg's `silencedetect` printed, as start and end times. A pause that runs to the end of the file
- * prints no end and is left out.
+ * The pauses that ffmpeg's `silencedetect` printed, as start and end times in seconds to the microsecond.
  * @param stderr - the filter's log.
  * @returns the pauses in time order.
  */
@@ -81,15 +80,17 @@ function pausesOf(stderr: string): Array<[number, number]> {
 }
 
 /**
- * The cut times at the middle of the longest pauses between sounds.
+ * The cut times at the middle of the longest pauses between sounds. A pause that starts at 0, or ends less than 1 ms
+ * before `durationSec` or later, is not between sounds and is left out; the 1 ms margin covers a pause at the end of
+ * the audio, whose end `silencedetect` and ffprobe can round 1 µs apart.
  * @param pauses - the pauses of the audio.
- * @param durationSec - the audio's length.
+ * @param durationSec - the audio's decoded length.
  * @param count - how many cuts to make.
  * @returns the cut times in time order.
  * @throws Error when the audio has fewer pauses between sounds than `count`.
  */
 function cutsAtPauses(pauses: Array<[number, number]>, durationSec: number, count: number): number[] {
-  const inside = pauses.filter(([start, end]) => start > 0 && end < durationSec)
+  const inside = pauses.filter(([start, end]) => start > 0 && end < durationSec - 0.001)
   if (inside.length < count) {
     throw new Error(`The audio has ${String(inside.length)} pauses between sounds, too few for ${String(count + 1)} pieces; `
       + 'pass "at" with the cut times instead.')
@@ -145,20 +146,21 @@ export default class DvAudioEdit extends Service {
   }
 
   /**
-   * Cut an audio asset into WAV pieces that together cover the whole audio.
+   * Cut an audio asset into WAV pieces that together cover the audio up to its decoded length rounded to milliseconds.
+   * It measures, searches, and cuts the decoded audio, so a pause at the end ends at the last sample. The reported times
+   * are rounded to milliseconds, and each written piece's length is its reported length to within 1 ms.
    * @param audio - an audio asset.
    * @param cut - the cut times in seconds, in time order, or the number of pieces to cut at the longest pauses.
    * @param dir - the directory the pieces are written into.
    * @returns each piece's path and its times in the input, in time order.
    * @throws Error for fewer than 2 pieces, for cut times that are not after 0, increasing and at least 1 ms apart, for
-   *   an asset that is not audio, when ffprobe reports no duration, for a cut at or after the end, or when the audio has
-   *   too few pauses between sounds; FfmpegError when ffmpeg fails.
+   *   an asset that is not audio, when ffprobe reports no duration for the decoded audio, for a cut at or after the
+   *   end, or when the audio has too few pauses between sounds; FfmpegError when ffmpeg fails.
    */
   async split(audio: AssetId, cut: { at: number[] } | { pieces: number }, dir: string): Promise<Array<{ file: string; piece: Piece }>> {
     const problem = 'at' in cut ? atProblem(cut.at) : piecesProblem(cut.pieces)
     if (problem !== null) throw new Error(problem)
-    const path = this.audioPath(audio)
-    const durationSec = await this.durationOf(path)
+    const { path, durationSec } = await this.decode(this.audioPath(audio), dir)
     const times = 'at' in cut ? cut.at.map(ms) : cutsAtPauses(await this.pauses(path, dir), durationSec, cut.pieces - 1)
     const endSec = ms(durationSec)
     const late = times.find(time => time >= endSec)
@@ -185,23 +187,26 @@ export default class DvAudioEdit extends Service {
   /**
    * Play an audio asset faster or slower without changing its pitch, into a WAV file.
    * @param audio - an audio asset.
-   * @param change - the speed factor (2 plays twice as fast), or the length in seconds the result should have.
+   * @param change - the speed factor (2 plays twice as fast), or the length in seconds the result should have, which
+   *   the factor fits from the decoded audio's length.
    * @param dir - the directory the result is written into.
    * @returns the result's path, the speed factor used, and the result's length.
    * @throws Error for a given or fitted factor outside 0.5 to 100, for an asset that is not audio, or when ffprobe
-   *   reports no duration; FfmpegError when ffmpeg fails.
+   *   reports no duration for the decoded audio or the result; FfmpegError when ffmpeg fails.
    */
   async speed(
     audio: AssetId, change: { speed: number } | { durationSec: number }, dir: string,
   ): Promise<{ file: string; speed: number; durationSec: number }> {
-    const path = this.audioPath(audio)
+    let path = this.audioPath(audio)
     let speed: number
     if ('speed' in change) {
       const problem = speedProblem(change.speed)
       if (problem !== null) throw new Error(problem)
       speed = change.speed
     } else {
-      const durationSec = await this.durationOf(path)
+      const decoded = await this.decode(path, dir)
+      path = decoded.path
+      const durationSec = decoded.durationSec
       speed = durationSec / change.durationSec
       if (speed < MIN_SPEED || speed > MAX_SPEED) {
         throw new Error(`Fitting ${String(ms(durationSec))}s into ${String(change.durationSec)}s needs speed ${String(ms(speed))}, `
@@ -221,12 +226,28 @@ export default class DvAudioEdit extends Service {
    * The length of an audio file.
    * @param path - the file.
    * @returns its length in seconds.
-   * @throws Error when ffprobe reports no duration, as for a WebM file recorded as a live stream.
+   * @throws Error when ffprobe reports no duration, as for a WAV file with no samples.
    */
   private async durationOf(path: string): Promise<number> {
     const durationSec = (await this.ctx.dvFfmpeg.probe(path)).durationSec
     if (durationSec === null) throw new Error('ffprobe reports no duration for the audio.')
     return durationSec
+  }
+
+  /**
+   * Decode the first audio stream of a file into a 16-bit PCM WAV file, whose length is the decoded audio's length; a
+   * container such as MP3 can report a duration that differs from it.
+   * @param path - the file.
+   * @param dir - the directory the WAV file is written into.
+   * @returns the WAV file and its length in seconds.
+   * @throws Error when ffprobe reports no duration for the WAV file; FfmpegError when ffmpeg fails.
+   */
+  private async decode(path: string, dir: string): Promise<{ path: string; durationSec: number }> {
+    const decoded = (await this.ctx.dvFfmpeg.run({
+      argv: ['ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-map', '0:a:0', '-c:a', 'pcm_s16le', '{{out:decoded.wav}}'],
+      inputs: [path], outputs: ['decoded.wav'], dir,
+    })).outputs[0] as string
+    return { path: decoded, durationSec: await this.durationOf(decoded) }
   }
 
   /**
@@ -317,13 +338,13 @@ export default class DvAudioEdit extends Service {
       resource: 'cpu',
       summarize: record => (record.params['speed'] === undefined
         ? `fitted to ${String(record.params['duration_sec'])} s`
-        : `speed ×${String(record.params['speed'])}`),
+        : `speed ×${String(Number(record.params['speed']))}`),
       precondition: (request: RunRequest): Promise<void> => {
         const { speed, duration_sec: durationSec } = request.params
         if ((speed === undefined) === (durationSec === undefined)) throw new ProjectError('invalid_params', 'Pass either "speed" or "duration_sec".')
         const problem = speed === undefined ? null : speedProblem(Number(speed))
         if (problem !== null) throw new ProjectError('invalid_params', problem)
-        if (durationSec !== undefined && Number(durationSec) <= 0) throw new ProjectError('invalid_params', `"duration_sec" is ${String(durationSec)}; pass more than 0.`)
+        if (durationSec !== undefined && Number(durationSec) <= 0) throw new ProjectError('invalid_params', `"duration_sec" is ${String(Number(durationSec))}; pass more than 0.`)
         return Promise.resolve()
       },
       execute: async (context): Promise<OperationResult> => {
