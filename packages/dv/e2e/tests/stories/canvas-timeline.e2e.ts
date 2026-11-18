@@ -1592,21 +1592,22 @@ describe('timeline stories', () => {
       await expect.poll(() => takes.count()).toBe(3)
       expect(await takes.allTextContents()).toEqual([expect.stringContaining('渲染中…'), expect.stringContaining('渲染中…'), expect.stringContaining('渲染中…')])
       await viewToggle(page, '时间线').click()
-      const status = (): Promise<string[]> => page.locator('[data-clip-position]').evaluateAll(clips => clips.map(clip => clip.getAttribute('data-clip-status') ?? ''))
+      const status = (): Promise<string[]> => page.locator('[data-clip]').evaluateAll(clips => clips.map(clip => clip.getAttribute('data-clip-status') ?? ''))
       await expect.poll(status).toEqual(['rendering', 'rendering', 'rendering'])
       // Each placeholder keeps the length of its shot, so the timeline is as long as the three shots.
       expect((await timelineTime(page))[1]).toBeCloseTo(4, 1)
-      expect(await page.locator('[data-clip-position="1"]').getAttribute('title')).toContain('渲染中…')
-      expect(await page.locator('[data-clip-position="1"] [data-trim]').count()).toBe(0)
-      expect(await page.locator('[data-testid="dv-timeline-viewer-placeholder"]').textContent()).toBe('片段 1：渲染中…')
+      expect(await page.locator('[data-clip]').first().getAttribute('title')).toContain('渲染中…')
+      expect(await page.locator('[data-clip]').first().locator('[data-trim]').count()).toBe(0)
+      expect(await page.locator('[data-testid="dv-timeline-viewer-placeholder"]').textContent()).toBe('视频 上的片段：渲染中…')
       const exportButton = page.getByRole('button', { name: '导出' })
       expect(await exportButton.isDisabled()).toBe(true)
-      expect(await page.locator('[data-testid="dv-timeline-export-waiting"]').textContent()).toBe('片段 1, 2, 3 还没就绪，全部就绪后才能导出')
+      expect(await page.locator('[data-testid="dv-timeline-export-waiting"]').textContent()).toBe('还有 3 个片段没就绪，全部就绪后才能导出')
       // The export operation refuses the call too, naming the clips that are not ready.
       const refused = await harness.api.post('/api/dv/operation', {
         project, operation: 'timeline.export', params: { timeline: 't1' }, inputs: [], surface: 'timeline', intent: 'export early',
       }).then(() => '', (error: unknown) => String(error))
-      expect(refused).toContain('Clips 1, 2, 3 of timeline t1 are not ready yet.')
+      const placeholders = (await stateOf(project)).components.timeline.timelines[0]?.clips.map(clip => clip.id).join(', ')
+      expect(refused).toContain(`Clips ${placeholders ?? ''} of timeline t1 are not ready yet.`)
       // Each finished render turns its placeholder into a clip the viewer plays; the others stay placeholders.
       for (let finished = 1; finished <= 3; finished += 1) {
         harness.backend.release()
@@ -1614,7 +1615,7 @@ describe('timeline stories', () => {
         const clips = (await stateOf(project)).components.timeline.timelines[0]?.clips ?? []
         const ready = (await status()).flatMap((entry, index) => entry === 'ready' ? [index] : [])
         for (const index of ready) {
-          const clip = page.locator(`[data-clip-position="${String(index + 1)}"]`)
+          const clip = page.locator('[data-clip]').nth(index)
           const box = await clip.boundingBox()
           const ruler = await page.locator('[data-testid="dv-timeline-ruler"]').boundingBox()
           if (box === null || ruler === null) throw new Error(`clip ${String(index + 1)} or the ruler is not on screen`)
