@@ -139,6 +139,11 @@ describe('native catalog and job controls', () => {
     expect(await generation.model()).toMatchObject({ modelId: 'pika', minDurationSec: 5, maxDurationSec: 5, resolutions: ['480p'] })
   })
 
+  it('keeps configured output choices when enabled discovery reads null metadata', async () => {
+    const generation = client(async () => json({ served_model_name: 'pika', video_output_capabilities: null }), { discoverOutputCapabilities: true })
+    expect(await generation.model()).toMatchObject({ modelId: 'pika', minDurationSec: 5, maxDurationSec: 5, resolutions: ['480p'] })
+  })
+
   it('rejects malformed output metadata without caching it, so the next model() call fetches again', async () => {
     let fetches = 0
     const generation = client(async () => {
