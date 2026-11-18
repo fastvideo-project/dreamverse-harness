@@ -53,6 +53,8 @@
     "@dv/ui-text-node": "workspace:*",
     "@dv/ui-timeline": "workspace:*",
     "@dv/workflow-story": "workspace:*",
+    "@dv/hardware": "workspace:*",
+    "@dv/ui-hardware": "workspace:*",
     "@dv/openrouter": "workspace:*",
     "@dv/ui-openrouter": "workspace:*"
   },

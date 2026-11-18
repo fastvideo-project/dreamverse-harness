@@ -24,6 +24,8 @@ import DvFfmpeg from '@dv/ffmpeg'
 import type { ModelFactsConfig } from '@dv/fastvideo-generation-client'
 import DvModels, { type ModelEntry, type RenderStreamEvent, type TaskOfPrimitive } from '@dv/models'
 import DvProject from '@dv/project'
+import DvHardware, { type WorkerConfig } from '@dv/hardware'
+import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import * as FastVideo from '../src/index.ts'
@@ -104,6 +106,12 @@ const TEXT_FACTS: ModelFactsConfig = {
   maxReferences: 0, referenceMediaTypes: {},
 }
 
+/** The `video_output_capabilities` that a fake server started with `capabilities` extends. */
+const CAPABILITIES = {
+  schema_version: 1, fps: 24, duration_seconds: { min: 5, max: 6 }, num_frames_by_duration_seconds: { 5: 124, 6: 158 },
+  recommended_frame_sizes: { '16:9': { '720p': [1344, 768] } },
+}
+
 const cleanups: Array<() => Promise<void>> = []
 
 afterEach(async () => {
@@ -126,7 +134,8 @@ interface FakeServer {
  * `POST /v1/videos/sync` with `video`.
  * @param facts - the facts of the served model.
  * @param options - `video` is the MP4 it answers with; `hold` holds each render answer until it is released; `failure`
- *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on.
+ *   answers each render with that HTTP status and an OpenAI error envelope instead; `port` is the port to listen on;
+ *   `capabilities` is the published `video_output_capabilities`, left out when absent.
  * @returns the task config of the server and the render request bodies.
  */
 async function startFakeServer(facts: ModelFactsConfig, options: {
@@ -134,6 +143,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   hold?: boolean
   failure?: { status: number; message: string }
   port?: number
+  capabilities?: Record<string, unknown>
 } = {}): Promise<FakeServer> {
   const requests: Record<string, unknown>[] = []
   let arrived!: (value: { release: () => void; closed: Promise<void> }) => void
@@ -141,7 +151,8 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
   const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
     if (request.method !== 'POST') {
       response.writeHead(200, { 'content-type': 'application/json', connection: 'close' })
-      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: null }))
+      response.end(JSON.stringify({ model_path: '/weights', served_model_name: facts.modelId, lora: null,
+        ...options.capabilities === undefined ? {} : { video_output_capabilities: options.capabilities } }))
       return
     }
     const parts: Buffer[] = []
@@ -174,7 +185,7 @@ async function startFakeServer(facts: ModelFactsConfig, options: {
 
 /** The plugins the fixture rows resolve through `globalThis`, because Node imports the rows outside Vite. */
 const PLUGINS = {
-  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels,
+  SkillRegistry, DvProject, DvFfmpeg, DvAssetPool, DvModels, DvHardware, MemoryCredentials,
   FastVideo: { name: FastVideo.name, inject: FastVideo.inject, Config: FastVideo.Config, apply: FastVideo.apply },
 }
 
@@ -184,14 +195,16 @@ const PLUGINS = {
  * @param model - the served model that `tasks` configures.
  * @returns the root context.
  */
-async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3'): Promise<Context> {
+async function start(tasks: Partial<Record<VideoTask, FastVideo.TaskServer>>, model = 'fasth3', hardware?: Record<string, WorkerConfig>): Promise<Context> {
   const dir = mkdtempSync(join(tmpdir(), 'dv-fastvideo-'))
   const globals = globalThis as typeof globalThis & { __dvFastVideo?: typeof PLUGINS }
   globals.__dvFastVideo = PLUGINS
-  const config = [`models: ${JSON.stringify({ [model]: tasks })}`]
+  const config = [`models: ${JSON.stringify({ [model]: tasks })}`, `useHardware: ${hardware !== undefined}`]
   const rows: string[] = []
   const plugins = [
     ['skills', 'SkillRegistry', []],
+    ['credentials', 'MemoryCredentials', []],
+    ['hardware', 'DvHardware', [`workers: ${JSON.stringify(hardware ?? {})}`]],
     ['dv-project', 'DvProject', [`projectsFolder: ${join(dir, 'projects')}`]],
     ['dv-ffmpeg', 'DvFfmpeg', [`ffmpegPath: ${FFMPEG}`, 'ffprobePath: ffprobe']],
     ['dv-asset-pool', 'DvAssetPool', []],
@@ -331,6 +344,50 @@ describe('dv-fastvideo', () => {
     expect(await check(referenceTask, [image], video)).toEqual([`Its first_frame input takes assets of type image; asset ${video} is of type video.`])
     expect(await check(textTask, [], null)).toEqual([])
     expect(await check(textTask, [image], video)).toEqual(['It takes no reference input; this shot has 1.', 'It takes no first_frame input; this shot has 1.'])
+  })
+
+  it('checks the tasks and reference limits that the server publishes', async () => {
+    const capabilities = (extra: Record<string, unknown>) => ({ ...CAPABILITIES, ...extra })
+    const [reference, text] = await Promise.all([
+      startFakeServer(REFERENCE_FACTS, { capabilities: capabilities({
+        tasks: [{ task: 't2va' }, { task: 'fl2va', image_references: 2, anchors: ['first', 'last'] }],
+        reference_limits: { images: 1, videos: 2, audios: 2, total: 2, continuation_video: true },
+      }) }),
+      startFakeServer(TEXT_FACTS, { capabilities: capabilities({ tasks: [{ task: 't2v' }] }) }),
+    ])
+    const discover = { discoverOutputCapabilities: true }
+    const ctx = await start({ ref2v: { ...reference.server, ...discover }, t2v: { ...text.server, ...discover } })
+    const asset = (bytes: string, mime: string) => importAsset(ctx, Buffer.from(bytes), mime)
+    const [video, image, otherImage] = [asset('VID1', 'video/mp4'), asset('IMG1', 'image/png'), asset('IMG2', 'image/png')]
+    // The configured facts allow the media; the server publishes tighter limits, counting the frames, and no ref2va.
+    expect(await fasth3(ctx, 'ref2v').validateGenerationRequest({ ...request([video], image),
+      lastFrame: otherImage, prompt: '@[first frame](dv:input/first_frame) smiles' })).toEqual([
+      'The server for fasth3 ref2v serves t2va, fl2va; it does not serve ref2va.',
+      'The server takes at most 2 references; this shot has 3.',
+      'The server takes at most 1 of type image; this shot has 2.',
+      'It takes no last_frame input; this shot has 1.',
+    ])
+    expect(await fasth3(ctx, 'ref2v').validateGenerationRequest(request([video, image, otherImage], null))).toEqual([
+      'The server for fasth3 ref2v serves t2va, fl2va; it does not serve ref2va.',
+      'The server takes at most 2 references; this shot has 3.',
+      'The server takes at most 1 of type image; this shot has 2.',
+    ])
+    // The server's t2v alias is its t2va task.
+    expect(await fasth3(ctx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(ctx, 't2v').schema()).toMatchObject({ server_tasks: ['t2v'] })
+    // The server reads a configured task in any case and with its aliases, and publishes only canonical tasks.
+    const published = capabilities({ tasks: [{ task: 't2va' }, { task: 'ref2va' }] })
+    const [alias, upper] = await Promise.all([startFakeServer(TEXT_FACTS, { capabilities: published }),
+      startFakeServer(TEXT_FACTS, { capabilities: published })])
+    const aliasCtx = await start({ t2v: { ...alias.server, ...discover, task: 't2v' } })
+    const upperCtx = await start({ t2v: { ...upper.server, ...discover, task: 'T2VA' } })
+    expect(await fasth3(aliasCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(upperCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    // Without discovery the entry keeps the configured facts and ignores the published tasks.
+    const configured = await startFakeServer(TEXT_FACTS, { capabilities: capabilities({ tasks: [{ task: 'ref2va' }] }) })
+    const configuredCtx = await start({ t2v: configured.server })
+    expect(await fasth3(configuredCtx, 't2v').validateGenerationRequest(request([], null))).toEqual([])
+    expect(await fasth3(configuredCtx, 't2v').schema()).not.toHaveProperty('server_tasks')
   })
 
   it('refuses a shot whose only media are audio, because FastVideo pairs audio with an image or a video', async () => {
@@ -564,6 +621,75 @@ describe('dv-fastvideo', () => {
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
     expect(ctx.dvModels.list().map(entry => entry.task)).toEqual(['ref2v'])
+  })
+
+  it('runs independent managed generations on two configured workers through the real provider', async () => {
+    const video = await sampleVideo(false)
+    let finish = false
+    let submitted = 0
+    let bothSubmitted!: () => void
+    const overlap = new Promise<void>((resolve) => { bothSubmitted = resolve })
+    const counts = [0, 0]
+    const lifecycle: Array<{ worker: number; action: string }> = []
+    let offline = -1
+    const urls: string[] = []
+    for (const index of [0, 1]) {
+      const server = createServer((incoming, response) => {
+        response.setHeader('content-type', 'application/json')
+        const path = incoming.url ?? ''
+        if (path.startsWith('/v1/model_info')) return void response.end(JSON.stringify({ served_model_name: 'parallel-test' }))
+        if (path.startsWith('/v1/model_state') && offline === index) { response.statusCode = 503; return void response.end('{}') }
+        if (path.startsWith('/v1/models/')) { lifecycle.push({ worker: index, action: path }); return void response.end('{}') }
+        if (path.startsWith('/v1/model_state')) return void response.end(JSON.stringify({ installed: true, loaded_model: 'parallel-test', loading_model: null, busy: false }))
+        if (path === '/v1/videos' && incoming.method === 'POST') {
+          incoming.resume()
+          counts[index]! += 1; submitted += 1
+          if (submitted === 2) bothSubmitted()
+          return void response.end(JSON.stringify({ id: `job-${index}`, status: 'queued' }))
+        }
+        if (path.endsWith('/content')) { response.setHeader('content-type', 'video/mp4'); return void response.end(video) }
+        response.end(JSON.stringify({ status: finish ? 'completed' : 'in_progress' }))
+      })
+      server.listen(0, '127.0.0.1'); await once(server, 'listening')
+      cleanups.push(async () => {
+        server.closeAllConnections(); await new Promise<void>((resolve) => { server.close(() => { resolve() }) })
+      })
+      urls.push(`http://127.0.0.1:${(server.address() as AddressInfo).port}`)
+    }
+    const facts: ModelFactsConfig = { modelId: 'parallel-test', maxReferences: 0, referenceMediaTypes: {},
+      frameSizes: { '16:9': { '480p': [832, 480] } }, numFramesByDurationSec: { 5: 124 } }
+    const hardware = Object.fromEntries(urls.map((baseUrl, index) => [`gpu-${index}`, { baseUrl, label: `GPU ${index}`,
+      provider: 'fastvideo', enabled: true, transport: 'api' as const, credentialRef: '', sshHost: '', remoteHost: '127.0.0.1', remotePort: 18000 }]))
+    const ctx = await start({ t2v: { baseUrl: urls[0]!, managed: true, pollIntervalMs: 10, modelFacts: facts } }, 'fasth3', hardware)
+    const entry = fasth3(ctx, 't2v')
+    const controller = new AbortController()
+    const deadline = setTimeout(() => { controller.abort(new Error('Parallel workers did not both accept a job')) }, 10000)
+    const renders = [1, 2].map(seed => collect(entry.render({ ...request([], null), seed, prompt: 'A lake.', frameWidth: 832, frameHeight: 480 }, controller.signal)))
+    try {
+      await Promise.race([overlap, Promise.all(renders).then(() => { throw new Error('Both workers must accept before either finishes') })])
+      expect(counts).toEqual([1, 1])
+      expect((await ctx.dvHardware.check()).map(worker => worker.busy)).toEqual([true, true])
+      finish = true
+      const events = await Promise.all(renders)
+      expect(events.map(outputs => outputs.find(event => event.kind === 'done'))).toEqual(expect.arrayContaining([
+        expect.objectContaining({ worker: { id: 'gpu-0', label: 'GPU 0' } }),
+        expect.objectContaining({ worker: { id: 'gpu-1', label: 'GPU 1' } }),
+      ]))
+      expect(ctx.dvHardware.list().map(worker => ctx.dvHardware.isReserved(worker.id))).toEqual([false, false])
+      const pinned = await collect(entry.render({ ...request([], null), prompt: 'A lake.', frameWidth: 832, frameHeight: 480 }, undefined, { worker: 'gpu-1' }))
+      expect(pinned.find(output => output.kind === 'done')).toMatchObject({ worker: { id: 'gpu-1' } })
+      expect(counts).toEqual([1, 2])
+      await entry.runtime!.load(undefined, { worker: 'gpu-1' })
+      await entry.runtime!.unload(undefined, { worker: 'gpu-1' })
+      expect(lifecycle).toEqual([{ worker: 1, action: '/v1/models/load' }, { worker: 1, action: '/v1/models/unload' }])
+      const status = await entry.runtime!.status(undefined, { worker: 'gpu-1' })
+      expect(status.workers?.map(worker => worker.id)).toEqual(['gpu-1'])
+      await expect(entry.facts({ worker: 'missing' })).rejects.toThrow('is not enabled')
+      offline = 1
+      await expect(collect(entry.render({ ...request([], null), prompt: 'A lake.' }, undefined, { worker: 'gpu-1' }))).rejects.toThrow('No reachable worker')
+      expect(counts).toEqual([1, 2])
+
+    } finally { clearTimeout(deadline); finish = true; controller.abort(); await Promise.allSettled(renders) }
   })
 
   it.skipIf(REAL_BACKEND === undefined || !existsSync(REAL_REFERENCE) || !existsSync(FFMPEG))('renders a real five-second shot from an image, a video with sound and an audio file against the running server', async () => {

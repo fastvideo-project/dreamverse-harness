@@ -13,6 +13,11 @@
 - insert:
     # The model catalog: the models dv_shot_render and plans can name, which the agent reads through dv_models_list and
     # dv_models_get.
+    - id: dv-hardware
+      name: '@dv/hardware'
+
+    - id: dv-ui-hardware
+      name: '@dv/ui-hardware'
     - id: dv-openrouter
       name: '@dv/openrouter'
 

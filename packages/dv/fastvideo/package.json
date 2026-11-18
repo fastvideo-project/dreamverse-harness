@@ -16,7 +16,8 @@
     "@dv/fastvideo-generation-client": "workspace:*",
     "@dv/ffmpeg": "workspace:*",
     "@dv/models": "workspace:*",
-    "@dv/project": "workspace:*"
+    "@dv/project": "workspace:*",
+    "@dv/hardware": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

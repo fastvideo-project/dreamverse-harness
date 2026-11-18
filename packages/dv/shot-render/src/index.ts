@@ -76,6 +76,7 @@ const CONTINUE_FROM_PARAM: ParameterSchemaSpec = {
  * `defineGeneration` adds with its shared descriptions: the shot's geometry.
  */
 const RENDER_PARAMS: OperationSpec['params'] = {
+  worker: { type: 'string', description: 'The exact ID of an enabled worker. Omit for automatic placement. A pinned render never falls back to another worker.' },
   duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
   resolution: { type: 'string', description: 'One of the model resolutions; default the first.' },
@@ -237,6 +238,7 @@ async function storeShot(
         : { frame_width: geometry.width, frame_height: geometry.height },
       ...geometry.numFrames === undefined ? {} : { num_frames: geometry.numFrames },
       ...modelKey(context.params), ...expanded, timings: streamed.timings,
+      ...streamed.worker === null ? {} : { worker: streamed.worker },
     },
   }
 }
@@ -252,12 +254,19 @@ async function storeShot(
  */
 async function streamShot(
   ctx: Context, context: OperationContext, record: RecordId, stream: AsyncIterable<RenderStreamEvent>,
-): Promise<{ videoPath: string; mime: string; lastFrame: Buffer; timings: Record<string, number> }> {
+): Promise<{
+  videoPath: string
+  mime: string
+  lastFrame: Buffer
+  timings: Record<string, number>
+  worker: { id: string; label: string } | null
+}> {
   const videoPath = join(context.scratchDir, 'shot.mp4')
   const file = createWriteStream(videoPath)
   let lastFrame: Buffer | null = null
   let mime: string | null = null
   let timings: Record<string, number> = {}
+  let worker: { id: string; label: string } | null = null
   let finished = false
   let live: LiveShot = null
   try {
@@ -280,6 +289,7 @@ async function streamShot(
           break
         case 'done':
           timings = event.timings
+          worker = event.worker ?? null
           finished = true
           live?.complete()
           live = null
@@ -301,7 +311,7 @@ async function streamShot(
   if (live !== null) live.fail(new Error('The render stream ended before the backend reported completion.'))
   if (!finished || mime === null) throw new Error('The render stream ended before the backend reported completion.')
   if (lastFrame === null) throw new Error('The backend returned no last frame.')
-  return { videoPath, mime, lastFrame, timings }
+  return { videoPath, mime, lastFrame, timings, worker }
 }
 
 /** @returns the optional live stream service, looked up per render so a service mounted later is still used. */

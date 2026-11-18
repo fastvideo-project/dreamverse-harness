@@ -110,6 +110,7 @@ export function renderTimings(headers: { get(name: string): string | null }): Re
 /** Convert an entry to its key and its description, as `dv_models_list` and `dv_models_get` return them. */
 function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
   return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description,
+    ...entry.workerRouting === true ? { worker_selection: true } : {},
     ...entry.displayName === undefined ? {} : { display_name: entry.displayName } }
 }
 

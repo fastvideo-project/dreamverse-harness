@@ -11,6 +11,8 @@ kind: "package-reference"
 
 使用本包通过 FastVideo 生成视频片段。客户端用 `GET /v1/model_info` 检查服务的模型，每个片段发送一个内联所有参考的 `POST /v1/videos/sync`，并返回完整 MP4 和后端耗时。取消会关闭 HTTP 请求，但后端可能继续完成已经开始的生成。
 
+原生服务器可以在 `GET /v1/model_info` 中发布 `video_output_capabilities`。设置 `discoverOutputCapabilities: true` 后，客户端会验证这些元数据并发现输出尺寸和整数时长，同时保留配置的模型 ID 和参考素材限制。服务器提供配置中的第一个宽高比和第一个分辨率时，它们仍排在最前，因此仍是默认渲染几何；否则使用服务器的顺序。旧服务器不发布元数据时仍使用配置；无效元数据会明确报错。发现功能默认关闭，在明确开启前保留配置的输出选项。
+
 ## 目录
 
 - [使用本包](#use-this-package)
@@ -65,7 +67,7 @@ FastVideo 不提供能力路由，因此操作者写出所服务模型的事实�
 
 ### 后端 API
 
-API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
+API 归 FastVideo 所有；客户端使用其中两个路由。`GET /v1/model_info` 返回 `{"model_path", "served_model_name", "lora"}`。设置 `discoverOutputCapabilities: true` 后，客户端还会从 `video_output_capabilities` 把服务器接受的 `tasks`，以及 Ref2VA 服务器的 `reference_limits`，读入可选的 `tasks` 和 `referenceLimits` 事实；配置的参考上限保持不变。`POST /v1/videos/sync` 接受 `model`、可选的 `task`、`prompt`、`width`、`height`、`num_frames`、可选的 `seed`，以及列表 `image_reference`、`video_reference` 和 `audio_reference`，每项为 `{"<type>_url": "data:<mime>;base64,..."}`。Ref2VA 流水线先读图片，再读视频，最后读音频，每个列表按其自身顺序；`REFERENCE_FIELDS` 记录这一顺序，`backendOrder(items, mediaTypeOf)` 按该顺序返回各项。参考的媒体类型是其 `mimeType` 的顶层类型；其他类型在发送 HTTP 前以 `GenerationSegmentError` 拒绝。
 
 回答必须带 `video/*` 内容类型；其他内容类型以携带响应体文本的 `Error` 拒绝。`@dv/models` 的 `renderTimings` 读取耗时：`X-Inference-Time-S` 变为 `timings.inference_s`，`X-Stage-Durations` 中 JSON 对象的每个阶段变为 `timings.<stage>_s`；不是 JSON 的 `X-Stage-Durations` 不添加阶段耗时，视频仍保留。HTTP 400 变为 `GenerationSegmentError`；其他 HTTP 失败保留状态和受限长度的后端消息。消息取 `application/json` 响应体的 `error.message`，否则取响应体文本。Python traceback 仅保留最后的异常行；超过 2,048 字符的消息会截断，完整详情留在服务器日志中。
 

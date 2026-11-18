@@ -4,6 +4,10 @@ Each shot renders with one video model. Each video model has a key of four field
 
 Providers may expose `dv_models_status`, `dv_models_load` and `dv_models_unload`. These operate on installed weights and GPU memory; they never download weights. Generation loads its requested model automatically, serializes switching with inference, and retains compatible shared components when supported. Do not unload a running generation. Do this procedure for each shot.
 
+## Independent workers
+
+When the model and render tools accept `worker`, use the IDs of enabled workers to select a device explicitly. For example, load Pika on a chosen worker, render its assigned clip there, then unload that worker only after its generation finishes. Omit `worker` only when automatic placement is intended. Never say you cannot control placement when `worker_selection` is available. Independent shots with all inputs available can run together: emit their render calls in the same tool batch. The provider reserves one worker per generation, prefers an already loaded model, and queues when eligible workers are busy.
+
 ## Procedure
 
 1. Find the task of the shot.

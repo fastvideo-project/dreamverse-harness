@@ -59,6 +59,8 @@ export interface OperationSpec {
   resource: 'none' | 'cpu' | 'gpu'
   /** A read: the runner writes no record and takes no lock. */
   readOnly?: boolean
+  /** Whether this call may overlap other agent tool calls; the provider must own resource reservation. */
+  isConcurrencySafe?(params: Record<string, unknown>): boolean
   /**
    * A durable setting outside the undo history, such as a conversation's video model: the runner writes the record
    * after the current position without making it a step, so the call discards no step and cancels no record, and
