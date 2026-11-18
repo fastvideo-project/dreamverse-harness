@@ -65,7 +65,7 @@ export const FIRST_TIMELINE_ID = brandString<TimelineId>('t1')
 export const NEW_CLIP = brandString<ClipId>('new')
 
 /** Seconds a clip plays whose length nothing tells, as the editor draws it (`FALLBACK_CLIP_SECONDS` of `@dv/ui-kit`). */
-export const FALLBACK_CLIP_SEC = 5
+const FALLBACK_CLIP_SEC = 5
 
 type Slice = TimelineState
 
@@ -119,7 +119,7 @@ function createdTimeline(params: Record<string, unknown>): TimelineId {
  * @param call - the create or update call.
  * @returns the assets and sources in playback order.
  */
-export function laidOutClips(call: TimelineCall): Array<Pick<Clip, 'asset' | 'source'>> {
+function laidOutClips(call: TimelineCall): Array<Pick<Clip, 'asset' | 'source'>> {
   if (Array.isArray(call.params['assets'])) {
     return call.params['assets'].filter((asset): asset is string => typeof asset === 'string')
       .map(asset => ({ asset: brandString<AssetId>(asset), source: null }))
