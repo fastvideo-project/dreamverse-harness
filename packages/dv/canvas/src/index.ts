@@ -234,9 +234,9 @@ function renameOperation(renamedBy: (kind: string) => string | undefined): Opera
       if (length > NAME_MAX) {
         throw new ProjectError('invalid_params', `The name can have at most ${String(NAME_MAX)} characters; this one has ${String(length)}.`)
       }
-      const owner = name === null ? undefined : renamedBy(node.kind)
-      if (owner !== undefined) {
-        throw new ProjectError('invalid_params', `Node ${id} shows the name of its ${node.kind}; rename the ${node.kind} with ${toolNameOf({ name: owner })}.`)
+      const itemRename = name === null ? undefined : renamedBy(node.kind)
+      if (itemRename !== undefined) {
+        throw new ProjectError('invalid_params', `Node ${id} shows the name of its ${node.kind}; rename the ${node.kind} with ${toolNameOf({ name: itemRename })}.`)
       }
       if (name === node.name) {
         throw new ProjectError('invalid_params', name === null ? 'The node has no name to clear.' : `The node is already named "${name}".`)
