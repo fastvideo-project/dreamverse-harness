@@ -76,11 +76,11 @@ To fix a cut, change its prompt in `ad/spec.md` with `dv_textnode_edit`; once th
 
 If the user gave a music or voice file, add it first: `dv_timeline_sound_add` on each ratio's timeline, `start_sec: 0`.
 
-`dv_timeline_export` with `timeline` = each ratio's timeline. Reply with each link, ratio and length, the copy, the storylines not built, the open notes of `ad/review.md`, and what nobody checked (you saw stills and heard no sound). Offer one next step, such as another ratio.
+`dv_timeline_export` with `timeline` = each ratio's timeline. Reply with each link, ratio and length, the copy, the storylines not built, the open notes of `ad/review.md`, and what nobody checked (you saw stills and heard no sound). Offer one next step once, such as another ratio.
 
 ## What this procedure cannot do
 
-If the user asks for one of these, say so before the spec:
+If the user asks for one, say so before the spec:
 
 - Titles, captions, a logo or an end card over the picture: no text lane; the model draws the copy.
 - A product picture made from the photo: the image model takes text only.
