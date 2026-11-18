@@ -363,7 +363,7 @@ describe('History panel', () => {
   it('selecting a clip move row switches to the timeline view and selects the clip', async () => {
     const project = await seedProject('history-focus-clip')
     const clip = (await stateOf(project.id)).components.timeline.timelines[0]?.clips[1]?.id ?? ''
-    const move = await runOperation(project.id, 'timeline.clip_move', { clip, to: 1 })
+    const move = await runOperation(project.id, 'timeline.clip_move', { clip, start_sec: 0, track: 1 })
     const page = await openPage()
     await gotoProject(page, project.id)
     await openHistory(page)
