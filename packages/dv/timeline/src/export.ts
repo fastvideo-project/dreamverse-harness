@@ -117,7 +117,7 @@ async function audibleSounds(ctx: Context, timeline: Timeline): Promise<Sound[]>
  * @param ctx - a context that injects `dvAssetPool` and `dvFfmpeg`.
  * @param timeline - the timeline with at least one clip, each of which has an asset.
  * @param dir - the directory for the trimmed clips and the result.
- * @returns the result.
+ * @returns the file and the volume its own audio still has to be played at.
  */
 async function layClips(ctx: Context, timeline: Timeline, dir: string): Promise<LaidClips> {
   const pool = ctx.dvAssetPool
@@ -186,10 +186,11 @@ function gain(volumeDb: number): string {
 
 /**
  * The filter that mixes labelled chains into `[a]` at their full volume, as long as the longest of them.
- * @param labels - the output labels of the chains, such as `[a0]`.
+ * @param chains - the chains, each ending in its output label, such as `[a0]`.
  * @returns the filter.
  */
-function mixOf(labels: readonly string[]): string {
+function mixOf(chains: readonly string[]): string {
+  const labels = chains.map(chain => chain.slice(chain.lastIndexOf('[')))
   return `${labels.join('')}amix=inputs=${String(labels.length)}:duration=longest:normalize=0[a]`
 }
 
@@ -223,8 +224,8 @@ async function mixSounds(ctx: Context, timeline: Timeline, audible: readonly Sou
   ])
   const sounds = heard.map((sound, index) =>
     `${delayedAudio(index + 1, sound.start_sec, gain(trackVolume(timeline.sound_track_volumes, sound.track)))}[s${String(index)}]`)
-  const labels = [...own.map(() => '[own]'), ...heard.map((_sound, index) => `[s${String(index)}]`)]
-  const filter = [...own, ...sounds, mixOf(labels)].join(';')
+  const chains = [...own, ...sounds]
+  const filter = [...chains, mixOf(chains)].join(';')
   await ctx.dvFfmpeg.run({
     argv: [
       'ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', ...files,
@@ -403,8 +404,7 @@ async function layer(
     const cover = [...covers > 0 ? [{ start: 0, end: covers }] : [], ...drawn.filter(other => other.layer < each.layer)]
     audio.push(`${delayedAudio(index + 1, each.start, silence(cover) + gain(each.volumeDb))}[a${String(index + 1)}]`)
   }
-  const labels = audio.map(chain => chain.slice(chain.lastIndexOf('[')))
-  const mix = labels.length === 0 ? [] : [mixOf(labels)]
+  const mix = audio.length === 0 ? [] : [mixOf(audio)]
   const filter = [...video, ...audio, ...mix].join(';')
   const files = drawn.map(each => each.path)
   const baseInput = 'path' in base
