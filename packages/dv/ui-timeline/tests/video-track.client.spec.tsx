@@ -365,7 +365,7 @@ describe('video tracks', () => {
       operation: 'timeline.clip_add', params: { timeline: 't1', asset: 'shot2.mp4', track: 3, start_sec: 3 }, intent: '把片段放到 视频 4 的 00:03.00',
     })
     expect(fireEvent.drop(lane(0), { dataTransfer: assetDrag('ref.png', 'image/png') })).toBe(false)
-    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。音频请拖到声音轨道上。')
+    expect(view.getByRole('status').textContent).toBe('视频轨道只接受视频。')
     expect(fireEvent.drop(lane(0), { dataTransfer: { types: ['text/plain'], getData: () => '' } })).toBe(true)
     expect(requests()).toHaveLength(3)
   })

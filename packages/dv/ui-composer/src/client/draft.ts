@@ -35,7 +35,12 @@ export interface Draft {
 
 /** One change of a draft. */
 export type DraftAction =
-  | { readonly type: 'callLent'; readonly call: PromptCall }
+  | {
+    readonly type: 'callLent'
+    readonly call: PromptCall
+    /** The unsent draft stored for this call, which replaces the call's own draft; undefined when none is stored. */
+    readonly stored: Draft | undefined
+  }
   | {
     readonly type: 'editorChanged'
     readonly text: string
@@ -46,6 +51,7 @@ export type DraftAction =
   }
   | { readonly type: 'tileRemoved'; readonly index: number; readonly ctx: ResolveContext }
   | { readonly type: 'picked'; readonly refs: readonly string[] }
+  | { readonly type: 'framePicked'; readonly role: 'first_frame' | 'last_frame'; readonly ref: string }
   | { readonly type: 'imported'; readonly assets: readonly string[] }
   | { readonly type: 'pinned'; readonly index: number; readonly version: number }
   | { readonly type: 'patched'; readonly patch: Readonly<Record<string, unknown>> }
@@ -76,6 +82,19 @@ export function draftOf(call: PromptCall): Draft {
 }
 
 /**
+ * The draft to start an editor with.
+ * @param call - the call that the host lent.
+ * @param stored - the unsent draft kept for this call, or undefined when none is kept.
+ * @returns the kept draft with editor content rebuilt from its document, since the editor owns the text between
+ *   content revisions and the kept content may predate the typing, and with no check answer or failure, since both
+ *   answered for the project as it was; else the draft of the call.
+ */
+export function startOf(call: PromptCall, stored: Draft | undefined): Draft {
+  if (stored === undefined) return draftOf(call)
+  return { ...stored, content: contentOf(stored.document, stored.content.revision + 1, 'reset'), checked: null, failure: null }
+}
+
+/**
  * Apply one action to a draft.
  * @param draft - the draft.
  * @param action - the action.
@@ -86,7 +105,7 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
   switch (action.type) {
     case 'callLent': {
       // Another call starts the editor's history over, so an undo cannot bring back the call it replaced.
-      const next = draftOf(action.call)
+      const next = startOf(action.call, action.stored)
       return { ...next, content: { ...next.content, revision: draft.content.revision + 1 } }
     }
     case 'editorChanged': {
@@ -102,6 +121,13 @@ export function reduceDraft(draft: Draft, action: DraftAction): Draft {
       // removal leaves the editor as it is.
       const content = next.removed.length === 0 ? draft.content : contentOf(next.document, draft.content.revision + 1, 'step')
       return { ...draft, document: next.document, removed: [...draft.removed, ...next.removed], content }
+    }
+    case 'framePicked': {
+      const existing = document.inputs.findIndex(input => input.role === action.role)
+      const input = { role: action.role, ref: action.ref }
+      const inputs = existing < 0 ? [...document.inputs, input]
+        : document.inputs.flatMap((item, index) => item.role !== action.role ? [item] : index === existing ? [input] : [])
+      return { ...draft, document: { ...document, inputs } }
     }
     case 'picked': {
       const added = action.refs.filter(ref => !document.inputs.some(input => input.ref === ref)).map(ref => ({ role: 'reference', ref }))

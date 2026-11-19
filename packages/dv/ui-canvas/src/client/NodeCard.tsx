@@ -12,6 +12,7 @@
 import { useCallback, useState } from 'react'
 import type { CSSProperties, PointerEvent as ReactPointerEvent, MutableRefObject, ReactNode } from 'react'
 import type { TranslateNS } from '@deepseek-ai/dsh-client-locale/client'
+import { formatElapsed, useElapsedSeconds } from '@dv/ui-kit/elapsed.ts'
 import { CARD_SURFACE } from '@dv/ui-kit/frame.ts'
 import { InlineRename } from '@dv/ui-kit/InlineRename.tsx'
 import type { InlineRenameProps } from '@dv/ui-kit/InlineRename.tsx'
@@ -108,7 +109,7 @@ export interface NodeCardProps {
   t: CanvasTranslate
   onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void
   /** A press on one of the selected node's resize handles, which the card keeps from `onPointerDown`. */
-  onResizeDown: (corner: ResizeHandle, event: ReactPointerEvent<HTMLElement>) => void
+  onResizeDown: (handle: ResizeHandle, event: ReactPointerEvent<HTMLElement>) => void
   /** The body: the `dv.canvas.card` entry of the node's type. */
   body: ReactNode
   /** For a node whose newest version failed, the actions that show on it; empty when the canvas is read-only. */
@@ -123,13 +124,14 @@ export interface NodeCardProps {
 }
 
 /**
- * The node: the caption above the frame, and on the selected node a handle at each corner of the frame.
+ * The node: the caption above the frame, and on the selected node a resize handle at each corner and edge of the frame.
  * @param props - the node, its position and frame size, the canvas zoom, the body, and the gesture and action callbacks.
  * @returns the element.
  */
 export function NodeCard(props: NodeCardProps): ReactNode {
   const { node, view, box, selected, zoom, t } = props
   const { flags } = node
+  const elapsed = useElapsedSeconds(node.record.started_at, flags.rendering && node.record.status === 'running')
   const scale = textScaleAt(zoom)
   const size = (base: number): number => Math.round(base * scale)
   const text = (base: 12 | 13): CSSProperties => ({ fontSize: size(base), lineHeight: `${String(size({ 12: 16, 13: 20 }[base]))}px` })
@@ -150,9 +152,19 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   }
   const status = node.nodeType.status
   const running = status?.running() ?? t('node.running')
-  let marker: string | null = null
-  if (flags.rendering) marker = running
-  else if (flags.failed) marker = status?.failed() ?? t('node.failed')
+  let marker: ReactNode = null
+  let failedText: string | undefined
+  if (flags.rendering) {
+    if (node.record.status === 'pending') marker = t('node.queued')
+    else if (elapsed === null) marker = running
+    // One span, because the overlay is a flex box that drops a whitespace-only text node between its items.
+    else marker = <span>{running} <span style={{ fontVariantNumeric: 'tabular-nums' }}>{formatElapsed(elapsed)}</span></span>
+  } else if (flags.failed) {
+    const failedWords = status?.failed() ?? t('node.failed')
+    const reason = node.record.error?.message
+    failedText = reason === undefined || reason === '' ? failedWords : t('node.failedReason', { status: failedWords, reason })
+    marker = failedText
+  }
   const count = node.versions.length
   const meta = [count > 1 ? t('node.version', { n: String(count) }) : '', node.meta ?? ''].filter(part => part !== '').join(' · ')
   const caption = (
@@ -175,18 +187,25 @@ export function NodeCard(props: NodeCardProps): ReactNode {
   let content: ReactNode
   if (failed) {
     content = (
-      <div style={{ ...CARD_SURFACE, display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px' }}>
-        <span style={{ ...text(12), flex: 1, minWidth: 0, color: 'var(--dv-danger)', ...ellipsis }}>{marker}</span>
-        {props.failedActions.map(action => (
-          <button
-            key={action.id} type="button" className="dv-canvas-btn" disabled={view.rerunning}
-            style={{ fontFamily: 'inherit', ...text(12), flex: 'none', height: 20, padding: '0 6px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text)', cursor: view.rerunning ? 'default' : 'pointer', opacity: view.rerunning ? 0.6 : 1 }}
-            onPointerDown={(event) => { event.stopPropagation() }}
-            onClick={() => { props.onAction(action) }}
-          >
-            {action.id === props.rerunningAction ? running : action.label()}
-          </button>
-        ))}
+      <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', gap: 6, padding: '0 10px' }}>
+        {/* oxlint-disable-next-line typescript/no-deprecated -- Browsers clamp lines only on a vertical -webkit-box. */}
+        <span title={failedText} style={{ ...text(12), display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 3, overflow: 'hidden', overflowWrap: 'anywhere', color: 'var(--dv-danger)' }}>{marker}</span>
+        {props.failedActions.length === 0
+          ? null
+          : (
+            <div style={{ display: 'flex', gap: 6 }}>
+              {props.failedActions.map(action => (
+                <button
+                  key={action.id} type="button" className="dv-canvas-btn" disabled={view.rerunning}
+                  style={{ fontFamily: 'inherit', ...text(12), flex: 'none', height: 20, padding: '0 6px', border: '1px solid var(--dv-line-strong)', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text)', cursor: view.rerunning ? 'default' : 'pointer', opacity: view.rerunning ? 0.6 : 1 }}
+                  onPointerDown={(event) => { event.stopPropagation() }}
+                  onClick={() => { props.onAction(action) }}
+                >
+                  {action.id === props.rerunningAction ? running : action.label()}
+                </button>
+              ))}
+            </div>
+          )}
       </div>
     )
   } else {
@@ -338,7 +357,7 @@ export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): Re
   return (
     <div
       ref={attach} role="menu" aria-label={label} data-testid="dv-canvas-node-menu"
-      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', borderRadius: 'var(--dv-radius-xl)' }}
+      style={{ position: 'absolute', left, top, zIndex: 12, minWidth: 180, padding: 6, boxSizing: 'border-box', background: 'var(--dv-surface-1)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2)', outline: '1px solid transparent', borderRadius: 'var(--dv-radius-menu)' }}
       onPointerDown={(event) => { event.stopPropagation() }}
       onContextMenu={(event) => { event.preventDefault() }}
     >
@@ -350,7 +369,7 @@ export function NodeMenu({ at, area, items, label, menuRef }: NodeMenuProps): Re
           onClick={item.run}
         >
           <span style={{ flex: 1 }}>{item.label}</span>
-          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-3)' }}>{item.shortcut.glyph}</span>}
+          {item.shortcut === undefined ? null : <span aria-hidden="true" style={{ ...mono, fontSize: 12, color: 'var(--dv-text-2)' }}>{item.shortcut.glyph}</span>}
         </button>
       ))}
     </div>

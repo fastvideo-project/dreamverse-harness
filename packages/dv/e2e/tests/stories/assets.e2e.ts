@@ -459,7 +459,7 @@ describe('The asset pool panel', () => {
       await openAssets(page)
       await assetsPanel(page).locator('input[type="file"]').setInputFiles({ name: 'voice.wav', mimeType: 'audio/wav', buffer: silentWav(2) })
       const tile = sectionThumbs(page, '音频').first()
-      await expect.poll(() => tile.innerText(), { timeout: 10_000 }).toBe('2.0s')
+      await expect.poll(() => tile.innerText(), { timeout: 10_000 }).toMatch(/2\.0s$/)
       const asset = await tile.getAttribute('data-asset-id')
       await tile.dragTo(page.locator('[data-sound-track="0"]'))
       const sounds = async (): Promise<Array<{ asset: string; track: number }>> => {

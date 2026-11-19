@@ -57,6 +57,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | `current-project.ts` | 打开的项目，存在 `window.__dvCurrentProject` 上，用 `dv:current-project` 通知 |
 | `zoom.ts` | `useZoomPresence(value, openerOf, onOpened?)`：弹窗（画布节点编辑器和 `@dv/ui-media` 的素材预览）的缩放过渡。弹窗用 300 ms 从打开它的元素放大出来，关闭时用 250 ms 缩回该元素，背景同时淡入淡出；无论用哪种方式关闭，弹窗都等缩回结束才移除。打开它的元素已不存在或在屏幕外时，弹窗改为轻微缩放加淡出；开启 `prefers-reduced-motion` 时只淡入淡出。弹窗还在放大时被关闭，会从屏幕上的当前状态开始缩回。`mediaBox(width, height, maxWidth, maxHeight)` 在已知尺寸的图片或视频加载前就定好它的大小，这样由媒体决定大小的弹窗在过渡测量时已是最终尺寸 |
 | `frame.ts` | 画布节点的画框，即标题行下方的圆角轮廓，节点的 `dv.canvas.card` 主体画在其中：`WIDE_RATIO`，16:9 宽高比；`mediaSizing(size, fallbackRatio, fixedHeight)`，`@dv/ui-canvas/contract` 中媒体节点的 `NodeSizing`，类型为 `media`：图片宽高比限制在 3:4 到 16:9 之间，宽或高未知时取 `fallbackRatio`，默认画框宽 208 单位，最窄画框宽 104 单位，高度均为 宽度 / 宽高比 + `fixedHeight`（图片之外固定栏的高度）；`CARD_SURFACE`，卡片式主体自己画的底色（卡片表面色和文字色，占满画框高度），显示已知尺寸图片的主体不画其他内容 |
+| `elapsed.ts` | `formatElapsed(seconds)`：`m:ss`，从一小时起为 `h:mm:ss`，负数和非有限值显示为 `0:00`；`useElapsedSeconds(since, active)`：从 ISO 时间 `since` 起的整秒数，`active` 为真时每秒重新渲染，没有 `since` 或未激活时返回 `null`，画布节点和历史行用它显示渲染用时 |
 | `locale.ts` | `useText`、`pickText`：按 `<html lang>` 取一对中英文字符串中的一个 |
 
 `subscribe` 在浏览器有 `EventSource` 时用它，否则每三秒轮询一次。跟随项目的每个 bundle 通过 `window.__dvEventSources` 为每个项目共享一条流；`window.__dvStreams` 记录打开的流数。
@@ -78,6 +79,7 @@ import { DV_HISTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 | [`src/client/timeline.ts`](src/client/timeline.ts) | 时间线辅助函数 |
 | [`src/client/references.ts`](src/client/references.ts) | 存储的输入引用、记录的请求输入和镜头参考素材 |
 | [`src/client/zoom.ts`](src/client/zoom.ts) | 弹窗的缩放过渡 |
+| [`src/client/elapsed.ts`](src/client/elapsed.ts) | 用时文字及其 hook |
 | [`src/client/useProject.ts`](src/client/useProject.ts)、[`src/client/useView.ts`](src/client/useView.ts) | hook |
 | [`src/client/InlineRename.tsx`](src/client/InlineRename.tsx) | 行内标题输入框 |
 | [`src/client/ProjectBar.tsx`](src/client/ProjectBar.tsx) | 共用的栏 |

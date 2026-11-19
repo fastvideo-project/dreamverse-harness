@@ -234,7 +234,7 @@ function ReferenceCard(
     <div style={{ ...CARD_SURFACE, display: 'flex', flexDirection: 'column' }}>
       <div style={{ position: 'relative', flex: 1, minHeight: 0, display: 'flex', overflow: 'hidden', background: 'var(--dv-surface-3)' }}>
         {first === undefined ? null : renderFactorySlot('dv.media', { asset: first, purpose: 'card' })}
-        <span style={{ position: 'absolute', left: 8, top: 8, display: 'flex', alignItems: 'center', gap: 5, height: size(20), padding: '0 8px 0 7px', borderRadius: 9999, background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontSize: size(11), lineHeight: 1, fontWeight: 500 }}>
+        <span style={{ position: 'absolute', left: 8, top: 8, display: 'flex', alignItems: 'center', gap: 5, height: size(20), padding: '0 8px 0 7px', borderRadius: 9999, background: 'var(--dv-surface-1)', color: 'var(--dv-text)', fontSize: size(12), lineHeight: 1, fontWeight: 500 }}>
           <span style={{ flex: 'none', width: 7, height: 7, borderRadius: 9999, background: color }} />
           {pick(...nounLabel)}
         </span>

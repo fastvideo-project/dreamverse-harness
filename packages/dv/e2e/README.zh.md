@@ -54,7 +54,7 @@ DSH_PLAYWRIGHT_EXECUTABLE_PATH=/path/to/chrome-linux/chrome \
 <details>
 <summary>实现内部——点击展开</summary>
 
-`tests/harness.ts` 中的 `bootHarness` 在测试进程里启动一个假 streaming_v2 后端和 DSH mock LLM 服务器，写出一个隔离的 DSH home，其 `video-harness` profile 列出 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 和 `@dv/bundle`（链接到本检出），并在一个空闲端口上启动 `apps/cli/src/bin.ts --profile video-harness`。它等待打印出的 token URL，用它换取会话 cookie，并返回一个 `/api/dv` 路由的 JSON 客户端，不经智能体即可准备项目。`close` 停止子进程和两个服务器，并删除临时目录。假后端用极小的画面回应，所以一次渲染不到一秒就完成；`playableVideos` 让它编码颜色随 prompt 变化的 VP9 视频，因为开源 Chromium 构建没有 H.264 解码器。`tests/scripted-model.ts` 中的 `startScriptedModel` 是一个兼容 OpenAI 的 chat-completions 服务器：第一条 `match` 符合最新用户消息的规则提供回复，所以一条消息可以连续驱动多次工具调用，步骤函数可以是异步的，以便在两步之间修改项目，`requests` 保留每个请求供断言使用。`CONTEXT_MESSAGE` 匹配 DSH 和 DreamVerse 作为上下文加入的用户消息，最新消息匹配会跳过它们。
+`tests/harness.ts` 中的 `bootHarness` 在测试进程里启动一个假 FastVideo 后端（`GET /v1/model_info` 和 `POST /v1/videos/sync`）和 DSH mock LLM 服务器，写出一个隔离的 DSH home，其 `video-harness` profile 列出 `@deepseek-ai/dsh-base`、`@deepseek-ai/dsh-web-app` 和 `@dv/bundle`（链接到本检出），并在一个空闲端口上启动 `apps/cli/src/bin.ts --profile video-harness`。它等待打印出的 token URL，用它换取会话 cookie，并返回一个 `/api/dv` 路由的 JSON 客户端，不经智能体即可准备项目。`close` 停止子进程和两个服务器，并删除临时目录。假后端用极小的画面回应，所以一次渲染不到一秒就完成；`playableVideos` 让它编码颜色随 prompt 变化的 VP9 视频，因为开源 Chromium 构建没有 H.264 解码器。`tests/scripted-model.ts` 中的 `startScriptedModel` 是一个兼容 OpenAI 的 chat-completions 服务器：第一条 `match` 符合最新用户消息的规则提供回复，所以一条消息可以连续驱动多次工具调用，步骤函数可以是异步的，以便在两步之间修改项目，`requests` 保留每个请求供断言使用。`CONTEXT_MESSAGE` 匹配 DSH 和 DreamVerse 作为上下文加入的用户消息，最新消息匹配会跳过它们。
 
 | 文件 | 内容 |
 | --- | --- |

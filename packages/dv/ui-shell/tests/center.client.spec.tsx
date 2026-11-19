@@ -3,7 +3,7 @@
  * The DreamVerse center in place of DSH's `main.conversation`, mounted in a slot test runtime. The real `@dv/ui-media`
  * and asset pool plugins mount beside it because their image and video views draw the project covers.
  */
-import { act, fireEvent, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
@@ -13,6 +13,7 @@ import type { SessionFixture, SlotView } from '@deepseek-ai/dsh-client-test-runt
 import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-store'
 import { EMPTY_CONVERSATION_SNAPSHOT } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { ConversationSnapshot } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
 import { SidebarRightTabRegistry } from '@deepseek-ai/dsh-client-ui-sidebar-right/src/client/tab-registry.ts'
 import type { FactoryComponentPropsOf, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
@@ -181,6 +182,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   const store = await import('../src/client/store.ts')
   const { CenterPanel } = await import('../src/client/Center.tsx')
   const { followSlotTabs } = await import('../src/client/slot-tabs.ts')
+  const { ActionFailureToast } = await import('../src/client/notice.tsx')
   const stand = standInShell(new Set(options.failures ?? []))
   const runtime = await SlotTestRuntime.create()
   runtimes.push(runtime)
@@ -209,7 +211,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   })
   if (options.listsLoading === true) runtime.sessions.list.update((draft) => { draft.phase = 'pending' })
 
-  await runtime.declare({ 'main.conversation': { kind: 'single', scope: 'session-maybe' } })
+  await runtime.declare({ 'main.conversation': { kind: 'single', scope: 'session-maybe' }, 'shell.overlay': { kind: 'list', scope: 'root' } })
   runtime.ctx.provide('sidebarRightTabs', new SidebarRightTabRegistry(runtime.ctx) as never)
   await runtime.mount({ inject: [...mediaInject], apply: mediaApply })
   await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
@@ -240,6 +242,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
         name: 'main.conversation', priority: -1, inject: () => ({ shell: stand.shell }),
         children: { 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
       }, CenterPanel), 'test: center')
+      ctx.effect(() => ctx.slots.register({ name: 'shell.overlay', id: 'dv.shell.failure' }, ActionFailureToast), 'test: failure toast')
       if (options.entries !== false) {
         ctx.effect(() => ctx.slots.inject('dv.center.view', function* () {
           yield ctx.slots.register({ name: 'dv.center.view', id: 'canvas', order: 0, label: () => 'Canvas' }, CenterViewStandIn)
@@ -263,6 +266,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   }
   if (options.fakeTimers === true) vi.useFakeTimers()
   const view = runtime.renderSlot('main.conversation', {}, { session: reference(options.main) })
+  runtime.renderSlot('shell.overlay', {})
   return {
     runtime,
     store,
@@ -311,6 +315,19 @@ function daysAgo(days: number): string {
 }
 
 describe('the entry page', () => {
+  it('shows why a recent project did not open in the overlay toast, outside the grid, and drops it once another project opens', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({ main: 's0', failures: ['openProject'], summaries: [{ project: 'p3', cover: null, edited_at: daysAgo(0) }] })
+    await bench.refreshProjects()
+    const recent = within(bench.view.view.getByRole('region', { name: 'Recent projects' }))
+    fireEvent.click(await recent.findByRole('button', { name: /^Drama/u }))
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toBe("Couldn't complete that: openProject failed") })
+    expect(bench.view.container.querySelector('[role="alert"]')).toBeNull()
+    bench.stand.failures.delete('openProject')
+    fireEvent.click(recent.getByRole('button', { name: /^Drama/u }))
+    await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
+  })
+
   it('greets a blank chat with the headline, the template chips, the recent projects and the explore tabs', async () => {
     const bench = await mountCenter({
       main: 's0',
@@ -330,18 +347,20 @@ describe('the entry page', () => {
 
     const chips = page.getAllByRole('button', { name: /Stream highlight|Product launch|Character drama|Music video$/u })
       .filter(chip => chip.title === 'Coming soon')
-    expect(chips.map(chip => [chip.textContent, (chip as HTMLButtonElement).disabled]))
-      .toEqual([['Stream highlight', true], ['Product launch', true], ['Character drama', true], ['Music video', true]])
+    expect(chips.map(chip => [chip.textContent, chip.getAttribute('aria-disabled'), chip.getAttribute('aria-describedby') === page.getByText('Coming soon', { selector: 'span' }).id]))
+      .toEqual([['Stream highlight', 'true', true], ['Product launch', 'true', true], ['Character drama', 'true', true], ['Music video', 'true', true]])
+    expect(chips.every(chip => !(chip as HTMLButtonElement).disabled)).toBe(true)
 
     const recent = within(page.getByRole('region', { name: 'Recent projects' }))
     const cards = (): string[] => recent.getAllByRole('button').map(button => button.textContent ?? '')
-      .filter(text => text !== 'All projects' && text !== 'Show fewer')
+      .filter(text => text !== 'All projects' && text !== 'Show less')
     await waitFor(() => { expect(cards()[1]).toBe('Music videoYesterday') })
     expect(cards()[0]).toMatch(/^DramaToday \d\d:\d\d$/u)
     const drama = recent.getByRole('button', { name: /^Drama/u })
     const video = drama.querySelector('video')
     expect([video?.getAttribute('src'), video?.muted]).toEqual(['/dv/assets/take3.mp4#t=0.1', true])
     expect(drama.querySelector('img')).toBeNull()
+    expect(drama.querySelector('span[title]')?.getAttribute('title')).toBe('Drama')
     const musicVideo = recent.getByRole('button', { name: /^Music video/u })
     expect(musicVideo.querySelector('img')?.getAttribute('src')).toBe('/dv/assets/poster2.png')
     expect(musicVideo.querySelector('video')).toBeNull()
@@ -349,7 +368,7 @@ describe('the entry page', () => {
     expect(cards()).toHaveLength(3)
     expect(cards()[2]).toBe('Launch filmJan 5')
     expect(recent.getByRole('button', { name: /^Launch film/u }).querySelector('img, video')).toBeNull()
-    fireEvent.click(recent.getByRole('button', { name: 'Show fewer' }))
+    fireEvent.click(recent.getByRole('button', { name: 'Show less' }))
     expect(cards()).toHaveLength(2)
     fireEvent.click(recent.getAllByRole('button')[1] as HTMLElement)
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })
@@ -668,5 +687,26 @@ describe('the session switcher', () => {
     fireEvent.click(bench.view.view.getByRole('menuitem', { name: 'Home' }))
     await waitFor(() => { expect(warn).toHaveBeenCalledWith('ui-shell: navigation failed', expect.any(Error)) })
     expect(bench.store.getShell().projectId).toBe('p1')
+    expect(screen.getByRole('alert').textContent).toBe("Couldn't complete that: goHome failed")
+  })
+
+  it('shows the reason in the overlay toast, which outlives the workspace that reported it, until a later action succeeds', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const bench = await mountCenter({ hash: '#project=p1', main: 's1', failures: ['goHome'] })
+    const page = bench.view.view
+    const choose = (name: string): void => {
+      fireEvent.click(page.getByTitle('Switch chat or project'))
+      fireEvent.click(page.getByRole('menuitem', { name }))
+    }
+    choose('Home')
+    await waitFor(() => { expect(screen.getByRole('alert').textContent).toContain('goHome failed') })
+    expect(bench.view.container.querySelector('[role="alert"]')).toBeNull()
+    act(() => { bench.store.setShell({ projectId: null }) })
+    expect(page.queryByTitle('Switch chat or project')).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain('goHome failed')
+    act(() => { bench.store.setShell({ projectId: 'p1' }) })
+    bench.stand.failures.delete('goHome')
+    choose('Home')
+    await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
   })
 })

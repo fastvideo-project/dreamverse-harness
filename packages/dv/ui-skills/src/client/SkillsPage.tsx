@@ -33,7 +33,7 @@ type ListState =
 export function SkillsPanelIcon(): ReactNode {
   return (
     <svg
-      width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
+      width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25}
       strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false"
     ><path d="M12 3.5l2.1 6.4 6.4 2.1-6.4 2.1L12 20.5l-2.1-6.4L3.5 12l6.4-2.1L12 3.5Z" /></svg>
   )
@@ -52,8 +52,8 @@ export function SkillsPage(props: InjectFace<SkillsInjected>): ReactNode {
         <h1 className={css.title}>{t('技能', 'Skills')}</h1>
         <p className={css.intro}>
           {t(
-            '技能是写好的影视生成流程。点「使用」会把 /技能名 放进对话框，补充你的需求后发送；智能体也会在合适的时候自己选用技能。',
-            'A skill is a ready-made video-making procedure. Use puts /name into the chat box; add what you want and send. The agent also picks a skill on its own when one fits.',
+            '技能是写好的影视生成流程。点「使用」把 /技能名 放进对话框，补充需求后发送；智能体也会在合适的时候自己选用技能。',
+            'A skill is a ready-made video-making procedure. Choose “Use” to put /name in the chat box, then add what you want and send. The agent also picks a skill on its own when one fits.',
           )}
         </p>
       </header>
@@ -71,7 +71,7 @@ export function SkillsShelf(props: InjectFace<SkillsInjected>): ReactNode {
   const t = useText()
   return (
     <div className={css.shelf} data-dv-skills-shelf="">
-      <p className={css.intro}>{t('点「使用」把 /技能名 放进对话框，补充需求后发送。', 'Use puts /name into the chat box; add what you want and send.')}</p>
+      <p className={css.intro}>{t('点「使用」把 /技能名 放进对话框，补充需求后发送。', 'Choose “Use” to put /name in the chat box, then add what you want and send.')}</p>
       <SkillList list={props.list} use={props.use} />
     </div>
   )
@@ -111,10 +111,10 @@ function SkillList(props: SkillsInjected): ReactNode {
         <ul className={css.grid}>
           {state.skills.map(skill => (
             <li key={skill.name} className={css.card}>
-              <span className={css.name}>{skill.name}</span>
+              <span className={css.name} title={skill.name}>{skill.name}</span>
               <span className={css.description} title={skill.description}>{skill.description}</span>
               <span className={css.foot}>
-                <code className={css.command}>/{skill.name}</code>
+                <code className={css.command} title={`/${skill.name}`}>/{skill.name}</code>
                 <button
                   type="button" className={css.useButton} aria-label={t(`使用 ${skill.name}`, `Use ${skill.name}`)}
                   onClick={() => { use(skill.name) }}

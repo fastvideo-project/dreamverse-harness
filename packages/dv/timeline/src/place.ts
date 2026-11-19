@@ -11,18 +11,18 @@ import { ProjectError, type OperationResult, type OperationSpec, type ProjectSta
 import type { TimelineId } from './types.ts'
 
 /** The operation that puts a timeline on the canvas. */
-export const PLACE = 'timeline.place'
+const PLACE = 'timeline.place'
 
-/** The node type key of a placed timeline, shared with the browser's node type of `@dv/ui-timeline`. */
-export const TIMELINE_NODE_KIND = 'timeline'
+/** The node type key of a placed timeline, the key of the browser's node type in `@dv/ui-timeline`. */
+const TIMELINE_NODE_KIND = 'timeline'
 
 /**
  * The node maker of `timeline.place`: each finished record makes one `timeline` node in layout column 3, right of the
- * renders in column 2. The node shows its timeline's name, which `timeline.rename` changes, and takes no name of its
- * own.
+ * renders in column 2, clear of the 640 × 390 frame that the browser's node type draws by default. The node shows its
+ * timeline's name, which `timeline.rename` changes, and takes no name of its own.
  */
 export const TIMELINE_NODE_MAKER: NodeMaker = {
-  operations: [PLACE], kind: TIMELINE_NODE_KIND, column: 3, makes: record => record.status === 'done',
+  operations: [PLACE], kind: TIMELINE_NODE_KIND, column: 3, size: { width: 640, height: 390 }, makes: record => record.status === 'done',
   renameOperation: 'timeline.rename',
 }
 
@@ -33,7 +33,7 @@ export const TIMELINE_NODE_MAKER: NodeMaker = {
  * @param timeline - the timeline.
  * @returns the node ID, or null when no node shows the timeline.
  */
-export function timelineNode(state: ProjectState, timeline: TimelineId): string | null {
+function timelineNode(state: ProjectState, timeline: TimelineId): string | null {
   const records = new Map(state.components.proj.records.map(record => [record.id, record]))
   const canvas = state.components.canvas
   const found = canvas.order.find((id) => {

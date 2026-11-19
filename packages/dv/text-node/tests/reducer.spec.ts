@@ -75,7 +75,7 @@ describe('textReducer', () => {
       step('textnode.write', { path: 'beats.md', body: '# Beats\nAB.' }),
     ])
     const newest = slice.texts[brandString<TextPath>('beats.md')]?.[1]
-    expect(textReducer.agentSummary?.(slice, { url: asset => asset }, {} as ProjectState)).toEqual({ texts: [{ path: 'beats.md', title: 'Beats', version: 2, chars: 11, asset: newest?.asset }] })
+    expect(textReducer.agentSummary?.(slice, { url: asset => asset }, {} as ProjectState, 's1' as never)).toEqual({ texts: [{ path: 'beats.md', title: 'Beats', version: 2, chars: 11, asset: newest?.asset }] })
   })
 })
 

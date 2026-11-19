@@ -3,7 +3,7 @@
  * caption above a frame) around each type's `dv.canvas.card` body; a click selects a node, and a double click opens its
  * editor panel, which grows out of the node and shrinks back into it (`@dv/ui-kit/zoom.ts`). Every node sits at the
  * position of the canvas's node list, with its type's default size where the stored size is null. The end of a drag or
- * of a resize from a corner handle of the selected node writes one `canvas.node_position` record, so undo reverts it;
+ * of a resize from a resize handle of the selected node writes one `canvas.node_position` record, so undo reverts it;
  * the canvas draws the new box at once and drops it again when the write is refused. A node's right-click menu, the
  * trash button of its editor, and Delete or Backspace on the selected node remove it from the canvas with one
  * `canvas.node_remove` record after the user confirms. F2 on the selected node, its menu's Rename item, or a click on
@@ -104,17 +104,20 @@ const GRID = 20
 // outlines its frame alone, so the outline matches the frame's selection ring instead of also wrapping the caption.
 const CANVAS_CSS = `
 .dv-canvas-btn { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-canvas-btn:hover:not(:disabled) { background: var(--dv-surface-3); } }
 .dv-canvas-btn:focus-visible, .dv-canvas-soft:focus-visible, [data-node-id]:focus-visible > [data-node-frame] { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 [data-node-id]:focus-visible { outline: none; }
 .dv-canvas-title { background: transparent; transition: background-color 120ms var(--dv-ease); }
-.dv-canvas-title:hover, .dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+.dv-canvas-title:focus-visible { background: var(--dv-surface-3); }
+@media (hover: hover) { .dv-canvas-title:hover { background: var(--dv-surface-3); } }
 .dv-canvas-title:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 .dv-canvas-title > svg { opacity: 0; }
-.dv-canvas-title:hover > svg, .dv-canvas-title:focus-visible > svg { opacity: 1; }
+.dv-canvas-title:focus-visible > svg { opacity: 1; }
+@media (hover: hover) { .dv-canvas-title:hover > svg { opacity: 1; } }
+@media (hover: none) { .dv-canvas-title > svg { opacity: 1; } }
 .dv-canvas-soft { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
 .dv-canvas-danger { color: var(--dv-text-2); }
-.dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); }
+@media (hover: hover) { .dv-canvas-danger:hover:not(:disabled) { color: var(--dv-danger); } }
 @media (prefers-reduced-motion: reduce) { .dv-canvas-btn, .dv-canvas-title { transition: none; } }
 `
 
@@ -230,11 +233,11 @@ function inTextField(target: EventTarget): boolean {
   return target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
 }
 
-/** An in-progress pointer gesture. A resize drags one corner of the selected node ({@link resizedBox}). */
+/** An in-progress pointer gesture. A resize drags one corner or edge of the selected node ({@link resizedBox}). */
 type Gesture =
   | { kind: 'pan'; startX: number; startY: number; origin: CanvasViewport; moved: boolean }
   | { kind: 'node'; id: string; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
-  | { kind: 'resize'; node: CanvasNode; corner: ResizeHandle; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
+  | { kind: 'resize'; node: CanvasNode; handle: ResizeHandle; startX: number; startY: number; origin: NodePosition; at: NodePosition; moved: boolean }
 
 /**
  * @param boxes - the boxes of the gestures and writes in flight, by node ID.
@@ -412,7 +415,10 @@ export function CanvasView(
     })
     observer.observe(element)
     const onWheel = (event: WheelEvent): void => {
-      if (event.target instanceof Element && event.target.closest('[data-dv-scroll-island]') !== null) return
+      // A scroll island keeps its wheel, except that a ctrl or meta wheel, such as a touchpad pinch, over an island inside
+      // a node card zooms the canvas; the open editor's panel keeps every wheel. A wheel targets an element in the canvas.
+      const island = (event.target as Element).closest('[data-dv-scroll-island]')
+      if (island !== null && !((event.ctrlKey || event.metaKey) && island.closest('[data-node-id]') !== null)) return
       event.preventDefault()
       const rect = element.getBoundingClientRect()
       const px = event.clientX - rect.left
@@ -721,10 +727,10 @@ export function CanvasView(
     capture(event)
   }
   // The handle stops the press before the card's `onNodeDown`, so a resize starts no move and opens no editor.
-  const onResizeDown = (node: CanvasNode) => (corner: ResizeHandle, event: ReactPointerEvent<HTMLElement>): void => {
+  const onResizeDown = (node: CanvasNode) => (handle: ResizeHandle, event: ReactPointerEvent<HTMLElement>): void => {
     if (event.button !== 0) return
     const origin = boxOf(node)
-    gesture.current = { kind: 'resize', node, corner, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
+    gesture.current = { kind: 'resize', node, handle, startX: event.clientX, startY: event.clientY, origin, at: origin, moved: false }
     capture(event)
   }
   const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
@@ -742,7 +748,7 @@ export function CanvasView(
     }
     const zoom = viewportRef.current.zoom
     if (current.kind === 'resize') {
-      const at = resizedBox(current.node.sizing, current.origin, current.corner, dx / zoom, dy / zoom)
+      const at = resizedBox(current.node.sizing, current.origin, current.handle, dx / zoom, dy / zoom)
       current.at = at
       setPositions(all => ({ ...all, [current.node.id]: at }))
       return
@@ -964,7 +970,7 @@ export function CanvasView(
     boxShadow: dragOver ? 'inset 0 0 0 2px var(--dv-accent)' : 'none',
   }
   const floating: CSSProperties = {
-    background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)', zIndex: 5,
+    background: 'var(--dv-surface-2)', boxShadow: '0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1)', outline: '1px solid transparent', zIndex: 5,
   }
   const toolButton: CSSProperties = {
     height: 28, minWidth: 28, border: 'none', borderRadius: 'var(--dv-radius-sm)', color: 'var(--dv-text-2)', padding: '0 6px', cursor: 'pointer',
@@ -1041,8 +1047,8 @@ export function CanvasView(
               onPointerDown={onNodeDown(node)}
               onResizeDown={onResizeDown(node)}
               body={renderSlot('dv.canvas.card', {
-                node: view, state: graph.state, session, selected: node.id === selected, above: node.id === selected ? above : null,
-                assets, textScale, host: hosts.card,
+                node: view, state: graph.state, session, selected: node.id === selected && node.id !== editing,
+                above: node.id === selected ? above : null, assets, textScale, host: hosts.card,
               }, {
                 entryKey: node.type, fallback: <TypeLabelBody label={node.nodeType.label()} textScale={textScale} />,
               })}
@@ -1174,11 +1180,11 @@ export function CanvasView(
         </button>
         <span aria-hidden="true" style={{ width: 1, height: 16, margin: '0 2px', background: 'var(--dv-line)' }} />
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomOut')} title={t('canvas.zoomOut')} style={toolButton} onClick={() => { zoomBy(1 / 1.2) }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" aria-hidden="true"><path d="M5 12h14" /></svg>
         </button>
         <span style={{ minWidth: 44, textAlign: 'center', fontFamily: 'var(--dv-font-mono)', fontVariantNumeric: 'tabular-nums', fontSize: 12, lineHeight: '16px', color: 'var(--dv-text-2)' }}>{`${String(Math.round(viewport.zoom * 100))}%`}</span>
         <button type="button" className="dv-canvas-btn" aria-label={t('canvas.zoomIn')} title={t('canvas.zoomIn')} style={toolButton} onClick={() => { zoomBy(1.2) }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.25} strokeLinecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
         </button>
         <button type="button" className="dv-canvas-btn" style={{ ...toolButton, padding: '0 8px' }} onClick={() => { autoFit.current = true; fit(); scheduleSave() }}>{t('canvas.fit')}</button>
       </div>

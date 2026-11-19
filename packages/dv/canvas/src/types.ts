@@ -61,6 +61,11 @@ export interface NodeMaker {
   kind: string
   /** The layout column of new nodes, from 0 at the left. */
   column: number
+  /**
+   * The default frame size of the nodes, in canvas units, which the browser's node type of `kind` also draws. The free
+   * row of a new node keeps clear of it; absent means one layout cell.
+   */
+  size?: { width: number; height: number }
   /** Whether a record of the operations makes a node; absent means every record does. */
   makes?(record: { params: Record<string, unknown>; status: RecordStatus }): boolean
   /**

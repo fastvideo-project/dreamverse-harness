@@ -77,7 +77,7 @@ const frame: CSSProperties = { display: 'flex', width: '100%', height: '100%', o
 /**
  * The card body of a take: its shown asset (its preview, else its first output) through `dv.media`, filling the frame
  * the canvas sizes. A picture of known size fills the frame bare; any other asset, such as an audio waveform, and a take
- * without outputs sit on the card surface. A video plays while the node is selected.
+ * without outputs sit on the card surface. A video plays while the node is selected with its editor closed.
  * @param props - the node, its assets, whether it is selected, and the Factory renderer.
  * @returns the element.
  */

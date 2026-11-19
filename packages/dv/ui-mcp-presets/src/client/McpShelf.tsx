@@ -33,10 +33,10 @@ const TOOLS: readonly McpTool[] = [
   },
 ]
 
-/** A plug glyph. */
+/** A plug glyph drawn with a 1.5 px rendered stroke at every size; the 24-unit drawing grid scales the stroke attribute. */
 function PlugIcon({ size }: { size: number }): ReactNode {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5 * 24 / size} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M9 3v4M15 3v4M6.5 7h11v4a5.5 5.5 0 0 1-11 0V7Z" /><path d="M12 16.5V21" />
     </svg>
   )
@@ -82,8 +82,8 @@ function McpNotice(): ReactNode {
       </button>
       {failure !== null && (
         <p className={css.noticeError} role="alert" title={failure}>
-          {t('MCP 开启失败。请重试，或到', 'Could not turn on MCP. Try again, or check it in ')}
-          <button type="button" className={css.link} onClick={() => { openMcpPage('plugins') }}>{t('插件页', 'Plugins')}</button>
+          {t('MCP 开启失败。请重试，或到', 'Could not turn on MCP. Try again, or check the ')}
+          <button type="button" className={css.link} onClick={() => { openMcpPage('plugins') }}>{t('插件页', 'Plugins page')}</button>
           {t('查看。', '.')}
         </p>
       )}

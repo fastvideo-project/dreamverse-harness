@@ -103,9 +103,8 @@ export function VideoView({ asset, purpose, poster, playBadge: badge, onSize, pl
 /**
  * A video card that plays: the video fills the card and, when `play` turns true, plays with sound from where it stopped;
  * along its bottom a play button, a progress bar and the time `0:03 / 0:06` show while `play` is true, sized by the
- * card's width. A press on the
- * progress bar moves the video there. When `play` turns false the video pauses and the controls go. Presses on the
- * controls stop at the card, so a canvas node neither moves nor loses its selection.
+ * card's width. A press on the progress bar moves the video there. When `play` turns false the video pauses and the
+ * controls go. Presses on the controls stop at the card, so a canvas node neither moves nor loses its selection.
  * @param props - the asset, whether it plays, and the failure report.
  * @returns the element.
  */

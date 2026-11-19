@@ -10,8 +10,8 @@
 import type { ReactNode } from 'react'
 import { useEffect } from 'react'
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
-import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
+import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { GuideInjected, SidebarRightGuideBox } from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { ASSET_POOL_KIND, HISTORY_KIND } from './actions.ts'
@@ -89,6 +89,9 @@ function hideHostCommands(commandUi: unknown): () => void {
 /** The right-panel tab kinds the DreamVerse guide offers, in order. */
 const GUIDE_KINDS = ['dv-chat', ASSET_POOL_KIND, HISTORY_KIND, 'dv-trajectory'] as const
 
+/** The tab kinds of `@dv/ui-canvas` and `@dv/ui-timeline`, whose views the center shows, so the guide leaves them out. */
+const CENTER_KINDS: readonly string[] = ['dv-canvas', 'dv-timeline']
+
 /**
  * Rewrite the DSH dictionary entries in `TEXT_OVERRIDES` in place. The locale runtime keeps one dictionary object per
  * namespace and language and reads it on every translation, so editing the registered object changes the text without
@@ -129,14 +132,30 @@ function liveTitle(zh: string, en: string): (props: PropsRuntime<'sidebar.right.
 }
 
 /**
- * The right-panel guide (the page a new tab shows): a short hint and the four DreamVerse panels. The canvas and the
- * timeline live in the center and DSH's tab types do not belong to a creator, so neither is offered.
- * @param props - the guide chain props.
+ * Whether a registered guide entry belongs on the DreamVerse guide: a tab type that a plugin outside DSH's own packages
+ * (`@deepseek-ai/…`) registers, such as a DreamVerse plugin (`@dv/…`) or an installed one (`@fastvideo/…`), that
+ * the four fixed panels do not already offer, and whose view the center does not show (the canvas and the timeline).
+ * @param box - a guide entry of the registry.
+ * @returns whether the guide lists it after the four panels.
+ */
+export function isPluginPanel(box: SidebarRightGuideBox): boolean {
+  return !box.providerId.startsWith('@deepseek-ai/') && !(GUIDE_KINDS as readonly string[]).includes(box.kind)
+    && !CENTER_KINDS.includes(box.kind)
+}
+
+/**
+ * The right-panel guide (the page a new tab shows): a short hint, the four DreamVerse panels, and the panels that other
+ * plugins outside DSH register, in their guide order. The canvas and the timeline live in the center and DSH's tab types
+ * do not belong to a creator, so neither is offered.
+ * @param props - the guide chain props and the registry's guide entries.
  * @returns the guide.
  */
-function DreamVerseGuide({ useTabInfo }: PropsRuntime<'sidebar.right.tab.guide'>): ReactNode {
+export function DreamVerseGuide(
+  { useTabInfo, useGuideEntries }: PropsRuntime<'sidebar.right.tab.guide'> & InjectFace<GuideInjected>,
+): ReactNode {
   const { tab } = useTabInfo()
   const t = useText()
+  const plugins = useGuideEntries(entries => entries).filter(isPluginPanel)
   const labels: Record<(typeof GUIDE_KINDS)[number], [string, string]> = {
     'dv-chat': [t('对话', 'Chat'), t('和智能体对话，让它规划和渲染', 'Talk with the agent to plan and render')],
     [ASSET_POOL_KIND]: [t('素材库', 'Asset pool'), t('项目的图片和视频', "The project's images and videos")],
@@ -150,6 +169,15 @@ function DreamVerseGuide({ useTabInfo }: PropsRuntime<'sidebar.right.tab.guide'>
         <button key={kind} type="button" className={css.entry} onClick={() => { tab.actions.openTab(kind, { replaceTab: true }) }}>
           <span className={css.entryTitle}>{labels[kind][0]}</span>
           <span className={css.entryDescription}>{labels[kind][1]}</span>
+        </button>
+      ))}
+      {plugins.map(box => (
+        <button
+          key={`${box.providerId}:${box.id}`} type="button" className={css.entry}
+          onClick={() => { tab.actions.openTab(box.kind, { replaceTab: true }) }}
+        >
+          <span className={css.entryTitle}>{box.title()}</span>
+          {box.description === undefined ? null : <span className={css.entryDescription}>{box.description()}</span>}
         </button>
       ))}
     </div>
@@ -196,8 +224,13 @@ export function applyChrome(ctx: ClientContext): void {
   ctx.inject(['commandUi'], (scope) => {
     scope.effect(() => hideHostCommands(scope.get('commandUi')), 'ui-shell: hide host slash commands')
   })
+  const guideInjected: GuideInjected = {
+    hooks: {
+      guideEntries: { subscribe: listener => ctx.sidebarRightTabs.subscribe(listener), getSnapshot: () => ctx.sidebarRightTabs.guide() },
+    },
+  }
   ctx.effect(() => ctx.slots.inject('sidebar.right.tab.guide', () => ctx.slots.register(
-    { name: 'sidebar.right.tab.guide', select: () => true }, DreamVerseGuide,
+    { name: 'sidebar.right.tab.guide', select: () => true, inject: () => guideInjected }, DreamVerseGuide,
   )), 'ui-shell: right-panel guide')
   const titles: Array<[string, string, string]> = [
     [CHAT_ID, '对话', 'Chat'], [ASSET_POOL_ID, '素材库', 'Asset pool'], [HISTORY_ID, '历史', 'History'], [TRAJECTORY_ID, '轨迹', 'Trajectory'],

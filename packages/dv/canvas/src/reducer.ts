@@ -5,7 +5,8 @@
  *    the canvas's own (`canvas.node_position`, `canvas.node_remove`, `canvas.node_rename`), a placement's, or a maker's
  *    of another kind;
  * 2. a record of an operation that a {@link NodeMaker} names creates a node of its kind in the first free row of its
- *    column (a full column continues in a sub-column), with the default size;
+ *    column (a full column continues in a sub-column), with the default size, clear of the default size of each node
+ *    whose maker declares one;
  * 3. a finished `place` record of an {@link AssetPlacement} creates a node for each input asset that no node shows;
  * 4. a finished `canvas.node_remove` record deletes the nodes that its params name;
  * 5. a finished `canvas.node_position` record sets the fields of the node's position that its params give;
@@ -49,35 +50,45 @@ export const COLUMN = 240
 export const ROW = 200
 /** The rows of one layout column before new nodes continue in the next sub-column. */
 const ROWS = 6
-/** How far right a column's next sub-column sits, in columns: the producers use columns 0 to 2. */
+/** How far right a column's next sub-column sits, in columns; a sub-column cell that a wider node covers stays skipped. */
 const COLUMN_STRIDE = 3
 /** The height of the caption above a node's frame, in canvas units. */
 const CAPTION = 20
 
-/** The registrations that the reducer reads: the makers and placements by operation. */
+/** The registrations that the reducer reads: the makers and placements by operation, and the declared size by kind. */
 export interface CanvasRegistrations {
   maker(operation: string): NodeMaker | undefined
   placement(operation: string): AssetPlacement | undefined
   /** The operation that renames what the nodes of a kind show ({@link NodeMaker.renameOperation}), or undefined. */
   renameOperation(kind: string): string | undefined
+  /** The `size` that a maker of `kind` declares, or undefined. */
+  size(kind: string): NodeMaker['size']
 }
 
 /**
- * The first cell of a column that no node covers: its six rows, then the rows of each sub-column three columns further
- * right. A node of the default size covers one cell at its corner, because only the browser knows the default size of
- * its type.
+ * The first cell of a column where a new node's box overlaps no node's box: its six rows, then the rows of each
+ * sub-column three columns further right. An unsized node's box is the size that its kind's maker declares, or one
+ * cell at its corner, because only the browser knows the default size of other types.
  * @param slice - the slice.
- * @param column - the column.
+ * @param of - the column and the kind of the new node, from its maker or placement.
+ * @param registered - the registrations, for the declared sizes.
  * @returns the position of a new node, with the default size.
  */
-function freeRow(slice: CanvasState, column: number): NodePosition {
-  const boxes = Object.values(slice.nodes).map(({ position: at }) => ({
-    x: at.x, y: at.y, width: at.width ?? COLUMN, height: at.height === null ? ROW : at.height + CAPTION,
-  }))
+function freeRow(slice: CanvasState, of: { column: number; kind: string }, registered: CanvasRegistrations): NodePosition {
+  // A node's box in canvas units: its frame plus the caption above it.
+  const box = (kind: string, width: number | null, height: number | null): { width: number; height: number } => {
+    const size = registered.size(kind)
+    return {
+      width: width ?? size?.width ?? COLUMN,
+      height: height === null ? (size === undefined ? ROW : size.height + CAPTION) : height + CAPTION,
+    }
+  }
+  const boxes = Object.values(slice.nodes).map(({ kind, position: at }) => ({ x: at.x, y: at.y, ...box(kind, at.width, at.height) }))
+  const own = box(of.kind, null, null)
   const covered = (x: number, y: number): boolean =>
-    boxes.some(box => box.x < x + COLUMN && x < box.x + box.width && box.y < y + ROW && y < box.y + box.height)
+    boxes.some(each => each.x < x + own.width && x < each.x + each.width && each.y < y + own.height && y < each.y + each.height)
   // A full column continues in a sub-column further right, so a long list forms a block that fits the screen.
-  for (let x = column * COLUMN; ; x += COLUMN_STRIDE * COLUMN) {
+  for (let x = of.column * COLUMN; ; x += COLUMN_STRIDE * COLUMN) {
     for (let y = 0; y < ROWS * ROW; y += ROW) if (!covered(x, y)) return { x, y, width: null, height: null }
   }
 }
@@ -126,13 +137,14 @@ function inputAssets(record: ProjectRecord): AssetId[] {
  * Rule 3: one node per input asset that no node shows; the first takes the record ID.
  * @returns the slice after the record.
  */
-function place(slice: CanvasState, record: ProjectRecord, placement: AssetPlacement): CanvasState {
+function place(slice: CanvasState, record: ProjectRecord, placement: AssetPlacement, registered: CanvasRegistrations): CanvasState {
   let next = slice
   for (const asset of new Set(inputAssets(record))) {
     if (next.assets[asset] !== undefined) continue
     const count = next.order.filter(id => String(id) === record.id || id.startsWith(`${record.id}.`)).length
     const id = brandString<NodeId>(count === 0 ? record.id : `${record.id}.${String(count + 1)}`)
-    const node: CanvasNode = { kind: placement.kind, name: null, versions: [record.id], asset, position: freeRow(next, placement.column) }
+    const at = freeRow(next, placement, registered)
+    const node: CanvasNode = { kind: placement.kind, name: null, versions: [record.id], asset, position: at }
     next = added(next, id, node, [asset])
   }
   return next
@@ -180,7 +192,7 @@ function rename(slice: CanvasState, record: ProjectRecord, registered: CanvasReg
 
 /**
  * The `canvas` reducer.
- * @param registered - the makers and placements, read at every record.
+ * @param registered - the makers, placements and declared sizes, read at every record.
  * @returns the reducer.
  */
 export function canvasReducer(registered: CanvasRegistrations): Reducer<'canvas'> {
@@ -198,11 +210,11 @@ export function canvasReducer(registered: CanvasRegistrations): Reducer<'canvas'
         return { ...slice, nodes: { ...slice.nodes, [base]: { ...node, versions } }, assets: showing(slice.assets, base, record.outputs) }
       }
       if (maker !== undefined && maker.makes?.(record) !== false) {
-        const made: CanvasNode = { kind: maker.kind, name: null, versions: [record.id], position: freeRow(slice, maker.column) }
+        const made: CanvasNode = { kind: maker.kind, name: null, versions: [record.id], position: freeRow(slice, maker, registered) }
         return added(slice, brandString<NodeId>(record.id), made, record.outputs)
       }
       if (record.status !== 'done') return slice
-      if (placement !== undefined) return place(slice, record, placement)
+      if (placement !== undefined) return place(slice, record, placement, registered)
       if (operation === NODE_REMOVE) return remove(slice, record)
       if (operation === NODE_RENAME) return rename(slice, record, registered)
       return operation === NODE_POSITION ? position(slice, record) : slice

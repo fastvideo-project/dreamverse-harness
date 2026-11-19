@@ -49,6 +49,7 @@
   line-height: 40px;
   font-weight: 600;
   letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 .templates {
@@ -138,7 +139,7 @@
   background: transparent;
   color: inherit;
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
 }
 
@@ -150,11 +151,14 @@
   border-radius: var(--dv-radius-lg);
   background: var(--dv-surface-3);
   box-shadow: 0 0 0 1px var(--dv-line);
+  outline: 1px solid transparent;
   transition: box-shadow 120ms var(--dv-ease);
 }
 
-.card:hover .cardCover {
-  box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1);
+@media (hover: hover) {
+  .card:hover .cardCover {
+    box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-1);
+  }
 }
 
 .cardText {
@@ -177,6 +181,7 @@
   font-size: 12px;
   line-height: 16px;
   color: var(--dv-text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Workspace header: left sidebar toggle and session switcher, the 画布 | 时间线 control, the right panel toggle. */
@@ -216,9 +221,11 @@
   transition: background-color 120ms var(--dv-ease), color 120ms var(--dv-ease);
 }
 
-.iconButton:hover {
-  background: var(--dv-surface-3);
-  color: var(--dv-text);
+@media (hover: hover) {
+  .iconButton:hover {
+    background: var(--dv-surface-3);
+    color: var(--dv-text);
+  }
 }
 
 /* The session switcher and its menu. */
@@ -247,9 +254,14 @@
   transition: background-color 120ms var(--dv-ease);
 }
 
-.switcher:hover,
 .switcher[aria-expanded='true'] {
   background: var(--dv-surface-3);
+}
+
+@media (hover: hover) {
+  .switcher:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .switcherCover {
@@ -262,6 +274,7 @@
   border-radius: 4px;
   background: var(--dv-surface-3);
   box-shadow: 0 0 0 1px var(--dv-line);
+  outline: 1px solid transparent;
 }
 
 .switcherProject {
@@ -297,7 +310,7 @@
   position: absolute;
   z-index: 30;
   top: calc(100% + 6px);
-  left: 0;
+  inset-inline-start: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -306,9 +319,11 @@
   box-sizing: border-box;
   padding: 6px;
   overflow-y: auto;
-  border-radius: var(--dv-radius-xl);
+  overscroll-behavior: contain;
+  border-radius: var(--dv-radius-menu);
   background: var(--dv-surface-1);
   box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2);
+  outline: 1px solid transparent;
   font-size: 13px;
   line-height: 20px;
 }
@@ -319,21 +334,26 @@
   align-items: center;
   gap: 10px;
   min-width: 0;
-  height: 34px;
+  height: 32px;
   padding: 0 10px;
   border: none;
   border-radius: var(--dv-radius-md);
   background: transparent;
   color: var(--dv-text);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
 
-.menuItem:hover,
 .menuItem[data-active] {
   background: var(--dv-surface-3);
+}
+
+@media (hover: hover) {
+  .menuItem:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .menuItemQuiet {
@@ -418,8 +438,10 @@
   transition: background-color 120ms var(--dv-ease), color 120ms var(--dv-ease);
 }
 
-.toggleItem:hover {
-  color: var(--dv-text);
+@media (hover: hover) {
+  .toggleItem:hover {
+    color: var(--dv-text);
+  }
 }
 
 .toggleItem[data-active] {
@@ -461,6 +483,7 @@
   min-height: 0;
   padding: 4px 12px 8px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: 13px;
   line-height: 20px;
 }
@@ -470,23 +493,25 @@
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   height: 36px;
   margin: 2px 0 8px;
-  padding: 0 12px;
+  padding: 0 9px;
   border: 1px solid var(--dv-line-strong);
   border-radius: var(--dv-radius-md);
   background: transparent;
   color: var(--dv-text);
   font: inherit;
   font-weight: 500;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
 
-.navSecondary:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .navSecondary:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .navItem,
@@ -504,19 +529,21 @@
   background: transparent;
   color: var(--dv-text);
   font: inherit;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
   transition: background-color 120ms var(--dv-ease);
 }
 
 .treeRow {
   gap: 6px;
-  padding-left: 4px;
+  padding-inline-start: 4px;
 }
 
-.navItem:hover,
-.treeRow:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .navItem:hover,
+  .treeRow:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .navItem[data-active],
@@ -540,11 +567,12 @@
 }
 
 .treeChild {
-  padding-left: 30px;
+  padding-inline-start: 30px;
   color: var(--dv-text-2);
 }
 
 .treeCaret {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -556,6 +584,7 @@
 }
 
 .treeAdd {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -565,11 +594,23 @@
   background: transparent;
   color: var(--dv-text-2);
   cursor: pointer;
+  transition: color 120ms var(--dv-ease);
 }
 
-.treeAdd:hover,
-.rowMenuButton:hover {
-  color: var(--dv-text);
+@media (hover: hover) {
+  .treeAdd:hover,
+  .rowMenuButton:hover {
+    color: var(--dv-text);
+  }
+}
+
+/* The 20 px caret, add, and row-menu buttons keep their size; the pseudo-element extends each hit target to 24 px. */
+.treeCaret::after,
+.treeAdd::after,
+.rowMenuButton::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
 }
 
 /* The wordmark's 544 x 48 view box at 18 px tall. */
@@ -635,19 +676,38 @@
   font: inherit;
 }
 
-/* Row menu: hidden until the row is hovered or the menu is open. */
+/* Row menu: transparent and ignoring pointer input until the row is hovered, holds focus, or the menu is open. It
+   stays in the tab order, which `visibility: hidden` would remove. */
 .rowMenu {
   position: relative;
   flex: none;
-  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
-.treeRow:hover .rowMenu,
+.treeRow:focus-within .rowMenu,
 .rowMenu[data-open] {
-  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: hover) {
+  .treeRow:hover .rowMenu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* A touch pointer cannot hover, so the menu button stays visible. */
+@media (hover: none) {
+  .rowMenu {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .rowMenuButton {
+  position: relative;
   display: inline-flex;
   align-items: center;
   padding: 2px;
@@ -656,20 +716,22 @@
   background: transparent;
   color: var(--dv-text-2);
   cursor: pointer;
+  transition: color 120ms var(--dv-ease);
 }
 
 .rowMenuList {
   position: absolute;
   z-index: 20;
   top: 100%;
-  right: 0;
+  inset-inline-end: 0;
   display: flex;
   flex-direction: column;
   min-width: 120px;
   padding: 4px;
-  border-radius: var(--dv-radius-lg);
+  border-radius: calc(var(--dv-radius-sm) + 4px);
   background: var(--dv-surface-1);
   box-shadow: 0 0 0 1px var(--dv-line-strong), var(--dv-shadow-2);
+  outline: 1px solid transparent;
 }
 
 .rowMenuItem {
@@ -682,12 +744,15 @@
   font-size: 13px;
   line-height: 20px;
   font-weight: 400;
-  text-align: left;
+  text-align: start;
   cursor: pointer;
+  transition: background-color 120ms var(--dv-ease);
 }
 
-.rowMenuItem:hover {
-  background: var(--dv-surface-3);
+@media (hover: hover) {
+  .rowMenuItem:hover {
+    background: var(--dv-surface-3);
+  }
 }
 
 .rowMenuItem[data-danger] {
@@ -698,8 +763,9 @@
 .navHint {
   margin: 2px 10px 6px;
   font-size: 12px;
-  line-height: 16px;
+  line-height: 18px;
   color: var(--dv-text-2);
+  text-wrap: pretty;
 }
 
 /* Empty-state hint inside a right-panel tab. */
@@ -711,14 +777,14 @@
   line-height: 20px;
   text-align: center;
   color: var(--dv-text-2);
+  text-wrap: balance;
 }
 
 /* The blank chat's hint floats over the conversation so the composer keeps the tab's full width. */
 .chatHint {
   position: absolute;
   top: 35%;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   pointer-events: none;
 }
 
@@ -730,6 +796,7 @@
 /* Focus and motion for the shell's own controls. */
 .navSecondary:focus-visible,
 .navItem:focus-visible,
+.treeRow:focus-visible,
 .treeCaret:focus-visible,
 .treeLabel:focus-visible,
 .treeAdd:focus-visible,
@@ -741,7 +808,8 @@
 .toggleItem:focus-visible,
 .textButton:focus-visible,
 .exploreTab:focus-visible,
-.card:focus-visible {
+.card:focus-visible,
+.templateChip:focus-visible {
   outline: 2px solid var(--dv-accent);
   outline-offset: 2px;
 }
@@ -754,7 +822,11 @@
   .toggleItem,
   .navSecondary,
   .navItem,
-  .treeRow {
+  .treeRow,
+  .treeAdd,
+  .rowMenuButton,
+  .rowMenuItem,
+  .exploreTab {
     transition: none;
   }
 }
@@ -778,10 +850,13 @@
   font-size: 13px;
   line-height: 20px;
   cursor: pointer;
+  transition: color 120ms var(--dv-ease), background-color 120ms var(--dv-ease), border-color 120ms var(--dv-ease);
 }
 
-.exploreTab:hover {
-  color: var(--dv-text);
+@media (hover: hover) {
+  .exploreTab:hover {
+    color: var(--dv-text);
+  }
 }
 
 .exploreTab[data-active] {

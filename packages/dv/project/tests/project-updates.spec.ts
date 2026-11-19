@@ -210,6 +210,14 @@ describe('project state message', () => {
     })
   })
 
+  it('gives the component summaries the session that receives the state message', async () => {
+    const fixture = await start()
+    const deps: ProjToolDeps = { ...fixture.deps, agentSummaries: (_state, session) => [{ viewer: session }] }
+    const message = projectMessage(fixture.project, deps, SESSION, fixture.log.seen)
+    const [, ...json] = (message === null ? '' : textOf(message)).split('\n')
+    expect(JSON.parse(json.join('\n'))).toMatchObject({ viewer: SESSION })
+  })
+
   it('sends nothing for a session without a project, and a state message when the session saw another project', async () => {
     const fixture = await start()
     expect(projectMessage(fixture.project, fixture.deps, brandString<SessionId>('unbound'), fixture.log.seen)).toBeNull()
@@ -347,6 +355,40 @@ describe('project update message', () => {
       `- done ${other.id} (another chat): imported other.png`, `  - asset: ${assetOf('other.png')} (image/png) https://assets.example/${assetOf('other.png')}`,
       `- done ${stopped.id} (your call): imported stopped.png`, `  - asset: ${assetOf('stopped.png')} (image/png) https://assets.example/${assetOf('stopped.png')}`,
     ))
+  })
+
+  it('names a user edit made in another chat apart from one made in this chat', async () => {
+    const fixture = await start()
+    fixture.log.step()
+    const human = (session: string): RecordOrigin => ({
+      actor: 'user', surface: 'chat', session: brandString<SessionId>(session), turn: null, tool_call: null, intent: 'user import',
+    })
+    const other = await fixture.run(human('s2'), 'asset.import', { name: 'other.png' })
+    const here = await fixture.run(human(SESSION), 'asset.import', { name: 'here.png' })
+    expect(fixture.log.step()).toBe(update(
+      `- done ${other.id} (user in another chat): imported other.png`, `  - asset: ${assetOf('other.png')} (image/png) https://assets.example/${assetOf('other.png')}`,
+      `- done ${here.id} (user in chat): imported here.png`, `  - asset: ${assetOf('here.png')} (image/png) https://assets.example/${assetOf('here.png')}`,
+    ))
+  })
+
+  it('reports a user setting outside the history after an undo, and no move for the agent\'s own setting', async () => {
+    const fixture = await start()
+    fixture.project.registerOperation({
+      version: '1', description: 'A setting outside the history.', inputs: {}, deterministic: false, outputs: [], resource: 'none',
+      name: 'shot.choose', component: 'shot', params: { model: { type: 'string' } }, outsideHistory: true,
+      summarize: record => `chose ${String(record.params['model'])}`, execute: () => Promise.resolve({ outputs: [] }),
+    } satisfies OperationSpec)
+    await fixture.run(user('a'), 'asset.import', { name: 'a.png' })
+    fixture.log.step()
+    await fixture.project.undo(fixture.projectId)
+    const head = fixture.project.line(fixture.projectId).at
+    const chosen = await fixture.run(user('choose'), 'shot.choose', { model: 'pika' })
+    expect(fixture.log.step()).toBe(update(
+      `- history: the current step is ${head}; dv_proj_history_list shows which steps are undone or discarded.`,
+      `- done ${chosen.id} (user on canvas): chose pika`,
+    ))
+    fixture.log.toolResult(await fixture.call('dv_shot_choose', { reason: 'own choice', model: 'wan' }))
+    expect(fixture.log.step()).toBeNull()
   })
 
   it('nets out an undo followed by a redo', async () => {

@@ -153,7 +153,8 @@ export default class DvProject extends Service {
       this.subscriptions.emit(project, event)
       if (event.kind === 'update' && ['done', 'failed', 'cancelled'].includes(event.record.status)) this.scheduler.recordFinished(project)
     })
-    this.reducers = new ReducerRegistry(this.store)
+    // The runner, created below, knows which operations are settings outside the history; it is read at call time.
+    this.reducers = new ReducerRegistry(this.store, record => this.runner.isOutsideHistory(record))
     this.history = new History(this.store)
     // The scheduler runs ready records through the runner, which is created next; the callback reads it at call time.
     this.scheduler = new Scheduler(this.store, (project, record) => this.runner.execute(project, record), {
@@ -184,7 +185,7 @@ export default class DvProject extends Service {
     // The project summary that the `dv_proj_*` tools return and the project state message shows.
     const projToolDeps: ProjToolDeps = {
       assets: () => this.requireAssetStore(),
-      agentSummaries: (state: ProjectState) => this.reducers.agentSummaries(state, this.requireAssetStore()),
+      agentSummaries: (state: ProjectState, session) => this.reducers.agentSummaries(state, this.requireAssetStore(), session),
       turnOf: exec => turnOf(ctx, exec),
       chatFolder: session => this.chatFolder(session),
     }

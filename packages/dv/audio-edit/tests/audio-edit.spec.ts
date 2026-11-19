@@ -222,26 +222,63 @@ describe('dvAudioEdit', () => {
     const audio = fixture.put(speech(fixture.dir), 'audio/wav', 'speech.wav')
     const text = fixture.put(Buffer.from('notes'), 'text/plain', 'notes.txt')
     const garbage = fixture.put(Buffer.from('not an mp3'), 'audio/mpeg', 'broken.mp3')
-    // A WebM file written as a live stream, the way a browser records one, has no duration in its header.
-    const live = join(fixture.dir, 'voice.webm')
-    execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=d=1.5', '-c:a', 'opus', '-strict', '-2', '-ac', '2', '-ar', '48000', '-live', '1', live])
-    const voice = fixture.put(readFileSync(live), 'audio/webm', 'voice.webm')
+    // A WAV file with no samples decodes to a WAV file whose duration ffprobe cannot read.
+    const silent = join(fixture.dir, 'empty.wav')
+    execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=mono', '-t', '0', silent])
+    const empty = fixture.put(readFileSync(silent), 'audio/wav', 'empty.wav')
     const failures: Array<[string, Record<string, unknown>, AssetId, string]> = [
       ['audioedit.split', { pieces: 4 }, audio, 'The audio has 2 pauses between sounds, too few for 4 pieces; pass "at" with the cut times instead.'],
       ['audioedit.split', { at: [9] }, audio, 'The cut at 9s is not before the audio\'s end at 5.5s.'],
       ['audioedit.split', { at: [5.4996] }, audio, 'The cut at 5.5s is not before the audio\'s end at 5.5s.'],
       ['audioedit.split', { at: [1] }, text, 'The input is text/plain, not audio.'],
-      ['audioedit.split', { at: [1] }, voice, 'ffprobe reports no duration for the audio.'],
+      ['audioedit.split', { at: [1] }, empty, 'ffprobe reports no duration for the audio.'],
       ['audioedit.speed', { speed: 2 }, text, 'The input is text/plain, not audio.'],
       ['audioedit.speed', { duration_sec: 0.01 }, audio, 'Fitting 5.5s into 0.01s needs speed 550, outside 0.5 to 100.'],
       ['audioedit.speed', { duration_sec: 20 }, audio, 'Fitting 5.5s into 20s needs speed 0.275, outside 0.5 to 100.'],
-      ['audioedit.speed', { duration_sec: 1 }, voice, 'ffprobe reports no duration for the audio.'],
+      ['audioedit.speed', { duration_sec: 1 }, empty, 'ffprobe reports no duration for the audio.'],
     ]
     for (const [operation, params, input, message] of failures) {
       expect(await fixture.run(operation, params, input)).toMatchObject({ status: 'failed', error: { code: 'operation_failed', message } })
     }
     expect(await fixture.run('audioedit.speed', { speed: 2 }, garbage)).toMatchObject({ status: 'failed', error: { code: 'operation_failed' } })
     expect(failure(await fixture.call('dv_audioedit_split', { reason: 'late', at: [9], inputs: { audio } }))).toContain('is not before the audio\'s end')
+  })
+
+  it('measures, searches, and cuts the decoded audio, whose length an MP3 container overstates', async () => {
+    const fixture = await start()
+    // A 1 s tone, a 0.5 s pause, a 1 s tone, and a 0.7 s pause at the end; the MP3 container reports about 3.24 s.
+    const file = join(fixture.dir, 'speech.mp3')
+    execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'aevalsrc=\'if(lt(t,1)+between(t,1.5,2.5),0.5*sin(2*PI*440*t),0)\':s=44100:d=3.2', '-c:a', 'libmp3lame', file])
+    const audio = fixture.put(readFileSync(file), 'audio/mpeg', 'speech.mp3')
+    const split = await fixture.ctx.dvAudioEdit.split(audio, { pieces: 2 }, fixture.dir)
+    expect(split.map(({ piece }) => piece)).toEqual([
+      { start_sec: 0, end_sec: 1.25, duration_sec: 1.25 }, { start_sec: 1.25, end_sec: 3.2, duration_sec: 1.95 },
+    ])
+    for (const { file: piece, piece: { duration_sec: durationSec } } of split) {
+      expect((await fixture.ctx.dvFfmpeg.probe(piece)).durationSec).toBeCloseTo(durationSec, 3)
+    }
+    expect((await fixture.ctx.dvAudioEdit.speed(audio, { durationSec: 1.6 }, fixture.dir)).speed).toBe(2)
+    // A WebM file written as a live stream, the way a browser records one, has no duration in its header but decodes to one.
+    const live = join(fixture.dir, 'voice.webm')
+    execFileSync(FFMPEG, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=d=1.5', '-c:a', 'opus', '-strict', '-2', '-ac', '2', '-ar', '48000', '-live', '1', live])
+    const voice = fixture.put(readFileSync(live), 'audio/webm', 'voice.webm')
+    expect(await fixture.run('audioedit.split', { at: [1] }, voice)).toMatchObject({ status: 'done' })
+  })
+
+  it('leaves out a pause at the end whose end silencedetect and ffprobe round to different microseconds', async () => {
+    const fixture = await start()
+    // A 1 s tone, a 0.5 s pause, a 1 s tone, and a pause at the end: 63461 samples at 16 kHz, 3.9663125 s, which ffprobe
+    // prints as 3.966313 and silencedetect prints as silence_end 3.966312.
+    const file = join(fixture.dir, 'speech.wav')
+    execFileSync(FFMPEG, [
+      '-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=f=440:d=1:r=16000', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono',
+      '-filter_complex', '[1]atrim=0:0.5[s1];[1]atrim=0:5[s2];[0]asplit[a][b];[a][s1][b][s2]concat=n=4:v=0:a=1,atrim=end_sample=63461', file,
+    ])
+    const audio = fixture.put(readFileSync(file), 'audio/wav', 'speech.wav')
+    const split = await fixture.ctx.dvAudioEdit.split(audio, { pieces: 2 }, fixture.dir)
+    expect(split.map(({ piece }) => piece)).toEqual([
+      { start_sec: 0, end_sec: 1.25, duration_sec: 1.25 }, { start_sec: 1.25, end_sec: 3.966, duration_sec: 2.716 },
+    ])
   })
 
   it('refuses invalid arguments from a direct caller of the service methods', async () => {

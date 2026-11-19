@@ -75,7 +75,7 @@ export function ReferenceFace(props: ReferenceFaceProps): ReactNode {
     <span data-dv-chip={uri} data-invalid={invalid || undefined} title={props.label} style={{ ...face, ...invalid ? { color: 'var(--dv-danger)', boxShadow: 'inset 0 0 0 1px var(--dv-danger)' } : {} }}>
       {shown?.preview === null || shown === null ? null : <span style={preview}>{props.renderFactorySlot('dv.media', { asset: shown.preview, purpose: 'thumb' })}</span>}
       {props.label}
-      {shown?.sent === null || shown === null ? null : <span style={{ color: 'var(--dv-text-2)', fontSize: 11 }}>{`v${String(shown.sent)}`}</span>}
+      {shown?.sent === null || shown === null ? null : <span style={{ color: 'var(--dv-text-2)', fontSize: 12 }}>{`v${String(shown.sent)}`}</span>}
     </span>
   )
 }

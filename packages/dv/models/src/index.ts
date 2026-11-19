@@ -18,6 +18,8 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import z from '@deepseek-ai/schemastery'
 import type { ModalityId, ModelEntry, ModelFilter, ModelKey, TaskId } from './types.ts'
+import { installModelControls } from './selection.ts'
+export { assertVideoSelection, videoSelection } from './selection.ts'
 
 export type * from './types.ts'
 
@@ -86,9 +88,30 @@ export function servesTask<E extends Pick<ModelEntry, 'task'>, T extends TaskId>
   return (tasks as readonly TaskId[]).includes(entry.task)
 }
 
+/**
+ * The `done` timings of a rendered video from the timing headers of a FastVideo or UniServe answer, in seconds:
+ * `inference_s` from `x-inference-time-s`, and one `<stage>_s` per stage of the JSON object in `x-stage-durations`. An
+ * absent header, an `x-stage-durations` that is not JSON, and a value that is not a finite number add no timing, so a
+ * finished video is never lost to its timings.
+ * @param headers - the answer's headers.
+ * @returns the timings.
+ */
+export function renderTimings(headers: { get(name: string): string | null }): Record<string, number> {
+  let stages: Record<string, unknown> = {}
+  try {
+    stages = JSON.parse(headers.get('x-stage-durations') ?? '{}') as Record<string, unknown>
+  } catch { /* SyntaxError: a malformed x-stage-durations loses only the stage timings of a finished video. */ }
+  const values = { inference: Number(headers.get('x-inference-time-s') ?? Number.NaN), ...stages }
+  return Object.fromEntries(Object.entries(values)
+    .filter((value): value is [string, number] => typeof value[1] === 'number' && Number.isFinite(value[1]))
+    .map(([name, seconds]) => [`${name}_s`, seconds]))
+}
+
 /** Convert an entry to its key and its description, as `dv_models_list` and `dv_models_get` return them. */
 function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
-  return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description }
+  return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description,
+    ...entry.workerRouting === true ? { worker_selection: true } : {},
+    ...entry.displayName === undefined ? {} : { display_name: entry.displayName } }
 }
 
 /** Render a tool's JSON value as the text the agent reads. */
@@ -110,6 +133,7 @@ export default class DvModels extends Service {
 
   constructor(ctx: Context, private readonly config: Config) {
     super(ctx, 'dvModels')
+    installModelControls(ctx, this)
     ctx.inject(['tools'], (child) => {
       child.effect(() => child.tools.register(this.defineModelsListTool()), 'dvModels dv_models_list')
       child.effect(() => child.tools.register(this.defineModelsGetTool()), 'dvModels dv_models_get')
@@ -130,32 +154,44 @@ export default class DvModels extends Service {
   }
 
   /**
-   * Keep the prompt skill of each registered entry in the skill registry while the entry lives.
+   * Keep the prompt skill of each registered entry in the skill registry while the entry lives. Entries that share a
+   * skill name share one registration, which stays until the last of those entries is removed.
    * @param child - the context in which the DSH skill registry is mounted.
    * @returns a function that stops listening and removes the prompt skills; pass it to `ctx.effect`.
    */
   private registerPromptSkills(child: Context): () => void {
-    const registered = new Map<ModelEntry, () => void>()
-    // Each change removes the skills of removed entries and registers the skills of added entries.
+    // One registration per skill name, with the count of live entries that carry it.
+    type SharedSkill = { name: string; entries: number; remove: () => void }
+    const registered = new Map<ModelEntry, SharedSkill>()
+    const byName = new Map<string, SharedSkill>()
+    // Each change releases the skills of removed entries and registers the skills of added entries.
     const sync = (): void => {
       const live = new Set(this.entries.values())
-      for (const [entry, remove] of registered) {
+      for (const [entry, skill] of registered) {
         if (live.has(entry)) continue
-        remove()
         registered.delete(entry)
+        if (--skill.entries > 0) continue
+        skill.remove()
+        byName.delete(skill.name)
       }
       for (const entry of live) {
         if (entry.promptSkill === undefined || registered.has(entry)) continue
+        const name = entry.promptSkill.name
         // Like the selection skill, a prompt skill is for the agent only.
         const invocation = { modelInvocable: true, userInvocable: false }
-        registered.set(entry, child.skills.register({ ...entry.promptSkill, source: 'runtime', invocation }))
+        const skill = byName.get(name)
+          ?? { name, entries: 0, remove: child.skills.register({ ...entry.promptSkill, source: 'runtime', invocation }) }
+        skill.entries += 1
+        byName.set(name, skill)
+        registered.set(entry, skill)
       }
     }
     sync()
     const unlisten = this.onChanged(sync)
     return () => {
       unlisten()
-      for (const remove of registered.values()) remove()
+      for (const skill of byName.values()) skill.remove()
+      byName.clear()
       registered.clear()
     }
   }
@@ -285,9 +321,15 @@ export default class DvModels extends Service {
       let timer: ReturnType<typeof setTimeout> | undefined
       const late = new Promise<null>((resolve) => { timer = setTimeout(() => { resolve(null) }, this.config.catalogSchemaTimeoutMs) })
       // The schema of an unreachable or slow backend is unknown; the entry still lists its key and description.
-      const schema = await Promise.race([entry.schema().catch((_unreachable: unknown) => null), late])
+      const metadata = await Promise.race([Promise.all([
+        entry.schema().catch((_unreachable: unknown) => null),
+        entry.runtime === undefined ? undefined : entry.runtime.status().catch((_unreachable: unknown) => null),
+      ]), late])
       clearTimeout(timer)
-      return { ...toModelListItem(entry), schema }
+      const schema = metadata?.[0] ?? null
+      const runtime = metadata?.[1]
+      return { ...toModelListItem(entry), schema,
+        ...entry.runtime === undefined ? {} : { runtime: runtime == null ? null : { ...runtime } } }
     }))
   }
 
