@@ -36,6 +36,7 @@ import { MemoryCredentials } from '../../../credentials/credentials/tests/memory
 import DvImageGenerate from '@dv/image-generate'
 import * as SglangDiffusion from '@dv/sglang-diffusion'
 import * as SglangOmni from '@dv/sglang-omni'
+import * as VllmOmni from '@dv/vllm-omni'
 import * as WorkflowStory from '@dv/workflow-story'
 import * as yaml from 'js-yaml'
 import { vi } from 'vitest'
@@ -88,7 +89,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/hardware': DvHardware, '@deepseek-ai/dsh-credentials-memory': MemoryCredentials,
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': WorkflowStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
-  '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
+  '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate, '@dv/vllm-omni': VllmOmni,
   '@dv/minimax-skills': DvMiniMaxSkills,
 }
 

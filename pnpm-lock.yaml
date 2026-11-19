@@ -2254,6 +2254,9 @@ importers:
       '@dv/uniserve':
         specifier: workspace:*
         version: link:../../dv/uniserve
+      '@dv/vllm-omni':
+        specifier: workspace:*
+        version: link:../../dv/vllm-omni
       '@dv/workflow-story':
         specifier: workspace:*
         version: link:../../dv/workflow-story
@@ -9258,6 +9261,58 @@ importers:
       '@deepseek-ai/dsh-skill':
         specifier: workspace:*
         version: link:../../skill/skill
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
+  packages/dv/vllm-omni:
+    dependencies:
+      '@deepseek-ai/dsh-tools':
+        specifier: workspace:*
+        version: link:../../core/tools
+      '@deepseek-ai/dsh-util-values':
+        specifier: workspace:*
+        version: link:../../util/values
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      '@dv/audio-generate':
+        specifier: workspace:*
+        version: link:../audio-generate
+      '@dv/image-generate':
+        specifier: workspace:*
+        version: link:../image-generate
+      '@dv/models':
+        specifier: workspace:*
+        version: link:../models
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-include':
+        specifier: workspace:~
+        version: link:../../../vendor/include
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:~
+        version: link:../../../vendor/loader
+      '@deepseek-ai/dsh-brand':
+        specifier: workspace:*
+        version: link:../../util/brand
+      '@deepseek-ai/dsh-llm':
+        specifier: workspace:*
+        version: link:../../llm/llm
+      '@deepseek-ai/dsh-system-prompt':
+        specifier: workspace:*
+        version: link:../../core/system-prompt
+      '@dv/asset-pool':
+        specifier: workspace:*
+        version: link:../asset-pool
+      '@dv/ffmpeg':
+        specifier: workspace:*
+        version: link:../ffmpeg
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

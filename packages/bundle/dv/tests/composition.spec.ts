@@ -128,7 +128,7 @@ describe('DreamVerse bundle composition', () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
       'dv-openrouter', 'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
-      'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate',
+      'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate', 'dv-vllm-omni',
     ]))
     const { ctx, dir, services, dispose } = await bootBundle()
     disposers.push(dispose)
@@ -167,6 +167,13 @@ describe('DreamVerse bundle composition', () => {
     })
     expect(rows.find(row => row.id === 'dv-sglang-omni')?.config).toEqual({
       models: { 'fish-audio-drama-3': { baseUrl: 'http://127.0.0.1:8000' } },
+    })
+    // The vLLM-Omni row is disabled and keeps one server per model for a deployment that mounts it.
+    expect(rows.find(row => row.id === 'dv-vllm-omni')).toMatchObject({
+      disabled: true,
+      config: { models: {
+        'qwen-image-2.1-turbo': { baseUrl: 'http://127.0.0.1:8091' }, 'qwen3-tts-customvoice': { baseUrl: 'http://127.0.0.1:8092' },
+      } },
     })
     expect(ctx.dvModels.list().map(entry => formatModelKey(entry))).toEqual([
       'video/ref2v/uniserve/fasth3', 'image/t2i/sglang-diffusion/qwen-image-2.1-turbo', 'audio/t2a/sglang-omni/fish-audio-drama-3',

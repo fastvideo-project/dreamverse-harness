@@ -111,6 +111,19 @@
     - id: dv-audio-generate
       name: '@dv/audio-generate'
 
+    # Image and speech models on vLLM-Omni servers, one server per model. A model left out of `models` is not
+    # registered. The row is disabled; a deployment sets `disabled: false` and replaces these local URLs with its
+    # servers' own in its profile patch.
+    - id: dv-vllm-omni
+      name: '@dv/vllm-omni'
+      disabled: true
+      config:
+        models:
+          qwen-image-2.1-turbo:
+            baseUrl: http://127.0.0.1:8091
+          qwen3-tts-customvoice:
+            baseUrl: http://127.0.0.1:8092
+
     - id: dv-character
       name: '@dv/character'
 

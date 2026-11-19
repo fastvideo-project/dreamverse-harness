@@ -1,0 +1,35 @@
+{
+  "name": "@dv/vllm-omni",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Provider plugin vllm-omni of DreamVerse for image and speech models on local vLLM-Omni servers: registers one dvModels entry per configured model (qwen-image-2.1-turbo for task t2i, qwen3-tts-customvoice for task t2a), with its schema, request validation, served-model check and render.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-tools": "workspace:*",
+    "@deepseek-ai/dsh-util-values": "workspace:*",
+    "@dv/audio-generate": "workspace:*",
+    "@dv/image-generate": "workspace:*",
+    "@dv/models": "workspace:*"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/schemastery": "workspace:~"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "workspace:~",
+    "@deepseek-ai/cordis-plugin-include": "workspace:~",
+    "@deepseek-ai/cordis-plugin-loader": "workspace:~",
+    "@deepseek-ai/dsh-brand": "workspace:*",
+    "@deepseek-ai/dsh-llm": "workspace:*",
+    "@deepseek-ai/dsh-system-prompt": "workspace:*",
+    "@deepseek-ai/schemastery": "workspace:~",
+    "@dv/asset-pool": "workspace:*",
+    "@dv/ffmpeg": "workspace:*",
+    "@dv/project": "workspace:*",
+    "@types/node": "^22.20.0"
+  }
+}
