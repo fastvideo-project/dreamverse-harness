@@ -7,6 +7,8 @@ kind: "package-bundle"
 
 English | [中文](README.zh.md)
 
+The DreamVerse preset also scans `$DSH_HOME/dreamverse-skills` (default `~/.dsh/dreamverse-skills`), the persistent upload library managed by the Skills page and `@dv/api`. The preset keeps `includeDefaultRoots: false` and lists this directory before the bundled `video-directing` root.
+
 ## Summary
 
 Use this bundle to run DreamVerse as a `dsh` profile. It inserts the model catalog `@dv/models`, the provider plugins `@dv/fastvideo` and `@dv/uniserve` (`fasth3`), `@dv/sglang-diffusion` (`qwen-image-2.1-turbo`, task `t2i`) and `@dv/sglang-omni` (`fish-audio-drama-3`, task `t2a`), the DreamVerse components with `@dv/ffmpeg`, the story workflow `@dv/workflow-story`, the chat references, the API and the `@dv/ui-*` interface plugins; ships the `video-directing` skill for both `skill-filesystem` rows; routes `deepseek-local` to the cluster's SGLang server; and selects the agent model from the environment. `scripts/video-harness/setup-profile.sh` stacks it on `dsh-base` plus `dsh-web-app` as profile `video-harness` and on `dsh-base` plus `dsh-headless` as `video-harness-headless`; `scripts/video-harness/launch.sh web|headless` runs either from source.

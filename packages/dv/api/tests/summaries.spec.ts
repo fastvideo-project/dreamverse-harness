@@ -2,6 +2,8 @@
  * Project card summaries: the cover and the last edit time of a project's current state, and the
  * `/api/dv/projects/summary` route over the real Project service.
  */
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import type { AssetId, ProjectId, ProjectRecord, RecordId, RecordOrigin, SessionId, TurnId } from '@dv/project'
@@ -153,7 +155,7 @@ describe(ROUTES.projectSummaries, () => {
     fixture = base
     const connection = new FakeConnection()
     base.context.provide('connection', connection)
-    await base.context.plugin(DvApi, { keepaliveMs: 50 }).await()
+    await base.context.plugin(DvApi, { keepaliveMs: 50, skillLibraryDir: join(tmpdir(), 'dv-api-unused-skills') }).await()
     const imported = (await base.project.createProject(await base.project.newProjectFolder('imported'), 'imported', HUMAN)).id
     const chatted = (await base.project.createProject(await base.project.newProjectFolder('chatted'), 'chatted', HUMAN)).id
     const blank = (await base.project.createProject(await base.project.newProjectFolder('blank'), 'blank', HUMAN)).id
@@ -198,7 +200,7 @@ describe(ROUTES.projectSummaries, () => {
     fixture = base
     const connection = new FakeConnection()
     base.context.provide('connection', connection)
-    await base.context.plugin(DvApi, { keepaliveMs: 50 }).await()
+    await base.context.plugin(DvApi, { keepaliveMs: 50, skillLibraryDir: join(tmpdir(), 'dv-api-unused-skills') }).await()
     const healthy = (await base.project.createProject(await base.project.newProjectFolder('healthy'), 'healthy', HUMAN)).id
     const broken = (await base.project.createProject(await base.project.newProjectFolder('broken'), 'broken', HUMAN)).id
     const getState = base.project.getState.bind(base.project)

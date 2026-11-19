@@ -39,6 +39,8 @@ The Fetch routes list, create, rename, delete, and summarize projects, read the 
 | --- | --- | --- |
 | `keepaliveMs` | `15000` | How often an idle event stream sends a comment line so proxies keep the connection open |
 
+User skills use authenticated `GET /api/dv/skills` (saved summaries) and `POST /api/dv/skills/upload?filename=...` (raw Markdown or ZIP body). The required `skillLibraryDir` config field names the library directory; the DreamVerse bundle sets it to `$DSH_HOME/dreamverse-skills` (default `~/.dsh/dreamverse-skills`). Installs validate UTF-8 instructions, metadata, archive paths and extraction bounds, preserve supporting files, and atomically publish one complete directory. Duplicate saved names return `409 skill_exists`. Invalid uploads return `400 invalid_skill` and leave existing skills intact. Config fields `skillUploadBytes`, `skillExtractedBytes` and `skillArchiveFiles` default to 8388608, 33554432 and 256. The DreamVerse preset scans the same directory through a YAML alias; deployments using a different preset must include it in their filesystem skill provider roots.
+
 | Route | Method | Request | Response |
 | --- | --- | --- | --- |
 | `/api/dv/projects` | GET | none | `WireProject[]` (`{id, title, created_at, path}`), newest first; `id` is the ID of the project folder's DSH Workspace, and `path` is the folder |

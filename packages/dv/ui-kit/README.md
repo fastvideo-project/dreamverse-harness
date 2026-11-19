@@ -7,6 +7,8 @@ kind: "package-reference"
 
 English | [中文](README.zh.md)
 
+`DvClient.listUserSkills()` reads the persistent user skill library without a session. `uploadUserSkill(file)` sends a Markdown file or ZIP bundle as the raw body to `/api/dv/skills/upload?filename=...` and returns its saved metadata; failed validation and duplicate names reject with `DvApiError`.
+
 ## Summary
 
 Use this package from a DreamVerse browser plugin to talk to `@dv/api` and to read the state it sends. `DvClient` wraps every `/api/dv` route and follows `/dv/events`; `fieldsOf` and `paramsOf` turn an operation's parameter schema into form fields and back; `useViewSession` keeps a view's project, the project's current state, and the operations in step with the host; `ProjectBar` is the project and undo bar of the Sidebar views; the event modules own the `dv:*` window events and page globals the panels exchange; `registries.ts` holds `createRegistry`, the `VersionKind` and `@` menu descriptors, and `UiPlugin`. The package is a library: it registers nothing and is bundled into each consumer.

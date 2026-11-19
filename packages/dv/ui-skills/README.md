@@ -11,6 +11,8 @@ English | [中文](README.zh.md)
 
 Use this package to show creators the skills of DreamVerse, the written procedures the agent follows. The package adds 技能 / Skills to the left navigator below 首页 / Home; the page lists every skill a creator can start with `/name`, one card each, and the 技能 / Skills tab of 探索 / Explore on the entry page shows the same cards. 使用 / Use closes the page and puts `/name` into the chat composer. Skills that the agent uses only for itself (such as `fasth3-text-prompting`) declare that users cannot invoke them, so the page does not list them.
 
+The composer’s Skills button and the sidebar Skills entry both open the page. The Skills page and Explore shelf open on **My Skills**, with a separate **Available skills** list and search by name or description. Upload a Markdown file with YAML `name` and `description` frontmatter and nonempty instructions, or a ZIP containing exactly one `SKILL.md` and its resources in the same folder. Uploads are saved on the server under `$DSH_HOME/dreamverse-skills` (default `~/.dsh/dreamverse-skills`), survive restarts, and are available before any chat exists. Use prefills `/name`. Names already registered by the host or saved in this library are refused without replacing the existing skill. This library belongs to the current Harness installation; it is not a separate account or browser-local store. The file picker button and empty-selection text follow the page language; the selected filename is displayed unchanged.
+
 ## Table of Contents
 
 - [Use this package](#use-this-package)
@@ -36,7 +38,7 @@ The Host half registers nothing. The browser half registers the page in the `mai
 | Gesture | Request or event |
 | --- | --- |
 | Open 技能 / Skills, or the 技能 tab of 探索 | `skills/list` Remote with the chat session; the list is read each time the page or the tab opens |
-| 使用 / Use on a card | the layout's main panel goes back to the center, then `dv:compose` `{text: '/name', refs: []}` prefills the chat composer |
+| 使用 / Use on a card | writes `/name ` into the launching composer’s session draft (or the right-panel session when opened from the sidebar) before closing the page, then focuses the input; if no session input is ready, falls back to `dv:compose` `{text: '/name', refs: []}` |
 | 使用 / Use in the 技能 tab of 探索 | the draft of the session in the right panel's seat, which the entry page's composer edits, becomes `/name ` through the session's input; no `dv:compose`, so the right panel stays closed |
 | 重试 / Retry after a failed read | `skills/list` again |
 
@@ -86,4 +88,4 @@ None; the page sends nothing to a model.
 <a id="known-limitations-and-deferred-work"></a>
 
 - **English descriptions** — the cards show each skill's `description` as its file writes it; skill files carry one description, which the model also reads, so the page has no Chinese text for them.
-- **No list before a chat session** — the `skills` Remote is addressed by a session; before any session exists the page shows the empty note.
+- **Built-in list requires a session** — Available skills uses the session-addressed Remote; My Skills and uploads do not require one. Bundled resources are stored unchanged; uploading a script does not add tools or execute it.
