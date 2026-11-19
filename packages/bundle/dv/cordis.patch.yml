@@ -184,6 +184,13 @@
     - id: dv-ui-skills
       name: '@dv/ui-skills'
 
+    # The nine MiniMax H3 skills, their reference reader and preview GIFs; the browser half adds the Home template cards.
+    - id: dv-minimax-skills
+      name: '@dv/minimax-skills'
+
+    - id: dv-ui-minimax-skills
+      name: '@dv/ui-minimax-skills'
+
 # The video-directing skill ships in this bundle's skills directory; skill-filesystem discovers it beside the user's own.
 # The model, character, location, style, text node, timeline and story skills are registered by their plugins through ctx.skills.
 - id: skill-filesystem

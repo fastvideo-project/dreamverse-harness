@@ -29,6 +29,7 @@ import DvTimeline from '@dv/timeline'
 import DvApi from '@dv/api'
 import DvChatReferences from '@dv/chat-references'
 import DvModels, { type ModelEntry } from '@dv/models'
+import * as DvMiniMaxSkills from '@dv/minimax-skills'
 import * as OpenRouter from '@dv/openrouter'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import DvImageGenerate from '@dv/image-generate'
@@ -86,6 +87,7 @@ const PLUGINS: Record<string, object> = {
   '@dv/models': DvModels, '@dv/fastvideo': FakeFastVideo, '@dv/uniserve': FakeUniserve, '@dv/workflow-story': WorkflowStory,
   '@dv/sglang-diffusion': SglangDiffusion, '@dv/image-generate': DvImageGenerate,
   '@dv/sglang-omni': SglangOmni, '@dv/audio-generate': DvAudioGenerate,
+  '@dv/minimax-skills': DvMiniMaxSkills,
 }
 
 /** One row of a Loader entry list. */

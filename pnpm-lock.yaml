@@ -2161,6 +2161,9 @@ importers:
       '@dv/mcp-presets':
         specifier: workspace:*
         version: link:../../dv/mcp-presets
+      '@dv/minimax-skills':
+        specifier: workspace:*
+        version: link:../../dv/minimax-skills
       '@dv/models':
         specifier: workspace:*
         version: link:../../dv/models
@@ -2218,6 +2221,9 @@ importers:
       '@dv/ui-media':
         specifier: workspace:*
         version: link:../../dv/ui-media
+      '@dv/ui-minimax-skills':
+        specifier: workspace:*
+        version: link:../../dv/ui-minimax-skills
       '@dv/ui-openrouter':
         specifier: workspace:*
         version: link:../../dv/ui-openrouter
@@ -7636,9 +7642,6 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
-      '@dv/ui-minimax-skills':
-        specifier: workspace:*
-        version: link:../ui-minimax-skills
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -7670,9 +7673,6 @@ importers:
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0
-      yaml:
-        specifier: ^2.8.1
-        version: 2.9.0
 
   packages/dv/models:
     dependencies:

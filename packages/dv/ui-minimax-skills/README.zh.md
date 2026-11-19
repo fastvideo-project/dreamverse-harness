@@ -13,7 +13,7 @@ kind: "package-reference"
 
 ## 使用本包
 
-[`@dv/minimax-skills`](../minimax-skills/README.zh.md) 的 bundle 会在 Host 插件旁挂载本包，因此选择该 bundle 的 profile 无需额外配置行。本包在 DreamVerse 首页的 `dv.templates` 插槽注册九张模板卡片，并在 `dv.explore` 插槽注册 MiniMax 模板标签。每张卡片显示 `@dv/minimax-skills` 通过 `GET /api/minimax/previews/<skill>.gif` 提供的预览 GIF。
+DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 在 Host 插件 [`@dv/minimax-skills`](../minimax-skills/README.zh.md) 旁挂载本包，因此每个 DreamVerse profile 都显示这些卡片。本包在 DreamVerse 首页的 `dv.templates` 插槽注册九张模板卡片，并在 `dv.explore` 插槽注册 MiniMax 模板标签。每张卡片显示 `@dv/minimax-skills` 通过 `GET /api/minimax/previews/<skill>.gif` 提供的预览 GIF。
 
 点击卡片会把 `/<skill> ` 填入当前会话的草稿并聚焦输入框。点击不会创建项目，也不会发送消息；用户补充需求并发送后才调用技能。
 
@@ -31,4 +31,4 @@ kind: "package-reference"
 
 ## 已知限制与后续工作
 
-- **Bundle 选择** — 当前没有内置 DreamVerse profile 选择 `@dv/minimax-skills` bundle，因此全新安装在 profile 添加该 bundle 前不会显示卡片。
+- **固定卡片集** — 卡片只覆盖 `@dv/minimax-skills` 的九个 MiniMax 技能；其他技能显示在 `@dv/ui-skills` 的技能页面。

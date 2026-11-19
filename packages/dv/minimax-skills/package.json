@@ -2,7 +2,7 @@
   "name": "@dv/minimax-skills",
   "version": "0.1.0",
   "type": "module",
-  "description": "Standalone MiniMax H3 skill-set plugin: nine lazily loaded skills, bounded reference reads and preview GIFs; its bundle also mounts the template cards of @dv/ui-minimax-skills.",
+  "description": "Standalone MiniMax H3 skill-set plugin: nine lazily loaded skills, bounded reference reads and preview GIFs.",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -12,25 +12,18 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types/types.js"
     },
-    "./package.json": "./package.json",
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./package.json": "./package.json"
   },
   "files": [
     "lib/index.js",
     "lib/types/**/*.d.ts",
     "assets",
-    "cordis.patch.yml",
     "README.md",
     "README.zh.md",
     "scripts/catalog.mjs"
   ],
   "publishConfig": {
     "access": "public"
-  },
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
   },
   "scripts": {
     "catalog:generate": "node scripts/catalog.mjs"
@@ -39,8 +32,7 @@
     "@deepseek-ai/dsh-skill": "workspace:*",
     "@deepseek-ai/dsh-skill-filesystem": "workspace:*",
     "@deepseek-ai/dsh-tools": "workspace:*",
-    "@deepseek-ai/dsh-llm": "workspace:*",
-    "@dv/ui-minimax-skills": "workspace:*"
+    "@deepseek-ai/dsh-llm": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "workspace:~",
@@ -55,7 +47,6 @@
     "@deepseek-ai/cordis-plugin-include": "workspace:~",
     "@deepseek-ai/cordis-plugin-loader": "workspace:~",
     "@types/node": "^22.20.0",
-    "yaml": "^2.8.1",
     "@deepseek-ai/dsh-agent-loop-testkit": "workspace:*",
     "@deepseek-ai/dsh-session": "workspace:*",
     "@deepseek-ai/dsh-tool-skill": "workspace:*"

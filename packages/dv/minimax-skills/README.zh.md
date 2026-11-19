@@ -9,18 +9,18 @@ kind: "package-reference"
 
 ## 使用插件
 
-安装并挂载一个包即可将九个固定版本的 MiniMax 技能注册到现有中央技能注册器。Host 只要求 `skills` 服务，不运行时依赖项目、画布、图像、音频或视频插件。引用工具与预览路由只在现有服务存在时启用。
+挂载本插件即可将九个固定版本的 MiniMax 技能注册到现有中央技能注册器。Host 只要求 `skills` 服务，不运行时依赖项目、画布、图像、音频或视频插件。引用工具与预览路由只在现有服务存在时启用。
 
-包内声明自己的 `dsh.bundle` 补丁，安装后即可自动选择并挂载两行插件：本 Host 插件及其浏览器包 [`@dv/ui-minimax-skills`](../ui-minimax-skills/README.zh.md)。手动组合时对应配置为：
+DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 挂载本 Host 插件及其浏览器包 [`@dv/ui-minimax-skills`](../ui-minimax-skills/README.zh.md)，因此每个 DreamVerse profile 都有这些技能和首页模板卡片。其他组合挂载同样两行：
 
 ```yaml
-- id: minimax-skills
+- id: dv-minimax-skills
   name: '@dv/minimax-skills'
-- id: ui-minimax-skills
+- id: dv-ui-minimax-skills
   name: '@dv/ui-minimax-skills'
 ```
 
-在本仓库先运行 `pnpm exec tsc -b packages/dv/minimax-skills packages/dv/ui-minimax-skills`，再运行 `pnpm --filter @dv/ui-minimax-skills run bundle` 构建。可用 `pnpm --filter @dv/minimax-skills pack --pack-destination /tmp` 生成本地安装包，再用 `dsh plugin --profile <profile> add <archive>` 安装。当前改动准备可分发包，不会向 npm 发布。
+在本仓库先运行 `pnpm exec tsc -b packages/dv/minimax-skills packages/dv/ui-minimax-skills`，再运行 `pnpm --filter @dv/ui-minimax-skills run bundle` 构建。这些包不会发布到 npm。
 
 沿用 `tool-skill` 的目录与 `/name` 调用，例如发送 `/h3-prompt-writing 写一个产品视频提示词`。在首页或探索区的 MiniMax 标签选择模板，会把 `/name ` 填入当前草稿；补充需求并发送才调用技能。点击卡片不会创建项目或启动生成。单个 SKILL.md 的导入仍属于通用技能导入功能，不要求包装成插件。
 

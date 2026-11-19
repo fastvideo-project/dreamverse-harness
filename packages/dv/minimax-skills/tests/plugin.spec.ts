@@ -3,7 +3,6 @@ import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parse } from 'yaml'
 import { randomUUID } from 'node:crypto'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { Context } from '@deepseek-ai/cordis'
@@ -34,10 +33,6 @@ async function boot(tools = false, routes?: Map<string, ConnectionFetchRoute>) {
   const plugins: Record<string, object> = { skills: SkillRegistry, 'minimax-skills': MiniMax,
     ...(tools ? { systemPrompt: SystemPrompt, tools: ToolRuntime, agents: AgentRegistry, toolSkill: ToolSkill } : {}) }
   globals.__miniMaxPlugins[key] = plugins
-  const ownPatch = parse(await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')) as Array<{ insert: Array<{ id: string; name: string }> }>
-  expect(ownPatch.flatMap(patch => patch.insert)).toEqual([
-    { id: 'minimax-skills', name: '@dv/minimax-skills' }, { id: 'ui-minimax-skills', name: '@dv/ui-minimax-skills' },
-  ])
   const entries = []
   for (const id of Object.keys(plugins)) {
     const path = join(dir, `${id}.mjs`)

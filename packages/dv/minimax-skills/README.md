@@ -9,18 +9,18 @@ English | [中文](README.zh.md)
 
 ## Use this plugin
 
-Install one package to register all nine pinned MiniMax skills with the existing central skill registry. The Host requires only `skills`; it has no runtime dependency on DreamVerse's project, canvas, image, audio or video plugins. The reference tool and the preview routes activate only when their existing services are present.
+Mount this plugin to register all nine pinned MiniMax skills with the existing central skill registry. The Host requires only `skills`; it has no runtime dependency on DreamVerse's project, canvas, image, audio or video plugins. The reference tool and the preview routes activate only when their existing services are present.
 
-The package declares its own `dsh.bundle` patch, so installing it selects the bundle and mounts two plugin rows automatically: this Host plugin and its browser package [`@dv/ui-minimax-skills`](../ui-minimax-skills/README.md). For manual composition, the equivalent rows are:
+The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts this Host plugin and its browser package [`@dv/ui-minimax-skills`](../ui-minimax-skills/README.md), so every DreamVerse profile has the skills and the Home template cards. Another composition mounts the same two rows:
 
 ```yaml
-- id: minimax-skills
+- id: dv-minimax-skills
   name: '@dv/minimax-skills'
-- id: ui-minimax-skills
+- id: dv-ui-minimax-skills
   name: '@dv/ui-minimax-skills'
 ```
 
-In this workspace, run `pnpm exec tsc -b packages/dv/minimax-skills packages/dv/ui-minimax-skills` followed by `pnpm --filter @dv/ui-minimax-skills run bundle` before mounting the compiled plugins. To install a local distribution, run `pnpm --filter @dv/minimax-skills pack --pack-destination /tmp` and install the resulting archive with `dsh plugin --profile <profile> add <archive>`. The package is prepared for distribution; this change does not publish it to an npm registry.
+In this workspace, run `pnpm exec tsc -b packages/dv/minimax-skills packages/dv/ui-minimax-skills` followed by `pnpm --filter @dv/ui-minimax-skills run bundle` before mounting the compiled plugins. The packages are not published to an npm registry.
 
 The normal `tool-skill` integration lists these skills for the model and handles explicit `/name` messages. For example, send `/h3-prompt-writing Write a product-video prompt`. Selecting a template on Home or in the MiniMax Explore tab puts the corresponding `/name ` in the current draft; add requirements and send to invoke it. Selecting a card neither creates a project nor starts generation. Individual SKILL.md imports remain a separate, generic skill-import concern and do not require this package.
 
