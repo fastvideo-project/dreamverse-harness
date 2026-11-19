@@ -47,7 +47,7 @@ DreamVerse Harness needs two servers: a FastVideo server that renders the video,
 
 - Node.js `^22.19.0` or `>=24.0.0`, and pnpm `11.7.0`.
 - `ffmpeg` and `ffprobe`.
-- GPUs for the FastVideo server. The FastH3 8-Step configuration below uses 4 NVIDIA GPUs.
+- GPUs for the FastVideo server. The FastH3 8-Step configuration below uses 4 NVIDIA GPUs, and it also runs on 2 GPUs with more than 80 GB of memory each, such as NVIDIA GB200 (see step 1).
 - An OpenAI-compatible chat endpoint for the agent, such as an SGLang server with DeepSeek V4.1, and its API key if it needs one.
 
 ### 1. Start a video server
@@ -60,6 +60,17 @@ git clone https://github.com/hao-ai-lab/FastVideo.git && cd FastVideo
 UV_TORCH_BACKEND=cu130 uv pip install -e ".[fasth3]"
 fastvideo serve --config examples/serving/openai_fasth3_8step.yaml --server.host 127.0.0.1
 ```
+
+The install takes about 10 minutes, and the first start also downloads the model weights. The server keeps running in this terminal, so use a second terminal for the next steps. The server is ready when it prints `Uvicorn running on http://127.0.0.1:8000`; then `curl http://127.0.0.1:8000/v1/models` lists `fasth3`.
+
+With fewer than 4 GPUs, set the GPU count and the sequence-parallel size to the same number. That number must divide the 56 attention heads of the model, so 3 GPUs fail at startup. On 2 GPUs, each GPU needs more than 80 GB of memory. For example:
+
+```sh
+CUDA_VISIBLE_DEVICES=0,1 fastvideo serve --config examples/serving/openai_fasth3_8step.yaml --server.host 127.0.0.1 \
+  --generator.engine.num_gpus 2 --generator.engine.parallelism.sp_size 2
+```
+
+If the server prints `Application startup failed. Exiting.`, the `fastvideo serve` process can keep running. Stop that process before you start the server again.
 
 To run the server on one local machine, use the matching configuration in [FastVideo's serving examples](https://github.com/hao-ai-lab/FastVideo/tree/main/examples/serving): `openai_fasth3_omniref_rtx5090.yaml`, `openai_fasth3_omniref_rtx_pro6000.yaml`, or `openai_fasth3_omniref_spark.yaml` for FastH3 OmniRef on one GPU, or `mlx_fasth3_8step.yaml` on Apple Silicon.
 
@@ -76,6 +87,8 @@ pnpm install
 pnpm run build
 ```
 
+`pnpm install` and `pnpm run build` take about 10 minutes together. During `pnpm install`, the `Failed to create bin` warnings for `dsh` are expected before the first build.
+
 ### 3. Connect the video server
 
 Create the `video-harness` profile:
@@ -84,6 +97,8 @@ Create the `video-harness` profile:
 export DSH_HOME="$HOME/.local/state/dsh-video-harness"
 scripts/video-harness/setup-profile.sh
 ```
+
+The script prints nothing when it succeeds.
 
 Then point the profile at your FastVideo server. This patch turns on the `fastvideo` provider with your server for task `t2v`, and turns off the providers that point at the development cluster:
 
@@ -115,17 +130,18 @@ For a FastH3 OmniRef server, put it under `ref2v` with the `ref2v` model facts o
 
 ### 4. Connect the agent model
 
-Set the agent's endpoint and key, the media tools, and the folder for your projects:
+Set the agent's endpoint and key, the environment file of the launch script, the media tools, and the folder for your projects:
 
 ```sh
 export DV_DEEPSEEK_BASE_URL=http://<your endpoint>/v1
-export DV_DEEPSEEK_API_KEY=<your key>
+export DV_DEEPSEEK_API_KEY=<your key>   # omit this line for a server without a key
+export DV_ENV_FILE=/dev/null
 export DV_FFMPEG="$(command -v ffmpeg)"
 export DV_PROJECTS_FOLDER="$HOME/DreamVerse"
 mkdir -p "$DV_PROJECTS_FOLDER"
 ```
 
-Leave `DV_DEEPSEEK_API_KEY` unset for a server without a key. Set `DV_AGENT_VISION=0` if the model cannot read images. The [`@dv/bundle` README](packages/bundle/dv/README.md) lists the other variables, such as `DV_AGENT_MODEL` and `DV_PORT`.
+The agent uses the model `deepseek-v4.1`. If `$DV_DEEPSEEK_BASE_URL/models` lists another name, set `DV_AGENT_MODEL` to that name. Set `DV_AGENT_VISION=0` if the model cannot read images. The [`@dv/bundle` README](packages/bundle/dv/README.md) lists the other variables, such as `DV_PORT`.
 
 ### 5. Launch
 
@@ -133,15 +149,18 @@ Leave `DV_DEEPSEEK_API_KEY` unset for a server without a key. Set `DV_AGENT_VISI
 scripts/video-harness/launch.sh web
 ```
 
+Run this command in the same shell as step 4, because `launch.sh` reads the variables of step 4. Without `DV_DEEPSEEK_BASE_URL`, `launch.sh` uses a server of the development cluster. `launch.sh` also loads the file that `DV_ENV_FILE` names, and the default is a file on the development machine; step 4 sets `DV_ENV_FILE` to `/dev/null`. To load provider keys, such as `GROQ_API_KEY`, from a file, set `DV_ENV_FILE` to that file.
+
 The web interface listens on port `8092`. Open the URL that the command prints, such as `http://127.0.0.1:8092/?token=…`; the token logs you in. To open the page from another machine, add `--trusted-host <host name>` to the command.
 
 ### 6. Make your first video
 
 1. On the Home page, type what you want in the prompt box, for example `Make a 5-second video of a corgi chef flipping pancakes in a sunny kitchen.`, and press Enter. DreamVerse creates a project and opens it.
 2. When the agent asks a question, choose an answer and click **Submit**.
-3. Before it renders, the agent asks **OK to render?**. Choose **Yes, render this shot**.
-4. The take appears on the **Canvas**, and the agent places it on the **Timeline**. The **History** panel lists every step, and you can undo any of them.
-5. Open the **Timeline** tab and click **Export** to save the video file.
+3. Before it renders, the agent asks you to confirm the shot, for example **Shall I render this one 5-second shot, and in which framing?**. The question and the answers change from chat to chat. Choose a **Yes** answer, such as **Yes — 16:9 widescreen**, and click **Submit**. On 2 NVIDIA GB200 GPUs, a 5-second shot takes about 3 minutes.
+4. The take appears on the **Canvas**. The **History** panel lists every step, and you can undo any of them.
+5. Open the **Timeline** tab. If it says **The project has no timelines yet**, the agent did not place the take on a timeline. Ask the agent in the chat: `Put the shot on the timeline.`
+6. Click **Export**. When the export finishes, click **Open the exported video**. The video opens in a new browser tab. Save it with a `.mp4` file name, because the link has no file extension.
 
 ## How it works
 

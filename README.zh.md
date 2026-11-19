@@ -49,7 +49,7 @@ DreamVerse Harness 需要两个服务器：一个渲染视频的 FastVideo 服�
 
 - Node.js `^22.19.0` 或 `>=24.0.0`，以及 pnpm `11.7.0`。
 - `ffmpeg` 和 `ffprobe`。
-- 运行 FastVideo 服务器的 GPU。下面的 FastH3 8-Step 配置使用 4 块 NVIDIA GPU。
+- 运行 FastVideo 服务器的 GPU。下面的 FastH3 8-Step 配置使用 4 块 NVIDIA GPU，也可以在 2 块显存大于 80 GB 的 GPU 上运行，例如 NVIDIA GB200（见第 1 步）。
 - 一个供 agent 使用的 OpenAI 兼容对话端点，例如运行 DeepSeek V4.1 的 SGLang 服务器；如果端点需要，还要准备它的 API key。
 
 ### 1. 启动视频服务器
@@ -62,6 +62,17 @@ git clone https://github.com/hao-ai-lab/FastVideo.git && cd FastVideo
 UV_TORCH_BACKEND=cu130 uv pip install -e ".[fasth3]"
 fastvideo serve --config examples/serving/openai_fasth3_8step.yaml --server.host 127.0.0.1
 ```
+
+安装大约需要 10 分钟，第一次启动还会下载模型权重。服务器会一直在这个终端里运行，所以后面的步骤请在另一个终端里做。服务器打印 `Uvicorn running on http://127.0.0.1:8000` 时就绪；这时 `curl http://127.0.0.1:8000/v1/models` 会列出 `fasth3`。
+
+如果 GPU 少于 4 块，把 GPU 数和序列并行大小设成同一个数。这个数必须能整除模型的 56 个注意力头，所以 3 块 GPU 会在启动时失败。在 2 块 GPU 上，每块 GPU 需要大于 80 GB 的显存。例如：
+
+```sh
+CUDA_VISIBLE_DEVICES=0,1 fastvideo serve --config examples/serving/openai_fasth3_8step.yaml --server.host 127.0.0.1 \
+  --generator.engine.num_gpus 2 --generator.engine.parallelism.sp_size 2
+```
+
+如果服务器打印 `Application startup failed. Exiting.`，`fastvideo serve` 进程可能仍在运行。再次启动服务器之前，先停掉这个进程。
 
 要在一台本地机器上运行服务器，使用 [FastVideo 服务示例](https://github.com/hao-ai-lab/FastVideo/tree/main/examples/serving)中对应的配置：单块 GPU 上的 FastH3 OmniRef 用 `openai_fasth3_omniref_rtx5090.yaml`、`openai_fasth3_omniref_rtx_pro6000.yaml` 或 `openai_fasth3_omniref_spark.yaml`，Apple Silicon 上用 `mlx_fasth3_8step.yaml`。
 
@@ -78,6 +89,8 @@ pnpm install
 pnpm run build
 ```
 
+`pnpm install` 和 `pnpm run build` 加起来大约需要 10 分钟。`pnpm install` 期间出现的 `dsh` 的 `Failed to create bin` 警告在第一次构建之前是正常的。
+
 ### 3. 连接视频服务器
 
 创建 `video-harness` profile：
@@ -86,6 +99,8 @@ pnpm run build
 export DSH_HOME="$HOME/.local/state/dsh-video-harness"
 scripts/video-harness/setup-profile.sh
 ```
+
+脚本成功时不打印任何内容。
 
 然后把 profile 指向你的 FastVideo 服务器。这个 patch 为生成任务 `t2v` 打开 `fastvideo` 提供方并填入你的服务器，同时关闭指向开发集群的提供方：
 
@@ -117,17 +132,18 @@ EOF
 
 ### 4. 连接 agent 模型
 
-设置 agent 的端点和 key、媒体工具，以及存放项目的文件夹：
+设置 agent 的端点和 key、启动脚本的环境文件、媒体工具，以及存放项目的文件夹：
 
 ```sh
 export DV_DEEPSEEK_BASE_URL=http://<your endpoint>/v1
-export DV_DEEPSEEK_API_KEY=<your key>
+export DV_DEEPSEEK_API_KEY=<your key>   # omit this line for a server without a key
+export DV_ENV_FILE=/dev/null
 export DV_FFMPEG="$(command -v ffmpeg)"
 export DV_PROJECTS_FOLDER="$HOME/DreamVerse"
 mkdir -p "$DV_PROJECTS_FOLDER"
 ```
 
-如果服务器不需要 key，就不要设置 `DV_DEEPSEEK_API_KEY`。如果模型不能读图，设置 `DV_AGENT_VISION=0`。[`@dv/bundle` README](packages/bundle/dv/README.zh.md) 列出了其他变量，例如 `DV_AGENT_MODEL` 和 `DV_PORT`。
+agent 使用模型 `deepseek-v4.1`。如果 `$DV_DEEPSEEK_BASE_URL/models` 列出的是别的名字，把 `DV_AGENT_MODEL` 设成那个名字。如果模型不能读图，设置 `DV_AGENT_VISION=0`。[`@dv/bundle` README](packages/bundle/dv/README.zh.md) 列出了其他变量，例如 `DV_PORT`。
 
 ### 5. 启动
 
@@ -135,15 +151,18 @@ mkdir -p "$DV_PROJECTS_FOLDER"
 scripts/video-harness/launch.sh web
 ```
 
+请在第 4 步的同一个 shell 里运行这条命令，因为 `launch.sh` 读取第 4 步设置的变量。没有 `DV_DEEPSEEK_BASE_URL` 时，`launch.sh` 会使用开发集群上的服务器。`launch.sh` 还会加载 `DV_ENV_FILE` 指定的文件，默认值是开发机器上的一个文件；第 4 步把 `DV_ENV_FILE` 设成了 `/dev/null`。要从文件加载提供方 key（例如 `GROQ_API_KEY`），把 `DV_ENV_FILE` 设成那个文件。
+
 Web 界面监听 `8092` 端口。打开命令打印的 URL，例如 `http://127.0.0.1:8092/?token=…`；其中的 token 用于登录。要从另一台机器打开页面，在命令后加上 `--trusted-host <host name>`。
 
 ### 6. 做出你的第一个视频
 
 1. 在首页的提示词输入框里写下你想要的内容，例如 `Make a 5-second video of a corgi chef flipping pancakes in a sunny kitchen.`，然后按 Enter。DreamVerse 会创建一个项目并打开它。
 2. agent 提问时，选择一个答案并点击 **Submit**。
-3. 渲染之前，agent 会问 **OK to render?**。选择 **Yes, render this shot**。
-4. take 出现在 **Canvas** 上，agent 把它放到 **Timeline** 上。**History** 面板列出每一步，任何一步都可以撤销。
-5. 打开 **Timeline** 标签页，点击 **Export** 保存视频文件。
+3. 渲染之前，agent 会请你确认这个镜头，例如 **Shall I render this one 5-second shot, and in which framing?**。问题和选项在每次对话中都不一样。选择一个 **Yes** 开头的答案，例如 **Yes — 16:9 widescreen**，然后点击 **Submit**。在 2 块 NVIDIA GB200 GPU 上，一个 5 秒的镜头大约需要 3 分钟。
+4. take 出现在 **Canvas** 上。**History** 面板列出每一步，任何一步都可以撤销。
+5. 打开 **Timeline** 标签页。如果它显示 **The project has no timelines yet**，说明 agent 没有把 take 放到时间线上。在对话里告诉 agent：`Put the shot on the timeline.`
+6. 点击 **Export**。导出完成后，点击 **Open the exported video**。视频会在新的浏览器标签页中打开。用 `.mp4` 文件名保存它，因为链接没有文件扩展名。
 
 <a id="how-it-works"></a>
 
