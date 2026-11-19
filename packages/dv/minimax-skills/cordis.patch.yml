@@ -1,3 +1,5 @@
 - insert:
     - id: minimax-skills
       name: '@dv/minimax-skills'
+    - id: ui-minimax-skills
+      name: '@dv/ui-minimax-skills'

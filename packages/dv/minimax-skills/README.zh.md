@@ -9,16 +9,18 @@ kind: "package-reference"
 
 ## 使用插件
 
-安装并挂载一个包即可将九个固定版本的 MiniMax 技能注册到现有中央技能注册器。Host 只要求 `skills` 服务，不运行时依赖项目、画布、图像、音频或视频插件。工具与浏览器扩展只在现有服务存在时启用。
+安装并挂载一个包即可将九个固定版本的 MiniMax 技能注册到现有中央技能注册器。Host 只要求 `skills` 服务，不运行时依赖项目、画布、图像、音频或视频插件。引用工具与预览路由只在现有服务存在时启用。
 
-包内声明自己的 `dsh.bundle` 补丁，安装后即可自动选择并挂载其中唯一一行插件。手动组合时对应配置为：
+包内声明自己的 `dsh.bundle` 补丁，安装后即可自动选择并挂载两行插件：本 Host 插件及其浏览器包 [`@dv/ui-minimax-skills`](../ui-minimax-skills/README.zh.md)。手动组合时对应配置为：
 
 ```yaml
 - id: minimax-skills
   name: '@dv/minimax-skills'
+- id: ui-minimax-skills
+  name: '@dv/ui-minimax-skills'
 ```
 
-在本仓库先运行 `pnpm exec tsc -b packages/dv/minimax-skills`，再运行 `pnpm --filter @dv/minimax-skills run bundle` 构建。可用 `pnpm --filter @dv/minimax-skills pack --pack-destination /tmp` 生成本地安装包，再用 `dsh plugin --profile <profile> add <archive>` 安装。当前改动准备可分发包，不会向 npm 发布。
+在本仓库先运行 `pnpm exec tsc -b packages/dv/minimax-skills packages/dv/ui-minimax-skills`，再运行 `pnpm --filter @dv/ui-minimax-skills run bundle` 构建。可用 `pnpm --filter @dv/minimax-skills pack --pack-destination /tmp` 生成本地安装包，再用 `dsh plugin --profile <profile> add <archive>` 安装。当前改动准备可分发包，不会向 npm 发布。
 
 沿用 `tool-skill` 的目录与 `/name` 调用，例如发送 `/h3-prompt-writing 写一个产品视频提示词`。在首页或探索区的 MiniMax 标签选择模板，会把 `/name ` 填入当前草稿；补充需求并发送才调用技能。点击卡片不会创建项目或启动生成。单个 SKILL.md 的导入仍属于通用技能导入功能，不要求包装成插件。
 
@@ -26,25 +28,23 @@ kind: "package-reference"
 
 启动时只读取由固定技能头部生成的 `assets/catalog.json` 元数据。列目录不读任何 SKILL.md 正文。调用 `ctx.skills.get()` 时才通过现有文件系统提供方加载指定技能，并追加本包独立维护的 DreamVerse 适配说明；其他技能正文及引用文件不加载。标准 slash 处理器负责注入，模型自行选择时沿用 `skill` 工具，没有新增专用 agent 或媒体执行引擎。
 
-工具注册器存在时，`dv_minimax_read_reference` 读取指定技能 `references/` 或 `agents/` 下的文本文档。参数 `skill` 是精确技能名，`path` 相对该技能目录。工具检查注册器当前胜出项、真实路径归属与字节上限，拒绝未知技能、路径越界与跨技能读取，不执行脚本。
+工具注册器存在时，`dv_skill_read_reference` 读取指定技能 `references/` 或 `agents/` 下的文本文档。参数 `skill` 是精确技能名，`path` 相对该技能目录。工具检查注册器当前胜出项、真实路径归属与字节上限，拒绝未知技能、路径越界与跨技能读取，不执行脚本。
 
-可选浏览器模块拥有标签、卡片和 GIF。插件通过认证的 `GET /api/minimax/previews/<filename>` Connection 路由服务固定预览资源，不依赖 Web 应用公共目录或媒体提供方的 MiniMax 专用改动。移除插件会清理技能目录、引用工具、预览路由和 UI 扩展。历史会话中已记录的指令仍保留，验证无插件基线时应使用新会话。
+浏览器包 `@dv/ui-minimax-skills` 拥有标签和卡片。本插件通过认证的 `GET /api/minimax/previews/<skill>.gif` Connection 路由服务固定预览 GIF，不依赖 Web 应用公共目录或媒体提供方的 MiniMax 专用改动。移除插件会清理技能目录、引用工具、预览路由和 UI 扩展。历史会话中已记录的指令仍保留，验证无插件基线时应使用新会话。
 
 ## 配置与兼容
 
 | 字段 | 默认值 | 行为 |
 | --- | --- | --- |
-| `legacyProjectSelections` | `true` | 项目服务存在时，通过通用 `listProjects()`、`listRecords()` 读取已有 `proj.create.params.minimax_skill` |
-| `defaultSkill` | 未设置 | 为不显式使用 slash 的调用方指定一个技能 |
 | `referenceMaxBytes` | `1048576` | 单次引用读取的字节上限 |
 
-不会改写已有项目或会话记录。可选适配器理解历史 `dv-minimax-skill` 上下文并沿用旧项目选择，显式 slash 优先。新调用不要求 MiniMax 专用项目创建或持久化字段；原来的正则自动路由改为标准元数据目录与模型选择。
+只有用户发送 `/name` 或模型通过 `skill` 工具加载时，技能才会运行。插件不读写任何项目数据。原来的正则自动路由改为标准元数据目录与模型选择。
 
 来源与版本见 `assets/SOURCE.json`，官方技能文件保持原样。主动升级版本后运行 `pnpm --filter @dv/minimax-skills run catalog:generate` 更新目录。适配说明与上游技能分离维护。
 
 ## 模型体验
 
-模型通过标准目录看到名称和描述，只有加载技能或沿用旧选择/默认选择时才收到完整指令与适配说明。引用文本由受限工具返回。媒体任务仍由现有工具执行，沿用其参数与审批规则。
+模型通过标准目录看到名称和描述，只有加载技能后才收到完整指令与适配说明。引用文本由受限工具返回。媒体任务仍由现有工具执行，沿用其参数与审批规则。
 
 ### KV Cache 影响
 
@@ -52,4 +52,4 @@ kind: "package-reference"
 
 ## 已知限制与延期工作
 
-- **部署能力** — 技能涉及的部分 MiniMax Hub 能力可能不存在。适配器只映射已有 DreamVerse 工具，要求检查实际模型支持并披露缺失能力；安装本包不会安装、配置或授权媒体服务、独立音乐生成、字幕渲染或任意 Hub 编辑。可选 UI 使用通用 `dv.templates` 首页插槽与探索区插槽，无浏览器时仍可使用 Host 技能。旧适配器保留历史选择，不重建旧项目创建 UI。无需单独 invariant 导出：实际 Loader 组合测试覆盖目录所有权、按需读取和卸载清理。
+- **部署能力** — 技能涉及的部分 MiniMax Hub 能力可能不存在。适配器只映射已有 DreamVerse 工具，要求检查实际模型支持并披露缺失能力；安装本包不会安装、配置或授权媒体服务、独立音乐生成、字幕渲染或任意 Hub 编辑。可选 UI 使用通用 `dv.templates` 首页插槽与探索区插槽，无浏览器时仍可使用 Host 技能。无需单独 invariant 导出：实际 Loader 组合测试覆盖目录所有权、按需读取和卸载清理。

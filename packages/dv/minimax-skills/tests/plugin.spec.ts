@@ -1,4 +1,4 @@
-/** Real Loader composition: optional skill-set installation, lazy loading, old records and complete disposal. */
+/** Real Loader composition: optional skill-set installation, lazy loading and complete disposal. */
 import { mkdtemp, writeFile, rm, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,7 +26,7 @@ vi.mock('node:fs/promises', async (original) => {
   return { ...actual, readFile: vi.fn(actual.readFile) }
 })
 
-async function boot(tools = false, project?: object, routes?: Map<string, ConnectionFetchRoute>) {
+async function boot(tools = false, routes?: Map<string, ConnectionFetchRoute>) {
   const dir = await mkdtemp(join(tmpdir(), 'minimax-plugin-'))
   const key = randomUUID()
   const globals = globalThis as typeof globalThis & { __miniMaxPlugins?: Record<string, Record<string, object>> }
@@ -35,8 +35,9 @@ async function boot(tools = false, project?: object, routes?: Map<string, Connec
     ...(tools ? { systemPrompt: SystemPrompt, tools: ToolRuntime, agents: AgentRegistry, toolSkill: ToolSkill } : {}) }
   globals.__miniMaxPlugins[key] = plugins
   const ownPatch = parse(await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')) as Array<{ insert: Array<{ id: string; name: string }> }>
-  const [ownRow] = ownPatch.flatMap(patch => patch.insert)
-  expect(ownRow).toEqual({ id: 'minimax-skills', name: '@dv/minimax-skills' })
+  expect(ownPatch.flatMap(patch => patch.insert)).toEqual([
+    { id: 'minimax-skills', name: '@dv/minimax-skills' }, { id: 'ui-minimax-skills', name: '@dv/ui-minimax-skills' },
+  ])
   const entries = []
   for (const id of Object.keys(plugins)) {
     const path = join(dir, `${id}.mjs`)
@@ -46,7 +47,6 @@ async function boot(tools = false, project?: object, routes?: Map<string, Connec
   const config = join(dir, 'cordis.yml')
   await writeFile(config, JSON.stringify(entries))
   const ctx = new Context()
-  if (project !== undefined) ctx.provide('dvProject', project as never)
   if (routes !== undefined) ctx.provide('connection', { fetch: { register: (route: ConnectionFetchRoute) => {
     routes.set(route.path, route)
     return async () => { routes.delete(route.path) }
@@ -106,7 +106,7 @@ describe('standalone MiniMax skills', () => {
     const directory = fileURLToPath(new URL('../assets/skills/h3-prompt-writing', import.meta.url))
     await expect(text.replaceAll(directory, '$SKILL_DIR') + '\n').toMatchFileSnapshot('./expected/h3-invocation.txt')
     const read = (skill: string, path: string) => ctx.tools.execute({
-      name: 'dv_minimax_read_reference', callId: ToolCallId('reference'), arguments: { skill, path }, agent, signal: new AbortController().signal,
+      name: 'dv_skill_read_reference', callId: ToolCallId('reference'), arguments: { skill, path }, agent, signal: new AbortController().signal,
     })
     const reference = await read('h3-prompt-writing', 'references/ref-en.txt')
     expect(reference.isError).toBe(false)
@@ -117,28 +117,13 @@ describe('standalone MiniMax skills', () => {
     const entry = [...ctx.loader.entries()].find(item => item.options.id === 'minimax-skills')
     await entry?.fiber?.dispose()
     expect(await ctx.skills.list()).toEqual([])
-    expect(ctx.tools.get('dv_minimax_read_reference', agent)).toBeUndefined()
+    expect(ctx.tools.get('dv_skill_read_reference', agent)).toBeUndefined()
   })
 
-  it('reads old project choices using generic records and never rewrites the project', async () => {
-    const records = Object.freeze([{ operation: 'proj.create', params: { minimax_skill: 'h3-prompt-writing' } }])
-    const projects = { listProjects: () => [{ id: 'old-project', path: '/existing-project' }], listRecords: vi.fn(() => records) }
-    const { ctx } = await boot(true, projects)
-    const agent = agentFor(ctx, '/existing-project')
-    const decision = await agentEvents(ctx, agent).waterfall('agent/pre-step', {
-      messages: [createUserMessage({ source: { kind: 'user' }, content: [{ type: 'text', text: 'Write a prompt for this product' }] })],
-      turn: 1, step: 1, signal: new AbortController().signal,
-    }, () => Promise.resolve({ kind: 'enter' as const, messages: [] }))
-    expect(decision.kind).toBe('enter')
-    if (decision.kind !== 'enter') throw new Error('Unexpected rejected step')
-    expect(decision.messages.filter(message => message.source.kind === 'dv-minimax-skill')).toHaveLength(1)
-    expect(projects.listRecords).toHaveBeenCalledWith('old-project')
-    expect(records).toEqual([{ operation: 'proj.create', params: { minimax_skill: 'h3-prompt-writing' } }])
-  })
   it('serves only packaged previews through optional Connection routes and removes them on disposal', async () => {
     const routes = new Map<string, ConnectionFetchRoute>()
-    const { ctx } = await boot(false, undefined, routes)
-    expect(routes.size).toBe(9)
+    const { ctx } = await boot(false, routes)
+    expect([...routes.keys()].sort()).toEqual(MINIMAX_SKILLS.map(skill => `/api/minimax/previews/${skill}.gif`).sort())
     const [route] = routes.values()
     if (route === undefined) throw new Error('Missing preview route')
     const response = await route.fetch(new Request(`http://localhost${route.path}`))

@@ -7,9 +7,8 @@
   },
   "include": [
     "src/index.ts",
-    "src/legacy.ts",
     "src/catalog.ts",
-    "src/source.ts"
+    "src/types.ts"
   ],
   "references": [
     {
@@ -28,16 +27,7 @@
       "path": "../../core/tools"
     },
     {
-      "path": "../../llm/llm"
-    },
-    {
-      "path": "../../core/agent"
-    },
-    {
       "path": "../../client/connection/tsconfig.host.json"
-    },
-    {
-      "path": "../project"
     }
   ]
 }

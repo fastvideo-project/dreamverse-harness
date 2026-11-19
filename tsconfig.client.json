@@ -152,6 +152,7 @@
     { "path": "./packages/dv/ui-skills" },
     { "path": "./packages/dv/ui-shell" },
     { "path": "./packages/dv/minimax-skills/tsconfig.client.json" },
+    { "path": "./packages/dv/ui-minimax-skills" },
     { "path": "./packages/dv/ui-composer" },
     { "path": "./packages/dv/ui-openrouter" },
     { "path": "./packages/dv/ui-character" },

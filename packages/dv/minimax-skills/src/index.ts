@@ -1,4 +1,4 @@
-/** Independently installed MiniMax skill catalog, lazy instructions, references and optional browser previews. */
+/** Independently installed MiniMax skill catalog, lazy instructions, references and preview GIFs. */
 import { readFileSync } from 'node:fs'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join, relative, sep } from 'node:path'
@@ -10,8 +10,6 @@ import { FileSystemSkillProvider } from '@deepseek-ai/dsh-skill-filesystem'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from '@deepseek-ai/dsh-client-connection'
 import { MINIMAX_SKILLS, PREVIEWS, isMiniMaxSkill } from './catalog.ts'
-import './source.ts'
-import { installLegacySelections } from './legacy.ts'
 
 const ASSETS = fileURLToPath(new URL('../assets/', import.meta.url))
 const ROOT = join(ASSETS, 'skills')
@@ -19,33 +17,26 @@ const PROVIDER = 'minimax-h3'
 
 /** Cordis identity of the standalone skill-set plugin. */
 export const name = 'dv-minimax-skills'
-/** The registry is the only required Host capability; project, media and browser services are optional. */
+/** The registry is the only required Host capability; the tool registry and Connection are optional. */
 export const inject = ['skills']
 
-/** Optional legacy selections and bounded bundled reference reads. */
+/** Bounded bundled reference reads. */
 export interface Config {
-  /** Honor already persisted project choices without changing project storage. */
-  legacyProjectSelections?: boolean
-  /** Explicit startup selection for headless callers; omission uses normal skill discovery. */
-  defaultSkill?: string
   /** Maximum bytes admitted for one bundled reference document. */
   referenceMaxBytes?: number
 }
 
 /** Validated plugin-owned settings. */
 export const Config: z<Config> = z.object({
-  legacyProjectSelections: z.boolean().default(true),
-  defaultSkill: z.string(),
   referenceMaxBytes: z.natural().min(1).default(1024 * 1024),
 })
 
 /** Register summaries without reading skill bodies; the standard loader reads bodies only on demand.
  * @param ctx - context carrying the central skill registry.
- * @param config - reference bounds and optional legacy project support.
+ * @param config - reference bounds.
  */
 export function apply(ctx: Context, config: Config = {}): void {
   const resolved = Config(config)
-  if (resolved.defaultSkill !== undefined && !isMiniMaxSkill(resolved.defaultSkill)) throw new Error('Unknown MiniMax defaultSkill')
   const metadata = JSON.parse(readFileSync(join(ASSETS, 'catalog.json'), 'utf8')) as Array<{ name: string; description: string }>
   if (metadata.length !== MINIMAX_SKILLS.length
     || MINIMAX_SKILLS.some(skill => metadata.filter(item => item.name === skill).length !== 1)) {
@@ -70,13 +61,13 @@ export function apply(ctx: Context, config: Config = {}): void {
         const loaded = await filesystem.get(candidate, options)
         if (loaded === undefined) return undefined
         const adapter = await readFile(join(ASSETS, 'compatibility.md'), { encoding: 'utf8', signal: options.signal })
-        return { ...loaded, content: `${loaded.content}\n\n${adapter}\n\nFor required reference documents, call dv_minimax_read_reference with skill="${loaded.name}" and the relative resource path.` }
+        return { ...loaded, content: `${loaded.content}\n\n${adapter}\n\nFor required reference documents, call dv_skill_read_reference with skill="${loaded.name}" and the relative resource path.` }
       },
     }
   })
   ctx.inject(['tools'], (child) => {
     child.tools.register(defineTool({
-      name: 'dv_minimax_read_reference',
+      name: 'dv_skill_read_reference',
       description: 'Read a bundled reference document for a MiniMax skill. Supply the exact skill name and its relative references/ or agents/ path.',
       parameters: {
         skill: { type: 'string', required: true, description: 'Exact MiniMax skill name.' },
@@ -108,13 +99,10 @@ export function apply(ctx: Context, config: Config = {}): void {
       },
     }))
   })
-  if (resolved.legacyProjectSelections === true || resolved.defaultSkill !== undefined) {
-    installLegacySelections(ctx, resolved.legacyProjectSelections === true, resolved.defaultSkill)
-  }
   ctx.inject(['connection'], (child) => {
-    for (const filename of Object.values(PREVIEWS)) {
+    for (const [skill, filename] of Object.entries(PREVIEWS)) {
       child.effect(() => child.connection.fetch.register({
-        path: `/api/minimax/previews/${filename}`, methods: ['GET'], requestBody: 'buffered',
+        path: `/api/minimax/previews/${skill}.gif`, methods: ['GET'], requestBody: 'buffered',
         fetch: async () => new Response(await readFile(join(ASSETS, 'previews', filename)), {
           headers: { 'content-type': 'image/gif', 'cache-control': 'private, max-age=86400' },
         }),
