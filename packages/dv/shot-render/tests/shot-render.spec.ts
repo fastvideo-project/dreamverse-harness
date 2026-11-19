@@ -261,7 +261,9 @@ async function start(options: { tasks?: VideoTask[]; live?: FakeLiveStream } = {
   ctx.loader.builtins.include = Include
   await ctx.loader.create({ name: 'cordis:include', config: { path: pathToFileURL(join(dir, 'cordis.yml')).href } })
   await ctx.loader.await()
-  const lanes: Record<VideoTask, FakeLane> = { ref2v: reference, t2v: text, fl2v: reference, i2v: reference, l2v: reference }
+  const lanes: Record<VideoTask, FakeLane> = {
+    ref2v: reference, t2v: text, fl2v: reference, i2v: reference, l2v: reference, v2v: reference,
+  }
   for (const task of tasks) ctx.effect(() => ctx.dvModels.register(fakeEntry(task, lanes[task])))
   disposers.push(async () => {
     await ctx.fiber.dispose()
@@ -376,6 +378,46 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(fixture.reference.requests).toEqual([])
   })
 
+  it('refuses a v2v call that is not exactly one reference input before recording', async () => {
+    const fixture = await start({ tasks: ['v2v'] })
+    const take = fixture.put(Buffer.from('TAKE'), 'video/mp4', 'take.mp4')
+    const params = { ...TXT, task: 'v2v', prompt: 'A door opens' }
+    const reference = { role: 'reference', ref: { asset: take } }
+    const count = () => fixture.ctx.dvProject.getState(fixture.project).components.proj.records.length
+    const before = count()
+    await expect(fixture.record('shot.render', params, [])).rejects.toThrow('Task v2v regenerates one reference video')
+    await expect(fixture.record('shot.render', params, [reference, reference])).rejects.toThrow('one reference input')
+    await expect(fixture.record('shot.render', params, [reference, { role: 'first_frame', ref: { asset: take } }]))
+      .rejects.toThrow('with no first_frame or last_frame')
+    expect(count()).toBe(before)
+    expect(fixture.reference.requests).toEqual([])
+  })
+
+  it('regenerates a take in task v2v from the take reference that the tool description names', async () => {
+    const fixture = await start({ tasks: ['t2v', 'v2v'] })
+    const description = fixture.ctx.tools.schemas().find(schema => schema.name === 'dv_shot_render')?.description ?? ''
+    expect(description).toContain('Task v2v regenerates one existing take, passed as its one reference input (<record>#0, ')
+    const take = value(await fixture.call('dv_shot_render', { ...TXT, reason: 'draft', prompt: 'A door opens', duration_sec: 1 }))
+    const upscaled = value(await fixture.call('dv_shot_render', {
+      ...TXT, task: 'v2v', reason: 'upscale', prompt: 'A door opens', inputs: { reference: `${take.record}#0` },
+    }))
+    expect(upscaled.status).toBe('done')
+    expect(fixture.reference.requests.map(request => request.references)).toEqual([[take.outputs[0]?.asset_id]])
+  })
+
+  it('lets an agent v2v render use a model other than the conversation choice and refuses other tasks', async () => {
+    const fixture = await start({ tasks: ['t2v'] })
+    fixture.ctx.effect(() => fixture.ctx.dvModels.register(fakeEntry('v2v', fixture.reference, 'upscaler')))
+    value(await fixture.call('dv_models_select', { provider: 'test', model: 'fake', reason: 'Draft with fake' }))
+    const take = value(await fixture.call('dv_shot_render', { ...TXT, reason: 'draft', prompt: 'A door opens', duration_sec: 1 }))
+    const upscaled = value(await fixture.call('dv_shot_render', {
+      ...TXT, task: 'v2v', model: 'upscaler', reason: 'upscale', prompt: 'A door opens', inputs: { reference: `${take.record}#0` },
+    }))
+    expect(upscaled.status).toBe('done')
+    expect(failure(await fixture.call('dv_shot_render', { ...TXT, model: 'upscaler', reason: 'draft', prompt: 'A door opens', duration_sec: 1 })))
+      .toContain("This conversation's video model is test/fake.")
+  })
+
   it('registers shot.render while the catalog holds a model, and removes it on disposal', async () => {
     const fixture = await start()
     expect(renderSpec(fixture)).toMatchObject({
@@ -396,7 +438,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     expect(tool?.description).toContain('Uses the GPU.')
     expect(JSON.stringify(tool?.parameters)).toContain('continue_from')
     // The catalog serves the labels of both tasks while the service lives.
-    const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' } }
+    const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' }, v2v: { zh: '视频重生成（如 2K 超分）', en: 'Regenerate a video (e.g. 2K)' } }
     expect(fixture.ctx.dvModels.taskLabels()).toEqual(labels)
     const entry = [...fixture.ctx.loader.entries()].find(candidate => candidate.options.name.endsWith('/dv-shot-render.mjs'))
     await entry?.fiber?.dispose()
