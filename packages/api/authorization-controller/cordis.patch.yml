@@ -1,0 +1,12 @@
+# Optional ChatGPT (Codex) sign-in. llm-pi-ai already registers the flow and the
+# route; this row only lets a browser reach that one flow. Anthropic's
+# subscription login stays unlisted. Browser login waits on the Host's loopback,
+# so the page prefers the device code, which works from any browser.
+- insert:
+    - id: authorization-controller
+      name: '@deepseek-ai/dsh-api-authorization-controller'
+      config:
+        flows:
+          - llm-pi-ai/openai-codex
+        preferredOptions:
+          llm-pi-ai/openai-codex: device_code
