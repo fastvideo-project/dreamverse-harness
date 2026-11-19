@@ -4,7 +4,7 @@
 
 <p align="center"><img src="docs/user/guide/dreamverse-logo.svg" alt="DreamVerse" width="520"></p>
 
-<p align="center"><strong>用你自己的模型，做开源 AI 电影。</strong></p>
+<p align="center"><strong>用你自己的 GPU，做开源 AI 电影。</strong></p>
 
 <p align="center"><a href="#features">功能</a> · <a href="#get-started">快速开始</a> · <a href="#how-it-works">工作原理</a> · <a href="#community">社区</a></p>
 
@@ -163,6 +163,36 @@ Web 界面监听 `8092` 端口。打开命令打印的 URL，例如 `http://127.
 4. take 出现在 **Canvas** 上。**History** 面板列出每一步，任何一步都可以撤销。
 5. 打开 **Timeline** 标签页。如果它显示 **The project has no timelines yet**，说明 agent 没有把 take 放到时间线上。在对话里告诉 agent：`Put the shot on the timeline.`
 6. 点击 **Export**。导出完成后，点击 **Open the exported video**。视频会在新的浏览器标签页中打开。用 `.mp4` 文件名保存它，因为链接没有文件扩展名。
+
+<a id="set-up-on-dgx-spark"></a>
+
+### 在 DGX Spark 上设置
+
+要在一到四台 NVIDIA DGX Spark 上设置 DreamVerse Harness、FastVideo 和本地 LLM，可以交给编程 agent 来做。在 Codex 或 Claude Code 中安装 [`dreamverse-dgx-spark-setup`](.agents/skills/dreamverse-dgx-spark-setup/SKILL.md) skill，然后让 agent 在你的 DGX Spark 上设置 DreamVerse：
+
+```sh
+npx skills add fastvideo-project/dreamverse-harness --skill dreamverse-dgx-spark-setup
+```
+
+agent 会检查每台 DGX Spark，按你的硬件选择模型布局，安装 FastVideo、LLM 和 DreamVerse Harness，并用一次测试渲染检查每台机器。如果想自己动手，按照 [DGX Spark 指南](scripts/video-harness/dgx-spark.md)操作，它给出了完整的命令，并在每一步之后附有检查。指南包含以下方案：
+
+**[一台 DGX Spark，完全本地](scripts/video-harness/dgx-spark.md#1-fully-local-on-one-dgx-spark)。** Qwen 3.8 27B（在 vLLM 下约 39 GB）和 FastH3 Trim（渲染时约 45 GB）共用一台机器：
+
+1. 准备机器：带 CUDA 13 的 DGX OS、至少 120 GB 的可用磁盘空间、Hugging Face 登录（`hf auth login`），以及一个内存看门狗，因为内存不足可能让 GB10 卡死。
+2. 下载权重：
+
+   ```sh
+   hf download nvidia/Qwen3.8-27B-NVFP4 --local-dir ~/models/Qwen3.8-27B-NVFP4
+   hf download FastVideo/FastVideo-FastH3-Trim-8-Step-NVFP4 --local-dir ~/models/FastH3-Trim-8-Step-NVFP4
+   ```
+
+3. 用 vLLM 的 nightly CUDA 13 wheel 在 8000 端口提供 Qwen，并设置 `--gpu-memory-utilization 0.32`，让 FastH3 能放在它旁边。先启动它，因为它第一次启动时会编译 kernel。
+4. 按照 FastVideo 的 [DGX Spark 指南](https://github.com/hao-ai-lab/FastVideo/blob/main/docs/getting_started/installation/spark_performance.md)安装 FastVideo，并用本地权重在 18000 端口以 `examples/serving/openai_fasth3_trim_spark.yaml` 提供 FastH3 Trim。
+5. 构建 DreamVerse Harness，创建它的 profile，并写一个 profile patch，让 agent 指向 Qwen，让 `dv-fastvideo` 指向 FastH3 Trim。然后用 `scripts/video-harness/launch.sh web` 启动 Web 界面，并在 DGX Spark 的浏览器中打开打印出的 URL。
+
+**[多台 DGX Spark](scripts/video-harness/dgx-spark.md#2-several-dgx-sparks)。** 每台 DGX Spark 运行自己的 FastVideo 服务器，绑定到它在直连线缆或局域网上的地址，并带有一个模型目录（`server.model_catalog`），让 agent 可以在上面加载和卸载模型。在 profile patch 中，为每个模型填上其服务器的 `baseUrl`，并在每个带模型目录的服务器上设置 `managed: true`。一个 FastH3 NVFP4 模型占用 40 到 55 GB，所以一台 DGX Spark 能放两个，或者在 Qwen 旁边放一个。
+
+**[两台 DGX Spark 上的 2K](scripts/video-harness/dgx-spark.md#3-a-2k-upscale-split-across-two-dgx-sparks)。** 两台用线缆连接的 DGX Spark 通过 Ray 以序列并行（`sp_size: 2`）运行一个 Open-H3-Regenerate-2K 服务器，每台机器精修每个片段的一半。
 
 <a id="how-it-works"></a>
 

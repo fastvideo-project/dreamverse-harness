@@ -4,7 +4,7 @@ English | [中文](README.zh.md)
 
 <p align="center"><img src="docs/user/guide/dreamverse-logo.svg" alt="DreamVerse" width="520"></p>
 
-<p align="center"><strong>Open-source AI filmmaking on your own models.</strong></p>
+<p align="center"><strong>Open-source AI filmmaking on your own GPUs.</strong></p>
 
 <p align="center"><a href="#features">Features</a> · <a href="#get-started">Get started</a> · <a href="#how-it-works">How it works</a> · <a href="#community">Community</a></p>
 
@@ -161,6 +161,34 @@ The web interface listens on port `8092`. Open the URL that the command prints, 
 4. The take appears on the **Canvas**. The **History** panel lists every step, and you can undo any of them.
 5. Open the **Timeline** tab. If it says **The project has no timelines yet**, the agent did not place the take on a timeline. Ask the agent in the chat: `Put the shot on the timeline.`
 6. Click **Export**. When the export finishes, click **Open the exported video**. The video opens in a new browser tab. Save it with a `.mp4` file name, because the link has no file extension.
+
+### Set up on DGX Spark
+
+To set up DreamVerse Harness, FastVideo and a local LLM on one to four NVIDIA DGX Sparks, let a coding agent do it. Install the [`dreamverse-dgx-spark-setup`](.agents/skills/dreamverse-dgx-spark-setup/SKILL.md) skill in Codex or Claude Code, and ask the agent to set up DreamVerse on your DGX Sparks:
+
+```sh
+npx skills add fastvideo-project/dreamverse-harness --skill dreamverse-dgx-spark-setup
+```
+
+The agent inspects each DGX Spark, chooses a model layout for the hardware you have, installs FastVideo, the LLM and DreamVerse Harness, and checks every box with a test render. To do it yourself, follow the [DGX Spark guide](scripts/video-harness/dgx-spark.md), which has the full commands and a check after each step. The guide has these recipes:
+
+**[One DGX Spark, fully local](scripts/video-harness/dgx-spark.md#1-fully-local-on-one-dgx-spark).** Qwen 3.8 27B (about 39 GB under vLLM) and FastH3 Trim (about 45 GB while rendering) share one box:
+
+1. Prepare the box: DGX OS with CUDA 13, at least 120 GB of free disk, a Hugging Face login (`hf auth login`), and a memory watchdog, because an out-of-memory condition can freeze a GB10.
+2. Download the weights:
+
+   ```sh
+   hf download nvidia/Qwen3.8-27B-NVFP4 --local-dir ~/models/Qwen3.8-27B-NVFP4
+   hf download FastVideo/FastVideo-FastH3-Trim-8-Step-NVFP4 --local-dir ~/models/FastH3-Trim-8-Step-NVFP4
+   ```
+
+3. Serve Qwen with the nightly CUDA 13 wheels of vLLM on port 8000, with `--gpu-memory-utilization 0.32` so that FastH3 fits beside it. Start it first, because its first start compiles kernels.
+4. Install FastVideo by its [DGX Spark guide](https://github.com/hao-ai-lab/FastVideo/blob/main/docs/getting_started/installation/spark_performance.md), and serve FastH3 Trim from `examples/serving/openai_fasth3_trim_spark.yaml` with the local weights on port 18000.
+5. Build DreamVerse Harness, create its profile, and write a profile patch that points the agent at Qwen and `dv-fastvideo` at FastH3 Trim. Then launch the web interface with `scripts/video-harness/launch.sh web`, and open the printed URL in the browser of the DGX Spark.
+
+**[Several DGX Sparks](scripts/video-harness/dgx-spark.md#2-several-dgx-sparks).** Every DGX Spark runs its own FastVideo server, bound to its address on the direct cable or the LAN, with a model catalog (`server.model_catalog`) so that the agent can load and unload models on it. In the profile patch, give each model its server's `baseUrl`, and set `managed: true` on each catalog server. One FastH3 NVFP4 model takes 40 to 55 GB, so two fit in a DGX Spark, or one beside Qwen.
+
+**[2K across two DGX Sparks](scripts/video-harness/dgx-spark.md#3-a-2k-upscale-split-across-two-dgx-sparks).** Two cabled DGX Sparks run one Open-H3-Regenerate-2K server with sequence parallel over Ray (`sp_size: 2`), so each box refines half of each clip.
 
 ## How it works
 
