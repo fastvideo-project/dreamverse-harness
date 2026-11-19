@@ -28,7 +28,7 @@ describe('OpenRouter video API', () => {
 
   it('keeps the video catalog without reference media when only the models catalog fails', async () => {
     const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async (input) => {
-      const url = String(input)
+      const url = input instanceof Request ? input.url : input.toString()
       if (url.endsWith('/videos/models')) return Response.json(catalog)
       return new Response('{}', { status: 503 })
     })

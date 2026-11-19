@@ -6,6 +6,20 @@ function strings(value: unknown): string[] {
 }
 
 /**
+ * The object rows of a catalog response's `data` array, as field maps; a row that is not an object is left out.
+ * @param value - the response JSON.
+ * @param list - the catalog's name in the error, such as `image catalog`.
+ * @returns one field map per object row.
+ * @throws Error when the response has no `data` array.
+ */
+function catalogRows(value: unknown, list: string): Array<Map<string, unknown>> {
+  if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
+    throw new Error(`OpenRouter returned an invalid ${list}.`)
+  }
+  return value.data.flatMap((row: unknown) => typeof row === 'object' && row !== null ? [new Map<string, unknown>(Object.entries(row))] : [])
+}
+
+/**
  * Parse `GET /videos/models`. Models missing supported durations or output choices cannot serve the harness video
  * contract and are left out.
  * @param value - the response JSON.
@@ -48,12 +62,7 @@ const REFERENCE_MEDIA: readonly ReferenceMedia[] = ['image', 'video', 'audio']
  * @throws Error when the response has no `data` array.
  */
 export function videoReferences(value: unknown): Map<string, ReferenceMedia[]> {
-  if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
-    throw new Error('OpenRouter returned an invalid video model list.')
-  }
-  return new Map(value.data.flatMap((row: unknown): Array<[string, ReferenceMedia[]]> => {
-    if (typeof row !== 'object' || row === null) return []
-    const fields = new Map<string, unknown>(Object.entries(row))
+  return new Map(catalogRows(value, 'video model list').flatMap((fields): Array<[string, ReferenceMedia[]]> => {
     const id = fields.get('id')
     const architecture = fields.get('architecture')
     const inputs = typeof architecture === 'object' && architecture !== null
@@ -92,12 +101,7 @@ function enumValues(descriptor: unknown): ImageParameterChoices | null {
  * @throws Error when the response has no `data` array.
  */
 export function imageCatalog(value: unknown): ImageModel[] {
-  if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
-    throw new Error('OpenRouter returned an invalid image catalog.')
-  }
-  return value.data.flatMap((row: unknown) => {
-    if (typeof row !== 'object' || row === null) return []
-    const fields = new Map<string, unknown>(Object.entries(row))
+  return catalogRows(value, 'image catalog').flatMap((fields) => {
     const id = fields.get('id')
     const outputs = outputModalities(fields.get('architecture'))
     const supported = fields.get('supported_parameters')
@@ -126,12 +130,7 @@ const SPEECH_ENDPOINT = '/api/v1/audio/speech'
  * @throws Error when the response has no `data` array.
  */
 export function speechCatalog(value: unknown): SpeechModel[] {
-  if (typeof value !== 'object' || value === null || !('data' in value) || !Array.isArray(value.data)) {
-    throw new Error('OpenRouter returned an invalid speech catalog.')
-  }
-  return value.data.flatMap((row: unknown) => {
-    if (typeof row !== 'object' || row === null) return []
-    const fields = new Map<string, unknown>(Object.entries(row))
+  return catalogRows(value, 'speech catalog').flatMap((fields) => {
     const id = fields.get('id')
     const outputs = outputModalities(fields.get('architecture'))
     const endpoints = fields.get('endpoints')
