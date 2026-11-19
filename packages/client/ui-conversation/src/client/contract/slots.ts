@@ -136,9 +136,9 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
       /**
        * `view` pins the rendered View instead of the stored selection. `focus`, given with `view`, addresses one
        * focus identity to that View, which acknowledges it like a stored `viewRequest`; a changed value addresses it
-       * again.
+       * again. `inspectCall` routes inspection through the owner instead of changing this occurrence's View.
        */
-      owner: { view?: string; focus?: string }
+      owner: { view?: string; focus?: string; inspectCall?: (callId: string) => void }
     }
     /** Resident navigation container, including when no Session is selected. */
     'conversation.header': { kind: 'single'; scope: 'session-maybe' }
