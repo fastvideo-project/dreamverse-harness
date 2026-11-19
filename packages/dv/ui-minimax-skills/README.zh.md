@@ -7,6 +7,10 @@ kind: "package-reference"
 
 [English](README.md) | 中文
 
+## 概述
+
+使用本包可从模板卡片启动 MiniMax 技能。本包在 DreamVerse 首页和探索区显示九张带预览 GIF 的卡片。点击卡片会把 `/<skill> ` 填入聊天输入框；用户补充需求后发送消息。
+
 ## 使用本包
 
 [`@dv/minimax-skills`](../minimax-skills/README.zh.md) 的 bundle 会在 Host 插件旁挂载本包，因此选择该 bundle 的 profile 无需额外配置行。本包在 DreamVerse 首页的 `dv.templates` 插槽注册九张模板卡片，并在 `dv.explore` 插槽注册 MiniMax 模板标签。每张卡片显示 `@dv/minimax-skills` 通过 `GET /api/minimax/previews/<skill>.gif` 提供的预览 GIF。
@@ -19,7 +23,11 @@ kind: "package-reference"
 
 ## 模型体验
 
-本包不添加任何模型可见输入。模型只看到用户发送的 `/name` 消息。
+间接地，通过 `dsh-tool-skill`；点击卡片只填写输入框，用户发送消息后，`dsh-tool-skill` 注入所点名的技能，技能才到达模型。
+
+#### KV Cache 影响
+
+无；卡片不向模型发送任何内容。
 
 ## 已知限制与后续工作
 
