@@ -83,6 +83,8 @@ The table `SERVED` in `src/index.ts` maps each model that the plugin can serve t
 
 Pika H3 Flex is registered as `pika-h3-flex` for `t2v`, `i2v`, `l2v`, `fl2v`, and `ref2v`. Endpoint tasks pass native task selectors and ordered first/last image inputs. The configured model facts must reserve enough image slots for both endpoints; Ref2VA uses its reference pipeline. Frame extraction uses the shared `dvFfmpeg` service.
 
+Open-H3-Regenerate-2K is registered as `open-h3-regenerate-2k` for `v2v`: one draft video in, the same clip regenerated at 2560x1440 out, rendered by a FastVideo server running the 2K pipeline (often a second GPU or a second DGX Spark beside the one that drafts). The draft is the one `reference` input and is sent as a video reference; the prompt is the draft's own prompt and cites nothing. Its model facts configure a single `1440p` frame size, the model's own durations and frame counts (`numFramesByDurationSec`), and one video reference.
+
 <a id="model-experience"></a>
 ## Model Experience
 
