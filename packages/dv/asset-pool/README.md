@@ -55,7 +55,7 @@ Mount the plugin after `@dv/project` and `@dv/ffmpeg`. Other plugins inject `dvA
 | `url(asset)` | `<publicBaseUrl>/dv/assets/<AssetId>` |
 | `grabStill(video, at, dir)` | Writes one frame of a video as `still.png` into `dir` and returns its path; the operation imports it |
 
-Reads take an asset ID alone and find the bytes in any project folder that holds them. `get`, `hasAudio`, `mediaType`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset that no project folder holds. `GET /dv/assets/<AssetId>` answers the whole file with its media type and an immutable cache header; any other path or method under `/dv/assets` is 404.
+Reads take an asset ID alone and find the bytes in any project folder that holds them. `get`, `hasAudio`, `mediaType`, `path`, and `read` throw `ProjectError` with code `unknown_asset` for an asset that no project folder holds. `GET /dv/assets/<AssetId>` answers the file with its media type, `Accept-Ranges: bytes`, the asset ID as a strong ETag, and `Cache-Control: public, max-age=31536000, immutable, no-transform`; `no-transform` keeps the web server's gzip off, so every answer under one ETag carries the file's own bytes and byte ranges count them. An `If-None-Match` that lists the ETag or `*` gets 304. The size comes from the opened file; a file that cannot be opened is logged and gets 404 when it is missing and 500 otherwise. A `Range` header that `range-parser` reads as one byte range, after overlapping or adjacent ranges merge, gets 206 with those bytes, so a browser can start a sound or a video inside its file; a suffix longer than the file asks for the whole file. A `Range` with no range inside the file gets 416, including a range whose last byte comes before its first. Separate ranges, another unit, a malformed value, an `If-Range` other than the ETag, and any range of an empty file get the whole file. `HEAD` answers the same headers as a whole-file `GET` with no body. Any other path or method under `/dv/assets` is 404. The file goes out through `stream.pipeline`, which closes it when the client cancels the request or the read fails; a read that fails after the headers is logged and cuts the body off.
 
 -----
 
@@ -116,7 +116,6 @@ The result is appended to the conversation after the call; the cached prefix sta
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **No `Range` requests**: the route sends whole files; seeking inside a long video through this route downloads it from the start.
 - **No deletion**: a project's unreferenced assets stay on disk; garbage collection is deferred until projects can be deleted.
 - **Index grows without compaction**: the first read of a folder replays every line of its index; a project with very many assets opens slowly.
 - **Removed projects stay readable until restart**: the service keeps every folder it has read, so the assets of a removed project still answer by ID until the server restarts.

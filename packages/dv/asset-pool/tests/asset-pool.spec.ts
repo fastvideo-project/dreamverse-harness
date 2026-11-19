@@ -3,7 +3,8 @@
  * `dvFfmpeg` and `dvAssetPool` through the Loader, with a stand-in web server as the only fake. The agent's
  * `dv_asset_*` calls and the human's `dvProject.run` calls write records whose outputs the pool holds.
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, type ReadStream } from 'node:fs'
+import type { FileHandle } from 'node:fs/promises'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -26,6 +27,34 @@ import DvProject, {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { chatProject, provideChatServices, type TestChatServices } from '../../project/tests/workspaces.ts'
 import DvAssetPool, { importedAssets, placeable } from '../src/index.ts'
+
+/**
+ * The file streams the pool opens, and the files that fail on purpose: a file ID in `failOpen` throws that error code
+ * from `open`, and a stream of a file ID in `failRead` fails after its first chunk.
+ */
+const files = vi.hoisted(() => ({ streams: [] as ReadStream[], failOpen: new Map<string, string>(), failRead: new Set<string>() }))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>()
+  /** Make an error that carries a Node error code. */
+  const failure = (code: string): NodeJS.ErrnoException => Object.assign(new Error(`${code}: failed on purpose`), { code })
+  return {
+    ...fs,
+    open: async (...args: Parameters<typeof fs.open>): Promise<FileHandle> => {
+      const path = String(args[0])
+      const code = [...files.failOpen].find(([id]) => path.endsWith(id))?.[1]
+      if (code !== undefined) throw failure(code)
+      const handle = await fs.open(...args)
+      const createReadStream = handle.createReadStream.bind(handle)
+      handle.createReadStream = (options) => {
+        const stream = createReadStream(options)
+        files.streams.push(stream)
+        if ([...files.failRead].some(id => path.endsWith(id))) stream.once('data', () => { stream.destroy(failure('EIO')) })
+        return stream
+      }
+      return handle
+    },
+  }
+})
 
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
@@ -343,6 +372,94 @@ describe('dvAssetPool', () => {
       expect((await fetch(`${base}/dv/assets/list`)).status).toBe(404)
       expect((await fetch(`${base}/dv/assets/${asset}`, { method: 'POST' })).status).toBe(404)
     } finally {
+      await fixture.web.close()
+    }
+  })
+
+  it('serves one byte range of a file, so a browser can start a sound or a video inside it', async () => {
+    const fixture = await start()
+    const asset = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('0123456789'), { mime: 'audio/mpeg', name: 'a.mp3' }, null)
+    const empty = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from(''), { mime: 'audio/mpeg', name: 'e.mp3' }, null)
+    const base = await fixture.web.listen()
+    type Answer = { status: number; range: string | null; length: string | null; body: string }
+    /** Fetch an asset with the given request headers and keep the status, the length headers and the body. */
+    const get = async (headers: Record<string, string>, of: AssetId = asset, method = 'GET'): Promise<Answer> => {
+      const response = await fetch(`${base}/dv/assets/${of}`, { method, headers })
+      return { status: response.status, range: response.headers.get('content-range'), length: response.headers.get('content-length'), body: await response.text() }
+    }
+    const all: Answer = { status: 200, range: null, length: '10', body: '0123456789' }
+    try {
+      const whole = await fetch(`${base}/dv/assets/${asset}`)
+      expect(Object.fromEntries(['accept-ranges', 'etag', 'cache-control'].map(name => [name, whole.headers.get(name)]))).toEqual({
+        'accept-ranges': 'bytes', 'etag': `"${asset}"`, 'cache-control': 'public, max-age=31536000, immutable, no-transform',
+      })
+      expect(await whole.text()).toBe('0123456789')
+      expect(await get({ range: 'bytes=2-4' })).toEqual({ status: 206, range: 'bytes 2-4/10', length: '3', body: '234' })
+      expect(await get({ range: 'Bytes=7-' })).toEqual({ status: 206, range: 'bytes 7-9/10', length: '3', body: '789' })
+      expect(await get({ range: 'bytes=8-100' })).toEqual({ status: 206, range: 'bytes 8-9/10', length: '2', body: '89' })
+      expect(await get({ range: 'bytes=-3' })).toEqual({ status: 206, range: 'bytes 7-9/10', length: '3', body: '789' })
+      expect(await get({ range: 'bytes=0-1,2-3' })).toEqual({ status: 206, range: 'bytes 0-3/10', length: '4', body: '0123' })
+      expect(await get({ 'range': 'bytes=2-4', 'if-range': `"${asset}"` })).toMatchObject({ status: 206, body: '234' })
+      expect(await get({ 'range': 'bytes=2-4', 'if-range': '"another"' })).toEqual(all)
+      expect(await get({ range: 'bytes=-30' })).toEqual({ ...all, status: 206, range: 'bytes 0-9/10' })
+      for (const unsatisfiable of ['bytes=10-', 'bytes=-0', 'bytes=4-2']) {
+        expect(await get({ range: unsatisfiable })).toMatchObject({ status: 416, range: 'bytes */10', body: '' })
+      }
+      for (const ignored of ['bytes=0-1,4-5', 'items=0-1', 'bytes=x']) {
+        expect(await get({ range: ignored })).toEqual(all)
+      }
+      expect(await get({ range: 'bytes=-1' }, empty)).toEqual({ status: 200, range: null, length: '0', body: '' })
+      expect(await get({}, asset, 'HEAD')).toEqual({ ...all, body: '' })
+      expect(await get({ range: 'bytes=2-4' }, asset, 'HEAD')).toEqual({ ...all, body: '' })
+      for (const held of [`"${asset}"`, `W/"${asset}"`, `"another", "${asset}"`, '*']) {
+        const fresh = await fetch(`${base}/dv/assets/${asset}`, { headers: { 'if-none-match': held } })
+        expect([fresh.status, fresh.headers.get('etag'), await fresh.text()]).toEqual([304, `"${asset}"`, ''])
+      }
+      expect(await get({ 'if-none-match': '"another"' })).toEqual(all)
+    } finally {
+      await fixture.web.close()
+    }
+  })
+
+  it('closes the file when the client cancels a request, and answers a file that cannot be read with an HTTP status', async () => {
+    const fixture = await start()
+    const pool = fixture.ctx.dvAssetPool
+    const size = 8 * 1024 * 1024
+    const big = pool.importAsset(fixture.project, Buffer.alloc(size, 1), { mime: 'video/mp4', name: 'big.mp4' }, null)
+    const gone = pool.importAsset(fixture.project, Buffer.from('gone'), { mime: 'audio/mpeg', name: 'gone.mp3' }, null)
+    const locked = pool.importAsset(fixture.project, Buffer.from('locked'), { mime: 'audio/mpeg', name: 'locked.mp3' }, null)
+    const broken = pool.importAsset(fixture.project, Buffer.alloc(size, 2), { mime: 'video/mp4', name: 'broken.mp4' }, null)
+    const base = await fixture.web.listen()
+    const warnings: string[] = []
+    fixture.ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { if (message.type === 'warn') warnings.push(message.args.map(String).join(' ')) } })
+    files.failOpen.set(locked, 'EACCES')
+    files.failRead.add(broken)
+    try {
+      files.streams.length = 0
+      const cancel = new AbortController()
+      const started = await fetch(`${base}/dv/assets/${big}`, { headers: { range: 'bytes=0-' }, signal: cancel.signal })
+      expect(started.status).toBe(206)
+      const [file] = files.streams
+      cancel.abort()
+      await vi.waitFor(() => { expect(file?.closed).toBe(true) })
+      expect([file?.readableEnded, (file?.bytesRead ?? size) < size]).toEqual([false, true])
+
+      rmSync(pool.path(gone))
+      const missing = await fetch(`${base}/dv/assets/${gone}`)
+      expect([missing.status, missing.headers.get('cache-control'), await missing.text()]).toEqual([404, null, 'Not found'])
+      const refused = await fetch(`${base}/dv/assets/${locked}`)
+      expect([refused.status, await refused.text()]).toEqual([500, 'Could not read the file'])
+      const cut = await fetch(`${base}/dv/assets/${broken}`)
+      expect(cut.status).toBe(200)
+      await expect(cut.text()).rejects.toThrow()
+      await vi.waitFor(() => { expect(warnings.some(warning => warning.includes('could not read the file') && warning.includes('EIO'))).toBe(true) })
+      expect(warnings.filter(warning => warning.includes('could not open the file')).map(warning => warning.includes(gone) || warning.includes(locked)))
+        .toEqual([true, true])
+      expect(warnings.some(warning => warning.includes(big))).toBe(false)
+      expect((await fetch(`${base}/dv/assets/${big}`, { headers: { range: 'bytes=0-1' } })).status).toBe(206)
+    } finally {
+      files.failOpen.clear()
+      files.failRead.clear()
       await fixture.web.close()
     }
   })

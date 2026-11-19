@@ -2209,6 +2209,9 @@ importers:
       '@dv/ui-composer':
         specifier: workspace:*
         version: link:../../dv/ui-composer
+      '@dv/ui-hardware':
+        specifier: workspace:*
+        version: link:../../dv/ui-hardware
       '@dv/ui-history':
         specifier: workspace:*
         version: link:../../dv/ui-history
@@ -2230,9 +2233,6 @@ importers:
       '@dv/ui-openrouter':
         specifier: workspace:*
         version: link:../../dv/ui-openrouter
-      '@dv/ui-hardware':
-        specifier: workspace:*
-        version: link:../../dv/ui-hardware
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../../dv/ui-shell
@@ -7133,6 +7133,9 @@ importers:
       '@dv/project':
         specifier: workspace:*
         version: link:../project
+      range-parser:
+        specifier: ^1.3.0
+        version: 1.3.0
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: workspace:~
@@ -7158,6 +7161,9 @@ importers:
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0
+      '@types/range-parser':
+        specifier: ^1.2.7
+        version: 1.2.7
 
   packages/dv/audio-edit:
     dependencies:
@@ -8475,6 +8481,48 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
+  packages/dv/ui-hardware:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:*
+        version: link:../../api/remotes
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:*
+        version: link:../../client/locale
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:*
+        version: link:../../client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:*
+        version: link:../../client/ui-settings
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@deepseek-ai/dsh-util-crypto':
+        specifier: workspace:*
+        version: link:../../util/crypto
+      '@dv/hardware':
+        specifier: workspace:*
+        version: link:../hardware
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+
   packages/dv/ui-history:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -8831,48 +8879,6 @@ importers:
       react-dom:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
-
-  packages/dv/ui-hardware:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:~
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-api-remotes':
-        specifier: workspace:*
-        version: link:../../api/remotes
-      '@deepseek-ai/dsh-client-locale':
-        specifier: workspace:*
-        version: link:../../client/locale
-      '@deepseek-ai/dsh-client-test-runtime':
-        specifier: workspace:*
-        version: link:../../test-support/client-runtime
-      '@deepseek-ai/dsh-client-ui-primitives':
-        specifier: workspace:*
-        version: link:../../client/ui-primitives
-      '@deepseek-ai/dsh-client-ui-renderer':
-        specifier: workspace:*
-        version: link:../../client/ui-renderer
-      '@deepseek-ai/dsh-client-ui-settings':
-        specifier: workspace:*
-        version: link:../../client/ui-settings
-      '@deepseek-ai/dsh-client-ui-slots':
-        specifier: workspace:*
-        version: link:../../client/ui-slots
-      '@deepseek-ai/dsh-util-crypto':
-        specifier: workspace:*
-        version: link:../../util/crypto
-      '@dv/hardware':
-        specifier: workspace:*
-        version: link:../hardware
-      '@dv/ui-kit':
-        specifier: workspace:*
-        version: link:../ui-kit
-      '@types/react':
-        specifier: ~18.3.1
-        version: 18.3.31
-      react:
-        specifier: ^18.2.0
-        version: 18.3.1
 
   packages/dv/ui-shell:
     devDependencies:
