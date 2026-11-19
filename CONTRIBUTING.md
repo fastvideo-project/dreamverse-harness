@@ -2,22 +2,28 @@
 
 English | [中文](CONTRIBUTING.zh.md)
 
-Thank you for your interest in contributing to DeepSeek Harness!
+Thank you for your interest in contributing to DreamVerse Harness!
 
-We deeply believe in the power of open source communities, and that belief has shaped this project from the very beginning.
+DreamVerse Harness is built on [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), and every capability it adds is a plugin. That makes most contributions small and self-contained: a provider plugin for a new model, a skill that teaches the agent a workflow, a feature, or a fix.
 
-DeepSeek Harness is still at an early stage and under active development. We are sorry that we cannot accept external pull requests at the moment. However, contributing code to this repository is far from the only way to help. There are many other ways to get involved:
+DreamVerse Harness is still at an early stage and under active development, so interfaces can change between releases.
 
-- Identify and report issues or bugs in GitHub Discussions:
-  - Upvote discussions that you would like to bring to the team's attention. We are a very small team and may not be able to reply to every post, but we monitor them and consider them when allocating resources.
-- Contribute to the ecosystem:
-  - Create a plugin that excites you and share it with others:
-    - Associate your GitHub project with the `dsh-plugin` topic to help others discover your plugin.
-  - Write blog posts and how-to guides about DeepSeek Harness.
-  - Answer questions and help other members of the community.
+## Ways to contribute
 
-DeepSeek Harness is designed to be deeply customizable. We do not believe that packages in the official repository are inherently more important than packages created by the community. You may consider this repository an idea, an official showcase, and a source of inspiration, but not a mandate from us.
+- Report bugs and request features in [GitHub Issues](https://github.com/fastvideo-project/dreamverse-harness/issues). Include the steps to reproduce, the models and servers you connected, and the relevant logs.
+- Share provider plugins and skills: open a pull request, or post them in the [FastVideo Slack](https://join.slack.com/t/fastvideo/shared_invite/zt-4heayzk81-lOkgpvJRoceuZjNP7pXxJA) or on [Discord](https://discord.gg/dqc2J2yNQ).
+- Improve the documentation, and write blog posts and how-to guides about what you make with DreamVerse Harness.
+- Answer questions and help other members of the community.
 
-We have already seen exciting projects emerge from the community, and we hope to see the ecosystem continue to grow in its own directions.
+To report a security vulnerability, do not open a public issue; follow [SECURITY.md](SECURITY.md).
 
-Into the unknown.
+## Pull requests
+
+1. Start with the [development guide](docs/development.md) and the [architecture documentation](docs/architecture.md). Agents follow [AGENTS.md](AGENTS.md).
+2. For a larger change, open an issue first so that we can agree on the approach before you write it.
+3. Keep each pull request focused on one change, and fill in the pull request template, including how you tested it.
+4. Run the smallest checks that cover your change; the development guide lists them. Documentation changes run `pnpm run doc-sync`.
+
+Changes that belong to the underlying agent harness rather than to video production are usually better proposed to [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) itself.
+
+By contributing, you agree that your contribution is licensed under the [MIT License](LICENSE) of this repository.

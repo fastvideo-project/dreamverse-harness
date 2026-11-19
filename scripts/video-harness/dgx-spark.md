@@ -186,7 +186,7 @@ scripts/video-harness/launch.sh web
 Every DGX Spark runs its own FastVideo server, and the harness on DGX Spark 1 routes each model and task to the server that holds it. A remote LLM, or Qwen on any one box from [step 1.2](#12-serve-the-llm-with-vllm), plans the shots.
 
 1. On each additional DGX Spark, repeat [step 0](#0-prepare-each-dgx-spark), download the models it will hold, and serve them with FastVideo bound to the box's address on the direct cable or LAN (`server.host`), not `127.0.0.1`. For load and unload under the harness's control, serve a model catalog (`server.model_catalog`), which adds `GET /v1/model_state` and `POST /v1/models/load` and `/v1/models/unload` (FastVideo's [server contract](https://github.com/hao-ai-lab/FastVideo/blob/main/docs/design/server_contracts/openai.md)).
-2. In the profile patch, give each model and task its server's `baseUrl` (for example FastH3 V2 on DGX Spark 2 at `http://192.168.23.2:18000`), and set `managed: true` on a catalog server so the agent's `dv_models_load`, `dv_models_unload` and `dv_models_status` tools reach it.
+2. In the profile patch, give each model and task its server's `baseUrl` (for example FastH3 V2 on DGX Spark 2 at `http://<DGX Spark 2 address>:18000`), and set `managed: true` on a catalog server so the agent's `dv_models_load`, `dv_models_unload` and `dv_models_status` tools reach it.
 3. Keep every box's memory in budget: one FastH3 NVFP4 model is 40 to 55 GB resident, so two fit in a DGX Spark, or one beside Qwen.
 
 **Verify:** in the harness, ask the agent for `dv_models_status`; every server answers with its loaded model. Then request two shots that use models on different DGX Sparks and confirm both render at the same time.
