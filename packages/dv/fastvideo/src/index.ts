@@ -29,6 +29,7 @@ import type { WorkerConnection } from '@dv/hardware'
 import { WorkerPool, type WorkerClient } from './worker-pool.ts'
 import type { ModelEntry, ModelExecutionTarget, RenderModelFacts, RenderRequest, RenderStreamEvent, TaskId } from '@dv/models'
 import { FASTH3 } from './fasth3.ts'
+import { OPEN_H3_REGENERATE_2K } from './open-h3-regenerate-2k.ts'
 import { PIKA_H3_FLEX } from './pika-h3-flex.ts'
 import { modelPrompt } from './reference-labels.ts'
 import type { AssignReferenceLabels } from './reference-labels.ts'
@@ -69,6 +70,7 @@ type TaskInputLimits = Partial<Record<InputRole, InputLimits>>
 const SERVED: Record<string, { [T in TaskId]?: ServedTask }> = {
   fasth3: FASTH3,
   'pika-h3-flex': PIKA_H3_FLEX,
+  'open-h3-regenerate-2k': OPEN_H3_REGENERATE_2K,
 }
 
 /** Plugin name. */
@@ -222,7 +224,7 @@ function requestProblems(
 }
 
 /** The native task of each harness task, for a server configured without one. */
-const NATIVE_TASKS: Readonly<Record<TaskId, string>> = { t2v: 't2va', i2v: 'i2va', l2v: 'l2va', fl2v: 'fl2va', ref2v: 'ref2va' }
+const NATIVE_TASKS: Readonly<Record<TaskId, string>> = { t2v: 't2va', i2v: 'i2va', l2v: 'l2va', fl2v: 'fl2va', ref2v: 'ref2va', v2v: 'v2v' }
 /** Native task aliases that a FastVideo server accepts in a request, after it lowercases the task. */
 const NATIVE_ALIASES: Readonly<Record<string, string>> = { t2v: 't2va', i2v: 'i2va' }
 

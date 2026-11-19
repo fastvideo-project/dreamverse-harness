@@ -616,7 +616,7 @@ describe('dv-fastvideo', () => {
     const reference = await startFakeServer(REFERENCE_FACTS)
     const ctx = await start({ ref2v: reference.server })
     const { server } = reference
-    expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3, pika-h3-flex.')
+    expect(() => { FastVideo.apply(ctx, { models: { wan: { t2v: server } } }) }).toThrow('dv-fastvideo serves no model "wan"; it serves: fasth3, pika-h3-flex, open-h3-regenerate-2k.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: { reference: server } } }) })
       .toThrow('dv-fastvideo serves model "fasth3" for no task "reference"; its tasks: ref2v, t2v.')
     expect(() => { FastVideo.apply(ctx, { models: { fasth3: {} } }) }).toThrow('dv-fastvideo: model "fasth3" names no task.')
@@ -759,5 +759,49 @@ describe('dv-fastvideo pika-h3-flex', () => {
       { task: 'l2va', prompt: '<Picture 1> closes the shot', image_reference: [{ image_url: dataUrl('image/jpeg', 'LAST') }] },
       { task: 'ref2va', prompt: 'A door in <Picture 1>', image_reference: [{ image_url: dataUrl('image/png', 'STYLE') }] },
     ])
+  })
+})
+
+
+/** The facts of a fake Open-H3-Regenerate-2K server: one 2560x1440, 124-frame output from one draft video. */
+const REGEN_2K_FACTS: ModelFactsConfig = {
+  modelId: 'open-h3-regenerate-2k', frameSizes: { '16:9': { '1440p': [2560, 1440] } }, numFramesByDurationSec: { 5: 124 },
+  maxReferences: 1, referenceMediaTypes: { video: { maxCount: 1 } },
+}
+
+describe('Open-H3-Regenerate-2K v2v', () => {
+  it('takes exactly one draft video and nothing else', async () => {
+    const backend = await startFakeServer(REGEN_2K_FACTS)
+    const ctx = await start({ v2v: backend.server }, 'open-h3-regenerate-2k')
+    const entry = ctx.dvModels.get({ modality: 'video', provider: 'fastvideo', model: 'open-h3-regenerate-2k', task: 'v2v' })
+    if (entry === undefined || !isVideoEntry(entry)) throw new Error('Missing Open-H3-Regenerate-2K v2v')
+    const draft = importAsset(ctx, Buffer.from('DRAFT'), 'video/mp4')
+    const still = importAsset(ctx, Buffer.from('STILL'), 'image/png')
+    expect(await entry.validateGenerationRequest(request([draft], null))).toEqual([])
+    expect(await entry.validateGenerationRequest(request([], null))).toContain(
+      'Its reference input needs at least 1 of type video; this shot has 0.')
+    expect(await entry.validateGenerationRequest(request([draft, draft], null))).toContain(
+      'It regenerates exactly one draft video; this shot has 2 references.')
+    expect(await entry.validateGenerationRequest(request([still], null))).toContain(
+      `Its reference input takes assets of type video; asset ${still} is of type image.`)
+    expect(await entry.validateGenerationRequest(request([draft], still))).toContain('It takes no first_frame input; this shot has 1.')
+    expect(await entry.schema()).toMatchObject({ resolutions: ['1440p'], inputs: { reference: { max: 1 } } })
+  })
+
+  it.skipIf(!existsSync(FFMPEG))('sends the draft as its one video reference and the prompt unchanged', async () => {
+    const draftVideo = await sampleVideo(false)
+    const backend = await startFakeServer(REGEN_2K_FACTS, { video: draftVideo })
+    const ctx = await start({ v2v: backend.server }, 'open-h3-regenerate-2k')
+    const entry = ctx.dvModels.get({ modality: 'video', provider: 'fastvideo', model: 'open-h3-regenerate-2k', task: 'v2v' })
+    if (entry === undefined || !isVideoEntry(entry)) throw new Error('Missing Open-H3-Regenerate-2K v2v')
+    const draft = importAsset(ctx, draftVideo, 'video/mp4')
+    const events = await collect(entry.render({ ...request([draft], null),
+      prompt: 'A fox trots through snow at golden hour', frameWidth: 2560, frameHeight: 1440, numFrames: 124 }))
+    expect(backend.requests).toEqual([{
+      model: 'open-h3-regenerate-2k', prompt: 'A fox trots through snow at golden hour',
+      width: 2560, height: 1440, num_frames: 124, seed: 7,
+      video_reference: [{ video_url: dataUrl('video/mp4', draftVideo) }],
+    }])
+    expect(events.map(event => event.kind)).toEqual(['last_frame', 'video_start', 'chunk', 'done'])
   })
 })
