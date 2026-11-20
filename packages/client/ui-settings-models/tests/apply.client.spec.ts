@@ -124,6 +124,7 @@ describe('ui-settings-models apply', () => {
     // The section claims its two extension seats in the same registration.
     expect(before.slots.spec('settings.models.provider-card')).toMatchObject({ kind: 'keyed', scope: 'root' })
     expect(before.slots.spec('settings.models.footer')).toMatchObject({ kind: 'list', scope: 'root' })
+    expect(before.slots.spec('settings.models.header')).toMatchObject({ kind: 'list', scope: 'root' })
     // The nav label is a locale-following thunk; owners resolve at read time.
     expect(resolveSlotLabel(entry.options.label)).toBe('模型')
     const injected = (entry.inject as unknown as () => import('../src/client/ModelsSection.tsx').ModelsSectionInjected)()
@@ -220,6 +221,45 @@ describe('ui-settings-models apply', () => {
     // Declarer unload cascades whatever extension entries remain.
     await fiber.dispose()
     expect(b.slots.entries('settings.models.footer')).toHaveLength(0)
+  })
+
+  it('publishes the header entry count to the page and notifies only on a change', async () => {
+    const b = await bench()
+    declare(b.slots)
+    await b.ctx.plugin({ inject: [...inject], apply }).await()
+    const injected = (b.slots.entries('settings.section')[0]!.inject as unknown as () => import('../src/client/ModelsSection.tsx').ModelsSectionInjected)()
+    const headers = injected.hooks.headerEntries
+    const seen = vi.fn()
+    const unsubscribe = headers.subscribe(seen)
+    // Slot subscriptions notify once per microtask batch.
+    const flush = () => Promise.resolve()
+    expect(headers.getSnapshot()).toBe(0)
+
+    const first = b.slots.register({ name: 'settings.models.header', id: 'a', order: 0 } as never, () => null)
+    await flush()
+    expect(headers.getSnapshot()).toBe(1)
+    expect(seen).toHaveBeenCalledTimes(1)
+    const second = b.slots.register({ name: 'settings.models.header', id: 'b', order: 1 } as never, () => null)
+    await flush()
+    expect(headers.getSnapshot()).toBe(2)
+    expect(seen).toHaveBeenCalledTimes(2)
+    // A same-count change (one entry swapped for another) does not notify.
+    first()
+    const third = b.slots.register({ name: 'settings.models.header', id: 'c', order: 2 } as never, () => null)
+    await flush()
+    expect(headers.getSnapshot()).toBe(2)
+    expect(seen).toHaveBeenCalledTimes(2)
+    second()
+    third()
+    await flush()
+    expect(headers.getSnapshot()).toBe(0)
+    expect(seen).toHaveBeenCalledTimes(3)
+
+    unsubscribe()
+    b.slots.register({ name: 'settings.models.header', id: 'd', order: 0 } as never, () => null)
+    await flush()
+    expect(headers.getSnapshot()).toBe(1)
+    expect(seen).toHaveBeenCalledTimes(3)
   })
 
   it('registers the zh/en nav dictionaries and disposes everything with the fiber', async () => {

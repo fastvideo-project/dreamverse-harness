@@ -291,13 +291,15 @@ describe('SettingsPanel close paths', () => {
     await vi.waitFor(() => { expect(document.activeElement).toBe(trigger) })
   })
 
-  it('closes via a mask click and restores trigger focus', async () => {
+  it('has no outside-click mask, so clicking around the panel keeps it open', () => {
     mount()
-    const trigger = openPanel()
+    openPanel()
     const dialog = screen.getByRole('dialog')
-    fireEvent.click(dialog.parentElement!.firstElementChild!)
-    expect(screen.queryByRole('dialog')).toBeNull()
-    await vi.waitFor(() => { expect(document.activeElement).toBe(trigger) })
+    // The panel is the outermost layer: nothing sits between it and the portal parent to catch a click.
+    expect(dialog.parentElement?.querySelector('[aria-hidden="true"][class*="mask"]')).toBeNull()
+    fireEvent.click(dialog.parentElement!)
+    fireEvent.click(document.body)
+    expect(screen.getByRole('dialog')).toBeTruthy()
   })
 
   it('closes via document-level Escape, restores trigger focus, and unhooks the listener', async () => {

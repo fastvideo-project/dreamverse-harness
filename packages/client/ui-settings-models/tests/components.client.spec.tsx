@@ -260,12 +260,17 @@ function cardSeatCalls(
     ])
 }
 
-async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
+/** A header-count hook scripted to a fixed registered-entry count. */
+function headerHook(count: number): NonNullable<ModelsSectionProps['useHeaderEntries']> {
+  return selector => selector(count)
+}
+
+async function mountFace(scripted: ReturnType<typeof scriptedFace>, headerCount?: number, preload = true) {
   const { face, update, mutate, set, unset } = scripted
   const ctx = ctxWith(face)
   const mirror = new SettingsDescribeMirror(ctx)
   const controller = new ModelsSettingsStore(ctx, settingsSchema, mirror)
-  await controller.load()
+  if (preload) await controller.load()
   const renderSlot = stubRenderSlot()
   const injected: ModelsSectionProps = {
     controller,
@@ -273,6 +278,7 @@ async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
     operations: operationsWith(face),
     schema: settingsSchema,
     t,
+    ...headerCount === undefined ? {} : { useHeaderEntries: headerHook(headerCount) },
     renderSlot: renderSlot as unknown as ModelsSectionProps['renderSlot'],
   }
   const view = render(<ModelsSection {...injected} />)
@@ -306,6 +312,57 @@ async function mountDeepSeekCard(overrides: Parameters<typeof scriptedFace>[0] =
   fireEvent.click(screen.getByRole('button', { name: deepSeekCopy(en.editProvider) }))
   return mounted
 }
+
+describe('ModelsSection header seat', () => {
+  it('shows the core provider list and its heading when no header is registered', async () => {
+    const { renderSlot } = await mountSection()
+    expect(screen.getByRole('heading', { name: en.llmProviders })).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.add })).toBeTruthy()
+    expect(renderSlot.mock.calls.some(call => call[0] === 'settings.models.header')).toBe(false)
+  })
+
+  it('shows the core list when the header count is a zero observable', async () => {
+    await mountFace(scriptedFace(), 0)
+    expect(screen.getByRole('heading', { name: en.llmProviders })).toBeTruthy()
+    expect(screen.getByRole('button', { name: en.add })).toBeTruthy()
+  })
+
+  it('hands the provider list to a registered header and hides the core rows', async () => {
+    const { renderSlot } = await mountFace(scriptedFace(), 1)
+    expect(screen.getByRole('heading', { name: en.title })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: en.llmProviders })).toBeNull()
+    expect(screen.queryByRole('button', { name: en.add })).toBeNull()
+    expect(screen.queryByRole('button', { name: deepSeekCopy(en.editProvider) })).toBeNull()
+    expect(cardSeatCalls(renderSlot)).toEqual([])
+    const header = renderSlot.mock.calls.find(call => call[0] === 'settings.models.header')!
+    expect(header[1]).toMatchObject({ writable: true, status: 'ready' })
+    expect((header[1] as { rows: unknown[] }).rows.length).toBeGreaterThan(0)
+    expect(renderSlot.mock.calls.some(call => call[0] === 'settings.models.footer')).toBe(true)
+  })
+
+  it('loads the join itself when a header owns the page before anything loaded it', async () => {
+    const { renderSlot, controller } = await mountFace(scriptedFace(), 1, false)
+    await waitFor(() => { expect(controller.store.getSnapshot().status).toBe('ready') })
+    const statuses = renderSlot.mock.calls
+      .filter(call => call[0] === 'settings.models.header')
+      .map(call => (call[1] as { status: string }).status)
+    expect(statuses[0]).toBe('idle')
+    expect(statuses.at(-1)).toBe('ready')
+  })
+
+  it('removes a provider through the header owner share and loads an idle store', async () => {
+    const scripted = scriptedFace()
+    const { renderSlot, controller } = await mountFace(scripted, 1)
+    const header = renderSlot.mock.calls.find(call => call[0] === 'settings.models.header')![1] as {
+      rows: Array<{ removable?: boolean }>
+      remove: (row: unknown) => Promise<string | undefined>
+    }
+    const row = header.rows.find(candidate => candidate.removable === true) ?? header.rows[0]!
+    const spy = vi.spyOn(controller, 'load')
+    await header.remove(row)
+    expect(spy).toHaveBeenCalled()
+  })
+})
 
 describe('ModelsSection', () => {
   it('hides the add action when no settings namespace can open an editor', async () => {

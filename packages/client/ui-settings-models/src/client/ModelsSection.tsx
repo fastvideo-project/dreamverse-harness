@@ -24,7 +24,7 @@
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Button, IconPlusOutlineRegular, Modal, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import type { HostObservable, InjectFace, PropsRenderSlots, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
@@ -44,6 +44,11 @@ export interface ModelsSectionInjected {
   hooks: {
     /** Page snapshot bound by the UI renderer as useSnapshot. */
     snapshot: ModelsSettingsStore['store']
+    /**
+     * The registered `settings.models.header` entries, bound as useHeaderEntries; a nonzero count hands the
+     * provider list to them. Absent when the page renders without a slot ledger, which reads as no header.
+     */
+    headerEntries: HostObservable<number>
   }
   /** The Host operations the section and its cards invoke. */
   operations: ModelsOperations
@@ -60,7 +65,7 @@ export interface ModelsSectionInjected {
 type AddMode = 'catalog' | 'custom'
 
 /** The child slots this section declares and dispatches (see ./slot-contract.ts). */
-type ModelsChildSlots = 'settings.models.provider-card' | 'settings.models.footer'
+type ModelsChildSlots = 'settings.models.provider-card' | 'settings.models.header' | 'settings.models.footer'
 
 /** The child-slot dispatch function the renderer binds for the section. */
 type ModelsRenderSlot = PropsRenderSlots<ModelsChildSlots>['renderSlot']
@@ -221,15 +226,58 @@ export function providerCopy(template: string, target: ProviderIdentity): string
  * @returns the section, or null while the shell has not injected yet.
  */
 export function ModelsSection(props: ModelsSectionProps): ReactNode {
-  const { controller, useSnapshot, operations, schema, t, renderSlot } = props
+  const { controller, useSnapshot, operations, schema, t, useHeaderEntries, renderSlot } = props
   if (
     controller === undefined || useSnapshot === undefined || operations === undefined
     || schema === undefined || t === undefined
   ) return null
-  return <Loaded injected={{ controller, useSnapshot, operations, schema, t }} renderSlot={renderSlot} />
+  const injected: ModelsSectionFace = {
+    controller, useSnapshot, operations, schema, t, useHeaderEntries: useHeaderEntries ?? noHeaderEntries,
+  }
+  return <Loaded injected={injected} renderSlot={renderSlot} />
 }
 
+/** The header count of a page rendered without a slot ledger, such as in a unit test. */
+const noHeaderEntries: SnapshotSelectorHook<number> = selector => selector(0)
+
+/** Chooses between the core provider list and the registered header that replaces it. */
 function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderSlot: ModelsRenderSlot }): ReactNode {
+  const headerOwned = injected.useHeaderEntries(count => count) > 0
+  return headerOwned
+    ? <HeaderOwnedSection injected={injected} renderSlot={renderSlot} />
+    : <CoreProviderList injected={injected} renderSlot={renderSlot} />
+}
+
+/**
+ * The page when an extension draws the provider list: the title, the intro, the
+ * header area with the join it needs, and the footer area. The core rows, add
+ * controls, and delete dialog are not rendered.
+ */
+function HeaderOwnedSection({ injected, renderSlot }: { injected: ModelsSectionFace; renderSlot: ModelsRenderSlot }): ReactNode {
+  const { controller, operations, schema, t } = injected
+  const state = injected.useSnapshot(snapshot => snapshot)
+  if (state.status === 'idle') void controller.load()
+  return (
+    <div className={styles['section']}>
+      <h2 className={styles['title']}>{t('title')}</h2>
+      <p className={styles['intro']}>{t('intro')}</p>
+      {renderSlot('settings.models.header', {
+        rows: state.rows,
+        namespaces: state.namespaces,
+        writable: state.writable,
+        operations,
+        remove: row => removeProviderProfile(operations, controller, targetOf(row)),
+        schema,
+        status: state.status,
+        t,
+      })}
+      {renderSlot('settings.models.footer', {})}
+    </div>
+  )
+}
+
+/** The page's own provider list, add controls, and delete dialog. */
+function CoreProviderList({ injected, renderSlot }: { injected: ModelsSectionFace; renderSlot: ModelsRenderSlot }): ReactNode {
   const { controller, operations, schema, t } = injected
   const state = injected.useSnapshot(snapshot => snapshot)
   const [editing, setEditing] = useState<EditorTarget | undefined>(undefined)
@@ -386,6 +434,10 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
     <div className={styles['section']}>
       <h2 className={styles['title']}>{t('title')}</h2>
       <p className={styles['intro']}>{t('intro')}</p>
+      <div className={styles['groupHeading']}>
+        <h3 className={styles['groupTitle']}>{t('llmProviders')}</h3>
+        <p className={styles['groupHint']}>{t('llmProvidersHint')}</p>
+      </div>
       {!state.writable && state.status === 'ready' ? <p className={styles['notice']}>{t('readOnly')}</p> : null}
       {savedIdentity === undefined
         ? null

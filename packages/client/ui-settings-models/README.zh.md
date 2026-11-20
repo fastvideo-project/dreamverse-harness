@@ -49,11 +49,11 @@ Host 配置 `credentialOnboarding` 默认为 `true`。Electron preload 标记会
 
 ### 首次运行弹窗
 
-版本化声明步骤完成后，DeepSeek 步骤从同一份合并快照投影首次运行就绪状态。用户已经能够到达的**任何**提供商都会直接结束该步骤、不做渲染；只有没有任何提供商的用户才会被询问官方 DeepSeek 密钥。「稍后配置」只完成这次协调器遍历；适配器缺失、路由不活动、合并失败、只读部署或能力不可用时，该步骤不渲染即完成——Models 仍是诊断界面。
+版本化声明步骤完成后，DeepSeek 步骤从同一份合并快照投影首次运行就绪状态。用户已经能够到达的**任何**提供商都会直接结束该步骤、不做渲染；没有任何提供商的用户会被引导到 设置 → 模型，那里同样提供 DeepSeek、自部署模型服务器与第三方路由。**打开模型设置**会打开该页面并完成步骤，**暂时不用**只完成步骤本身；适配器缺失、路由不活动、合并失败、只读部署或能力不可用时，该步骤不渲染即完成——模型设置仍是诊断界面。
 
 ### 扩展 slot
 
-本分区为仓库外分发的插件声明两个席位，类型定义在 [`src/client/slot-contract.ts`](src/client/slot-contract.ts) 并从 `./client` 导出。`settings.models.provider-card`（keyed）渲染在每张展示目录行的卡片内部——已保存行的卡片、其首次运行 setup 形态、以及「添加提供商」草稿卡——以 `entryKey = settingsNs` 分发，owner props 携带该行的 `ConfigurableProviderView`、其 configured 状态与已确认的 api-key 凭据状态，因此以某适配器家族的 namespace 注册一次即可收到该家族的全部卡片，含手工声明的路由；手工声明的草稿卡尚无目录行，保存之前不分发。`settings.models.footer`（list）渲染在行列表与新增控件之后。注册方通过 `ctx.slots.inject` 激活，并以 type-only import 引入本包 `/client` 入口；没有注册方时两个席位均不渲染任何内容。
+本分区为仓库外分发的插件声明三个席位，类型定义在 [`src/client/slot-contract.ts`](src/client/slot-contract.ts) 并从 `./client` 导出。`settings.models.provider-card`（keyed）渲染在每张展示目录行的卡片内部——已保存行的卡片、其首次运行 setup 形态、以及「添加提供商」草稿卡——以 `entryKey = settingsNs` 分发，owner props 携带该行的 `ConfigurableProviderView`、其 configured 状态与已确认的 api-key 凭据状态，因此以某适配器家族的 namespace 注册一次即可收到该家族的全部卡片，含手工声明的路由；手工声明的草稿卡尚无目录行，保存之前不分发。`settings.models.header`（list）渲染在页面简介之后，注册后即接管提供商列表：本分区自己的行与新增控件停止渲染，owner props 携带该合并结果，以及删除用户新增 profile（连同本页为其管理的凭据）的 `remove` 写入。`settings.models.footer`（list）渲染在行列表与新增控件之后。注册方通过 `ctx.slots.inject` 激活，并以 type-only import 引入本包 `/client` 入口；没有注册方时三个席位均不渲染任何内容。自行绘制行的头部注册方可从 `./client` 复用 `CustomProviderCard`、`ProviderEditor`、`protocolChoices` 与 `providerUsable`；仅当本分区自己绘制行时才显示「LLM 提供商」小标题。
 
 -----
 
@@ -75,7 +75,7 @@ Host 配置 `credentialOnboarding` 默认为 `true`。Electron preload 标记会
 
 ### 引导协调器
 
-声明步骤在 `src/client/locales.ts` 中持有精确文案，并在 `src/onboarding-copy.ts` 中持有确认版本；回环时它通过既有 settings API 比较并写入 `ui-settings-general.welcomeNoticeVersion`，且只有显式点击「继续」才会记录当前版本。非回环浏览器无法使用这个仅限宿主的 namespace，因此确认只保留在进程内，刷新后声明会再次出现。DeepSeek 步骤面向 `llm-deepseek` 中的 `deepseek-official`，在共享引导模态框内以仅凭据模式渲染既有 `ProviderEditor`；`credentials.set` 仍是唯一的机密写入，且不改变任何提供商设置。
+声明步骤在 `src/client/locales.ts` 中持有精确文案，并在 `src/onboarding-copy.ts` 中持有确认版本；回环时它通过既有 settings API 比较并写入 `ui-settings-general.welcomeNoticeVersion`，且只有显式点击「继续」才会记录当前版本。非回环浏览器无法使用这个仅限宿主的 namespace，因此确认只保留在进程内，刷新后声明会再次出现。DeepSeek 步骤只在用户从账户菜单显式重新打开它时，于共享引导模态框内以仅凭据模式渲染既有 `ProviderEditor`（面向 `llm-deepseek` 中的 `deepseek-official`）；`credentials.set` 仍是唯一的机密写入，且不改变任何提供商设置。首次运行本身不指定任何厂商：它打开 设置 → 模型，由用户选择自己运行的提供商。
 
 </details>
 
@@ -94,7 +94,7 @@ Host 配置 `credentialOnboarding` 默认为 `true`。Electron preload 标记会
 
 -----
 
-`settings.models.sign-in` 插槽让账号登录在凭证编辑器之前提供选择；没有贡献者时直接显示编辑器。关闭账号选择弹窗会结束整个引导步骤。从账号菜单显式重新打开时，即使已有提供者配置，也会进入同一个编辑器。
+`settings.models.sign-in` 插槽让账号登录在首次运行开始时提供选择：有贡献者时先渲染其登录弹窗，其中的 API 密钥选项（`useApiKey`）会继续进入上文的提供商选择弹窗，关闭它会结束整个引导步骤；没有贡献者时直接显示提供商选择弹窗。从账号菜单显式重新打开时会跳过该插槽，即使已有提供者配置，也会进入官方 DeepSeek 凭据编辑器。
 
 <a id="model-experience"></a>
 ## 模型体验

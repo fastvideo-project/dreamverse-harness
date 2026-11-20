@@ -7,6 +7,7 @@
  * packages/client/AGENTS.md.
  */
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 // Type-only: pulls the shell's SlotMap merge (the 'settings.section' entry).
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 // Type-only: pulls the locale plugin's Context merge (ctx.locale).
@@ -30,7 +31,14 @@ import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '../onboarding-copy.ts'
 import { Config, ONBOARDING_CONFIG_GLOBAL } from '../onboarding-config.ts'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
-export type { ModelsFooterOwnerProps, ProviderCardExtrasOwnerProps } from './slot-contract.ts'
+export type { ModelsFooterOwnerProps, ModelsHeaderOwnerProps, ProviderCardExtrasOwnerProps } from './slot-contract.ts'
+// Credential-editing building blocks for a `settings.models.header` registrant that draws the provider list itself;
+// each export is documented at its declaration.
+export { CustomProviderCard } from './CustomProviderCard.tsx'
+export type { CustomProviderCardProps } from './CustomProviderCard.tsx'
+export { ProviderEditor } from './ProviderEditor.tsx'
+export type { ProviderEditorProps } from './ProviderEditor.tsx'
+export { providerUsable, protocolChoices } from './store.ts'
 export type { ModelsKey } from './locales.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -89,9 +97,28 @@ export function apply(ctx: ClientContext): void {
   // Registration-time text (the nav label thunk) and the inject faces share
   // one bound translate; copy freshness rides the locale revision.
   const t = ctx.locale.bind(NS) as ModelsSectionInjected['t']
+  // Whether an extension draws the page's provider list. A registered header
+  // owns those rows and their add controls, so the section's own stop
+  // rendering; the count reaches the page as an observable because a plugin
+  // may register after the page first rendered.
+  let headerCount = ctx.slots.entries('settings.models.header').length
+  const headerListeners = new Set<() => void>()
+  ctx.effect(() => ctx.slots.subscribe('settings.models.header', () => {
+    const next = ctx.slots.entries('settings.models.header').length
+    if (next === headerCount) return
+    headerCount = next
+    for (const listener of headerListeners) listener()
+  }), 'ui-settings-models: header entries')
+  const headerEntries: HostObservable<number> = {
+    getSnapshot: () => headerCount,
+    subscribe: (listener) => {
+      headerListeners.add(listener)
+      return () => { headerListeners.delete(listener) }
+    },
+  }
   const injected = (): ModelsSectionInjected => ({
     controller,
-    hooks: { snapshot: controller.store },
+    hooks: { snapshot: controller.store, headerEntries },
     operations,
     schema,
     t,
@@ -140,6 +167,7 @@ export function apply(ctx: ClientContext): void {
     inject: injected,
     children: {
       'settings.models.provider-card': { kind: 'keyed', scope: 'root' },
+      'settings.models.header': { kind: 'list', scope: 'root' },
       'settings.models.footer': { kind: 'list', scope: 'root' },
     },
   }, ModelsSection))
