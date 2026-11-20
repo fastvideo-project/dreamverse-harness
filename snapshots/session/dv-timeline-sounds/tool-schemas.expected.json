@@ -310,22 +310,26 @@
       }
     },
     {
-      "name": "dv_timeline_clip_insert",
-      "description": "Insert an asset as a clip into a timeline at a position (1 = first); later clips shift. Use at = clip count + 1 to append. Inserting into a timeline that does not exist creates it. The clip gets a new clip ID.",
+      "name": "dv_timeline_clip_add",
+      "description": "Put a video asset on a video track of a timeline, starting start_sec seconds after the timeline's start. Where a clip plays, it covers the clips of every track with a higher number, so the user sees and hears the clip of the lowest track at each time; track 0 (视频 1) is on top. It must not overlap another clip of its track. It gets a new clip ID.",
       "parameters": {
         "type": "object",
         "properties": {
           "timeline": {
             "type": "string",
-            "description": "The timeline to edit, such as t1 (see `timelines` in dv_proj_state). Defaults to the first timeline."
-          },
-          "at": {
-            "type": "integer",
-            "description": "The position the clip takes."
+            "description": "The timeline, such as t1."
           },
           "asset": {
             "type": "string",
-            "description": "The asset ID."
+            "description": "The video asset ID."
+          },
+          "track": {
+            "type": "integer",
+            "description": "The video track: 0 for 视频 1, the top track; an existing track or the one after the last (see `video_tracks` in dv_proj_state)."
+          },
+          "start_sec": {
+            "type": "number",
+            "description": "Seconds from the timeline's start; 0 or more."
           },
           "reason": {
             "type": "string",
@@ -344,25 +348,31 @@
           }
         },
         "required": [
-          "at",
+          "timeline",
           "asset",
+          "track",
+          "start_sec",
           "reason"
         ]
       }
     },
     {
       "name": "dv_timeline_clip_move",
-      "description": "Move a clip to another position on its timeline (1 = first); the other clips shift.",
+      "description": "Move a clip to another start time, and to another video track when `track` is given; the other clips keep their times. It must not overlap another clip of the track it lands on.",
       "parameters": {
         "type": "object",
         "properties": {
           "clip": {
             "type": "string",
-            "description": "The clip ID, such as cl3 (see `clips` of `timelines` in dv_proj_state)."
+            "description": "The clip ID, such as cl3 (see `clips` of `video_tracks` in dv_proj_state)."
           },
-          "to": {
+          "start_sec": {
+            "type": "number",
+            "description": "Seconds from the timeline's start; 0 or more."
+          },
+          "track": {
             "type": "integer",
-            "description": "The position the clip takes."
+            "description": "The video track: 0 for 视频 1, the top track; an existing track or the one after the last (see `video_tracks` in dv_proj_state). Defaults to the clip's own track."
           },
           "reason": {
             "type": "string",
@@ -382,20 +392,20 @@
         },
         "required": [
           "clip",
-          "to",
+          "start_sec",
           "reason"
         ]
       }
     },
     {
       "name": "dv_timeline_clip_remove",
-      "description": "Take a clip out of its timeline; later clips shift. The asset stays in the project.",
+      "description": "Take a clip out of its timeline; the other clips keep their times, so a gap stays where it played. The asset stays in the project.",
       "parameters": {
         "type": "object",
         "properties": {
           "clip": {
             "type": "string",
-            "description": "The clip ID, such as cl3 (see `clips` of `timelines` in dv_proj_state)."
+            "description": "The clip ID, such as cl3 (see `clips` of `video_tracks` in dv_proj_state)."
           },
           "reason": {
             "type": "string",
@@ -421,13 +431,13 @@
     },
     {
       "name": "dv_timeline_clip_replace",
-      "description": "Put a different asset in a clip; the clip keeps its ID and its in and out points reset.",
+      "description": "Put a different video in a clip; the clip keeps its ID, its track and its start, and its in and out points reset. A clip that would overlap another clip of its track is refused.",
       "parameters": {
         "type": "object",
         "properties": {
           "clip": {
             "type": "string",
-            "description": "The clip ID, such as cl3 (see `clips` of `timelines` in dv_proj_state)."
+            "description": "The clip ID, such as cl3 (see `clips` of `video_tracks` in dv_proj_state)."
           },
           "asset": {
             "type": "string",
@@ -458,13 +468,13 @@
     },
     {
       "name": "dv_timeline_clip_split",
-      "description": "Split one clip in two at a time inside its asset (seconds from the asset's start, not from the timeline's start). Both parts play the same asset: the first keeps the clip ID and ends at at_sec, the second gets a new clip ID and starts there.",
+      "description": "Split one clip in two at a time inside its asset (seconds from the asset's start, not from the timeline's start). Both parts play the same asset where the clip played: the first keeps the clip ID and ends at at_sec, the second gets a new clip ID and starts there.",
       "parameters": {
         "type": "object",
         "properties": {
           "clip": {
             "type": "string",
-            "description": "The clip ID, such as cl3 (see `clips` of `timelines` in dv_proj_state)."
+            "description": "The clip ID, such as cl3 (see `clips` of `video_tracks` in dv_proj_state)."
           },
           "at_sec": {
             "type": "number",
@@ -495,13 +505,13 @@
     },
     {
       "name": "dv_timeline_clip_trim",
-      "description": "Set the in and out points of a clip (seconds inside its asset) without changing the asset; no file is created. An omitted point plays from the asset's start or to its end.",
+      "description": "Set the in and out points of a clip (seconds inside its asset) without changing the asset; no file is created. An omitted point plays from the asset's start or to its end. Moving the in point moves the clip's start by as much, so the rest plays where it did; the other clips keep their times, so a shorter clip leaves a gap. A clip that would overlap another clip of its track is refused.",
       "parameters": {
         "type": "object",
         "properties": {
           "clip": {
             "type": "string",
-            "description": "The clip ID, such as cl3 (see `clips` of `timelines` in dv_proj_state)."
+            "description": "The clip ID, such as cl3 (see `clips` of `video_tracks` in dv_proj_state)."
           },
           "in_sec": {
             "type": "number",
@@ -535,7 +545,7 @@
     },
     {
       "name": "dv_timeline_create",
-      "description": "Create a timeline (one edited video of the project) from clips in order. Pass a new `timeline` ID (t2, t3, ...) and a `name`; omit the ID for the project's first timeline, t1. To replace the clips of an existing timeline, call dv_timeline_update. An empty `assets` list makes an empty timeline.",
+      "description": "Create a timeline (one edited video of the project) with clips one after another on video track 0 from 0 s. Pass a new `timeline` ID (t2, t3, ...) and a `name`; omit the ID for the project's first timeline, t1. To replace the clips of an existing timeline, call dv_timeline_update. An empty `assets` list makes an empty timeline.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -614,7 +624,7 @@
     },
     {
       "name": "dv_timeline_export",
-      "description": "Export a timeline to one video: each clip with an in or out point is trimmed to that range, and all clips are joined in timeline order. While the timeline's video audio is muted (dv_timeline_mute), the video has no audio. Runs on the CPU.",
+      "description": "Export a timeline to one video: each clip with an in or out point is trimmed to that range and plays at its time. Where clips of several video tracks play, the track with the lowest number covers the others, picture and audio; where no clip plays, the video is black and silent. The sounds of the sound tracks play over the clips' audio, up to the end of the last clip. Muted audio (dv_timeline_mute) is left out, and every track plays at its volume (dv_timeline_volume). Runs on the CPU.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -645,7 +655,7 @@
     },
     {
       "name": "dv_timeline_mute",
-      "description": "Mute or unmute audio of a timeline. Target `video` is the clips' own audio: while it is muted, the user hears the clips silent when playing the timeline, and the exported video has no audio. Target `sound` is one sound track: while it is muted, the user does not hear its sounds when playing the timeline (the exported video does not include sounds yet).",
+      "description": "Mute or unmute audio of a timeline. Target `video_track` is the own audio of the clips of one video track: while it is muted, the user hears those clips silent when playing the timeline, and the exported video leaves their audio out. Target `sound` is one sound track: while it is muted, the user does not hear its sounds when playing the timeline, and the exported video leaves them out.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -655,15 +665,15 @@
           },
           "target": {
             "type": "string",
-            "description": "`video` for the clips' own audio, `sound` for one sound track.",
+            "description": "`video_track` for the own audio of one video track's clips, `sound` for one sound track.",
             "enum": [
-              "video",
+              "video_track",
               "sound"
             ]
           },
           "track": {
             "type": "integer",
-            "description": "For target `sound`: the sound track, 0 for the first; an existing track or the one after the last (see `sound_tracks` in dv_proj_state)."
+            "description": "The video track (0 for 视频 1; see `video_tracks` in dv_proj_state) or the sound track (0 for the first; see `sound_tracks`); an existing track, or the one after the last, which this adds."
           },
           "muted": {
             "type": "boolean",
@@ -688,6 +698,7 @@
         "required": [
           "timeline",
           "target",
+          "track",
           "muted",
           "reason"
         ]
@@ -732,7 +743,7 @@
     },
     {
       "name": "dv_timeline_sound_add",
-      "description": "Add an audio asset to a sound track of a timeline, starting start_sec seconds after the timeline's start. It may overlap clips and other sounds and gets a new sound ID. The exported video does not include sounds yet.",
+      "description": "Add an audio asset to a sound track of a timeline, starting start_sec seconds after the timeline's start. It may overlap clips and other sounds and gets a new sound ID. The exported video plays it over the clips' audio, up to the end of the last clip.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -777,6 +788,47 @@
       }
     },
     {
+      "name": "dv_timeline_sound_move",
+      "description": "Move one sound to another start time, and with track to another sound track: an existing track or the one after the last. Sounds may overlap.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sound": {
+            "type": "string",
+            "description": "The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state)."
+          },
+          "start_sec": {
+            "type": "number",
+            "description": "The timeline time at which the sound starts, in seconds; 0 or more."
+          },
+          "track": {
+            "type": "integer",
+            "description": "The sound track, 0 for the first (see `sound_tracks` in dv_proj_state); omit to keep it."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "sound",
+          "start_sec",
+          "reason"
+        ]
+      }
+    },
+    {
       "name": "dv_timeline_sound_remove",
       "description": "Remove a sound from its timeline. The audio asset stays in the project.",
       "parameters": {
@@ -804,6 +856,43 @@
         },
         "required": [
           "sound",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "dv_timeline_sound_split",
+      "description": "Split one sound in two at a time inside its audio asset (seconds from the asset's start, not from the timeline's start). Both parts play the same asset where the sound played: the first keeps the sound ID and ends at at_sec, the second gets a new sound ID and starts there. No file is created.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sound": {
+            "type": "string",
+            "description": "The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state)."
+          },
+          "at_sec": {
+            "type": "number",
+            "description": "Seconds inside the sound's asset, between its in and out points."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "sound",
+          "at_sec",
           "reason"
         ]
       }
@@ -888,8 +977,89 @@
       }
     },
     {
+      "name": "dv_timeline_sound_trim",
+      "description": "Set the in and out points of a sound (seconds inside its audio asset); no file is created. A missing point means the asset's start or end. Moving the in point moves the sound's start by the same amount, so the rest plays where it did.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sound": {
+            "type": "string",
+            "description": "The sound ID, such as sd2 (see `sounds` of `timelines` in dv_proj_state)."
+          },
+          "in_sec": {
+            "type": "number",
+            "description": "Where the sound starts inside its asset; omit for the asset's start."
+          },
+          "out_sec": {
+            "type": "number",
+            "description": "Where the sound ends inside its asset; omit for the asset's end."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "sound",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "dv_timeline_track_add",
+      "description": "Add an empty video track or sound track to a timeline, under all its tracks. Adding a clip or a sound to the track after the last also adds a track, so call this only for an empty track.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeline": {
+            "type": "string",
+            "description": "The timeline, such as t1."
+          },
+          "kind": {
+            "type": "string",
+            "description": "video for a video track, sound for a sound track.",
+            "enum": [
+              "video",
+              "sound"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "timeline",
+          "kind",
+          "reason"
+        ]
+      }
+    },
+    {
       "name": "dv_timeline_update",
-      "description": "Replace all clips of an existing timeline with clips in order; its name stays. Every clip gets a new clip ID.",
+      "description": "Replace the clips of video track 0 of an existing timeline with clips one after another from 0 s; its name and its other tracks stay. Every clip gets a new clip ID.",
       "parameters": {
         "type": "object",
         "properties": {
@@ -927,6 +1097,136 @@
         },
         "required": [
           "timeline",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "dv_timeline_video_track_move",
+      "description": "Move one video track to another number, with its clips, its mute and its volume. A track with a lower number covers the tracks with higher numbers where it has a clip; the tracks between the two numbers move one number toward the old one.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeline": {
+            "type": "string",
+            "description": "The timeline, such as t1."
+          },
+          "track": {
+            "type": "integer",
+            "description": "The video track to move, 0 for 视频 1."
+          },
+          "to": {
+            "type": "integer",
+            "description": "Its new number: an existing video track, 0 to cover all the others."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "timeline",
+          "track",
+          "to",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "dv_timeline_video_track_remove",
+      "description": "Delete one video track with all its clips; every video track with a higher number moves up one, so deleting track 0 makes track 1 the top track. The assets stay.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeline": {
+            "type": "string",
+            "description": "The timeline, such as t1."
+          },
+          "track": {
+            "type": "integer",
+            "description": "The video track, 0 for 视频 1."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "timeline",
+          "track",
+          "reason"
+        ]
+      }
+    },
+    {
+      "name": "dv_timeline_volume",
+      "description": "Set the volume of one track of a timeline, such as music turned down under a narration. Target `video_track` is the own audio of the clips of one video track, target `sound` is one sound track. The user hears the track at this volume when playing the timeline, and the exported video mixes it at this volume. 0 dB plays the audio as recorded; a track cannot be made louder than that. To silence a track, call dv_timeline_mute instead.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeline": {
+            "type": "string",
+            "description": "The timeline, such as t1."
+          },
+          "target": {
+            "type": "string",
+            "description": "`video_track` for the own audio of one video track's clips, `sound` for one sound track.",
+            "enum": [
+              "video_track",
+              "sound"
+            ]
+          },
+          "track": {
+            "type": "integer",
+            "description": "The video track (0 for 视频 1; see `video_tracks` in dv_proj_state) or the sound track (0 for the first; see `sound_tracks`); an existing track, or the one after the last, which this adds."
+          },
+          "volume_db": {
+            "type": "number",
+            "description": "The volume in decibels, from -40 to 0; 0 is the audio as recorded. Music under a narration usually sits at -18 to -12."
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+          },
+          "supersedes": {
+            "type": "array",
+            "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "based_on": {
+            "type": "string",
+            "description": "The record this call is a changed copy of; the takes of one original share it."
+          }
+        },
+        "required": [
+          "timeline",
+          "target",
+          "track",
+          "volume_db",
           "reason"
         ]
       }
