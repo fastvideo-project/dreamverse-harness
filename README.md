@@ -78,8 +78,6 @@ To run the server on one local machine, use the matching configuration in [FastV
 
 ### 2. Install DreamVerse Harness
 
-The repository is private for now; cloning it needs a GitHub account with access to `fastvideo-project/dreamverse-harness`.
-
 ```sh
 git clone https://github.com/fastvideo-project/dreamverse-harness
 cd dreamverse-harness
