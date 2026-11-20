@@ -75,7 +75,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-`@dv/models` 的 `dv_models_list` 结果列出该条目的键（模态 `image`、任务 `t2i`、提供方 `sglang-diffusion`、模型 `qwen-image-2.1-turbo`）和下面的描述，没有提示词技能。`dv_models_get` 加上下面的 schema。在 `dv_image_generate` 的拒绝中，`validateGenerationRequest` 的问题跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: ` 之后；`<down>` 把两边都向下取整到 32 的倍数，`<up>` 把两边都向上取整，每边至少 32，两者相同时用第二种形式；`<preset>` 是按宽高比列出的尺寸中宽高比与 `<W>x<H>` 最接近的一个。在拒绝中，`facts()` 或 `schema()` 的拒绝跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo is unavailable: ` 之后，`dv_models_get` 单独把它作为错误显示。渲染失败时，记录和工具调用以它的消息失败。
+`@dv/models` 的 `dv_models_list` 结果列出该条目的键（模态 `image`、任务 `t2i`、提供方 `sglang-diffusion`、模型 `qwen-image-2.1-turbo`）和下面的描述，没有提示词技能。`dv_models_get` 加上下面的 schema。在 `dv_image_generate` 的拒绝中，`validateGenerationRequest` 的问题跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo cannot generate this: ` 之后；`<down>` 把两边都向下取整到 32 的倍数，`<up>` 把两边都向上取整，每边至少 32，两者相同时用第二种形式；`<preset>` 是按宽高比列出的尺寸中宽高比与 `<W>x<H>` 最接近的一个。在拒绝中，`facts()` 或 `schema()` 的拒绝跟在 `Model image/t2i/sglang-diffusion/qwen-image-2.1-turbo is unavailable: ` 之后，`dv_models_get` 单独把它作为错误显示。渲染失败时，记录和工具调用以它的消息失败。模型目录报告 `hosting: self-hosted`。
 
 ##### Entry description
 

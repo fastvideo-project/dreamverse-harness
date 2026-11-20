@@ -125,7 +125,7 @@ class FakeModel {
 
   entry(task: TaskOfPrimitive<'video'>): ModelEntry<TaskOfPrimitive<'video'>> {
     return {
-      modality: 'video', task, provider: 'test', model: 'fake', description: 'Probe clips',
+      modality: 'video', task, provider: 'test', hosting: 'self-hosted', model: 'fake', description: 'Probe clips',
       facts: () => this.facts(),
       schema: () => Promise.resolve({}),
       validateGenerationRequest: request => new Promise((resolve) => { resolve(this.problems(request)) }),

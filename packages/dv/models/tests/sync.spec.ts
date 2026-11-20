@@ -7,7 +7,7 @@ import {
 } from '../src/index.ts'
 
 const entry = (model: string, task: 't2v' | 'i2v' = 't2v'): ModelEntry => ({
-  modality: 'video', task, provider: 'fake', model, description: model,
+  modality: 'video', task, provider: 'fake', hosting: 'self-hosted', model, description: model,
   facts: () => Promise.reject(new Error('unused')), schema: () => Promise.resolve({}),
   validateGenerationRequest: () => Promise.resolve([]), render: () => { throw new Error('unused') },
 })

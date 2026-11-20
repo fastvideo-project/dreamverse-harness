@@ -33,8 +33,8 @@ describe('dv-vllm-omni', () => {
   it('registers one entry per configured model and removes them on disposal', async () => {
     const { fixture } = await boot()
     expect(value(await fixture.tool('dv_models_list', { provider: 'vllm-omni' }))).toEqual([
-      { ...IMAGE_KEY, description: fixture.image().description },
-      { ...SPEECH_KEY, description: fixture.speech().description },
+      { ...IMAGE_KEY, hosting: 'self-hosted', description: fixture.image().description },
+      { ...SPEECH_KEY, hosting: 'self-hosted', description: fixture.speech().description },
     ])
     expect(fixture.image().description).toBe('Qwen-Image 2.1 Turbo: a fast text-to-image model that renders legible text inside '
       + 'the image, such as posters, labels and interface layouts. The same seed, size and prompt give the same image.')

@@ -35,7 +35,7 @@ class FakeImageModel {
 
   entry(): ModelEntry<'t2i'> {
     return {
-      modality: 'image', task: 't2i', provider: 'test', model: 'fake', description: 'Fake images',
+      modality: 'image', task: 't2i', provider: 'test', hosting: 'self-hosted', model: 'fake', description: 'Fake images',
       facts: () => this.facts(),
       schema: () => Promise.resolve({}),
       validateGenerationRequest: request => Promise.resolve(this.problems(request)),

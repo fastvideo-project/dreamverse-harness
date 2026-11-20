@@ -350,7 +350,8 @@ const RENDER_DECLARATION: GenerationSpec<'video'> = {
     + 'Task v2v regenerates one existing take, passed as its one reference input (<record>#0, the take\'s video output), with no frame input, '
     + 'such as upscaling a draft to 2K; reuse that take\'s prompt unchanged. '
     + 'Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. '
-    + 'The model\'s own parameters go in extra (see dv_models_get). ' + TAKE_RULE,
+    + 'The model\'s own parameters go in extra (see dv_models_get). '
+    + 'A model whose catalog entry reports hosting: managed runs on the provider\'s servers and uses no local GPU. ' + TAKE_RULE,
   params: RENDER_PARAMS,
   inputs: RENDER_INPUTS,
   outputs: [{ role: 'video', type: 'video' }, { role: 'last_still', type: 'image' }],

@@ -96,7 +96,7 @@ DreamVerse bundle 把插件声明为禁用的 `dv-vllm-omni` 行；部署在其 
 
 #### 模型看到的内容
 
-`@dv/models` 的 `dv_models_list` 结果列出每个条目的键和描述，不带提示词技能：模态 `image`、任务 `t2i`、提供方 `vllm-omni`、模型 `qwen-image-2.1-turbo`，以及模态 `audio`、任务 `t2a`、提供方 `vllm-omni`、模型 `qwen3-tts-customvoice`，描述如下。`dv_models_get` 加上下面的 schema；语音 schema 列出服务器返回的声音和四个 `extra` 参数及其类型、描述，`language` 还列出其取值。`validateGenerationRequest` 的问题跟在 `dv_image_generate` 或 `dv_audio_generate` 拒绝中的 `Model <key> cannot generate this: ` 之后。`facts()` 或 `schema()` 的拒绝跟在拒绝中的 `Model <key> is unavailable: ` 之后，`dv_models_get` 把它单独作为错误显示。渲染失败以其消息使记录和工具调用失败。在尺寸问题中，`<down>` 把两边都向下取整到 32 的倍数，`<up>` 把两边都向上取整，每边至少 32；句子不给出超过像素上限的尺寸，两者相同时只给出一个尺寸。两个尺寸都超过上限时，句子改为给出宽高比最接近的尺寸；如果请求的尺寸也超过上限，则省略这个句子，因为像素上限的句子会给出那个尺寸。
+`@dv/models` 的 `dv_models_list` 结果列出每个条目的键和描述，不带提示词技能：模态 `image`、任务 `t2i`、提供方 `vllm-omni`、模型 `qwen-image-2.1-turbo`，以及模态 `audio`、任务 `t2a`、提供方 `vllm-omni`、模型 `qwen3-tts-customvoice`，描述如下。`dv_models_get` 加上下面的 schema；语音 schema 列出服务器返回的声音和四个 `extra` 参数及其类型、描述，`language` 还列出其取值。`validateGenerationRequest` 的问题跟在 `dv_image_generate` 或 `dv_audio_generate` 拒绝中的 `Model <key> cannot generate this: ` 之后。`facts()` 或 `schema()` 的拒绝跟在拒绝中的 `Model <key> is unavailable: ` 之后，`dv_models_get` 把它单独作为错误显示。渲染失败以其消息使记录和工具调用失败。在尺寸问题中，`<down>` 把两边都向下取整到 32 的倍数，`<up>` 把两边都向上取整，每边至少 32；句子不给出超过像素上限的尺寸，两者相同时只给出一个尺寸。两个尺寸都超过上限时，句子改为给出宽高比最接近的尺寸；如果请求的尺寸也超过上限，则省略这个句子，因为像素上限的句子会给出那个尺寸。模型目录报告 `hosting: self-hosted`。
 
 ##### 条目描述
 

@@ -26,7 +26,7 @@ const FACTS: RenderModelFacts = {
 /** A fake entry of one model of one provider serving one video task; its schema names the task. */
 function entry(task: TaskId, provider: string, model: string): ModelEntry {
   return {
-    modality: 'video', task, provider, model, description: `${model} for ${task}`,
+    modality: 'video', task, provider, hosting: provider === 'other' ? 'managed' : 'self-hosted', model, description: `${model} for ${task}`,
     facts: () => Promise.resolve(FACTS),
     schema: () => Promise.resolve({ inputs: task === 'ref2v' ? { reference: { media_types: ['image'] } } : {}, extra: {} }),
     validateGenerationRequest: () => Promise.resolve([]),
@@ -136,26 +136,26 @@ describe('dvModels', () => {
     const all = await call(ctx, 'dv_models_list', {})
     if (all.isError) throw new Error(all.error.message)
     expect(all.value).toEqual([
-      { modality: 'video', task: 't2v', provider: 'test', model: 'alpha', description: 'alpha for t2v' },
-      { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' },
-      { modality: 'video', task: 't2v', provider: 'other', model: 'beta', description: 'beta for t2v' },
+      { modality: 'video', task: 't2v', provider: 'test', hosting: 'self-hosted', model: 'alpha', description: 'alpha for t2v' },
+      { modality: 'video', task: 'ref2v', provider: 'test', hosting: 'self-hosted', model: 'alpha', description: 'alpha for ref2v' },
+      { modality: 'video', task: 't2v', provider: 'other', hosting: 'managed', model: 'beta', description: 'beta for t2v' },
     ])
     const refs = await call(ctx, 'dv_models_list', { task: 'ref2v' })
     if (refs.isError) throw new Error(refs.error.message)
-    expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v' }])
+    expect(refs.value).toEqual([{ modality: 'video', task: 'ref2v', provider: 'test', hosting: 'self-hosted', model: 'alpha', description: 'alpha for ref2v' }])
   })
 
   it('lists the catalog as dv_models_get answers each entry, with schema null for a backend it cannot reach', async () => {
     const ctx = await start()
     ctx.dvModels.register({ ...entry('t2v', 'down', 'gamma'), schema: () => Promise.reject(new Error('connection refused')) })
     expect(await ctx.dvModels.catalog()).toEqual([
-      { modality: 'video', task: 't2v', provider: 'test', model: 'alpha', description: 'alpha for t2v', schema: { inputs: {}, extra: {} } },
+      { modality: 'video', task: 't2v', provider: 'test', hosting: 'self-hosted', model: 'alpha', description: 'alpha for t2v', schema: { inputs: {}, extra: {} } },
       {
-        modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
+        modality: 'video', task: 'ref2v', provider: 'test', hosting: 'self-hosted', model: 'alpha', description: 'alpha for ref2v',
         schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
       },
-      { modality: 'video', task: 't2v', provider: 'other', model: 'beta', description: 'beta for t2v', schema: { inputs: {}, extra: {} } },
-      { modality: 'video', task: 't2v', provider: 'down', model: 'gamma', description: 'gamma for t2v', schema: null },
+      { modality: 'video', task: 't2v', provider: 'other', hosting: 'managed', model: 'beta', description: 'beta for t2v', schema: { inputs: {}, extra: {} } },
+      { modality: 'video', task: 't2v', provider: 'down', hosting: 'self-hosted', model: 'gamma', description: 'gamma for t2v', schema: null },
     ])
   })
 
@@ -165,7 +165,7 @@ describe('dvModels', () => {
     ctx.dvModels.register({ ...entry('t2v', 'slow', 'delta'), schema: () => new Promise(() => {}) })
     const listed = ctx.dvModels.catalog()
     await vi.advanceTimersByTimeAsync(5000)
-    expect((await listed).at(-1)).toEqual({ modality: 'video', task: 't2v', provider: 'slow', model: 'delta', description: 'delta for t2v', schema: null })
+    expect((await listed).at(-1)).toEqual({ modality: 'video', task: 't2v', provider: 'slow', hosting: 'self-hosted', model: 'delta', description: 'delta for t2v', schema: null })
     vi.useRealTimers()
   })
 
@@ -174,7 +174,7 @@ describe('dvModels', () => {
     const result = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha' })
     if (result.isError) throw new Error(result.error.message)
     expect(result.value).toEqual({
-      modality: 'video', task: 'ref2v', provider: 'test', model: 'alpha', description: 'alpha for ref2v',
+      modality: 'video', task: 'ref2v', provider: 'test', hosting: 'self-hosted', model: 'alpha', description: 'alpha for ref2v',
       schema: { inputs: { reference: { media_types: ['image'] } }, extra: {} },
     })
     const unknown = await call(ctx, 'dv_models_get', { modality: 'video', task: 'ref2v', provider: 'other', model: 'beta' })
@@ -272,7 +272,7 @@ describe('dvModels', () => {
     const listed = await call(ctx, 'dv_models_list', { provider: 'extra' })
     if (listed.isError) throw new Error(listed.error.message)
     expect(listed.value).toEqual([
-      { modality: 'video', task: 't2v', provider: 'extra', model: 'gamma', description: 'gamma for t2v', prompt_skill: 'gamma-prompting' },
+      { modality: 'video', task: 't2v', provider: 'extra', hosting: 'self-hosted', model: 'gamma', description: 'gamma for t2v', prompt_skill: 'gamma-prompting' },
     ])
     remove()
     expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()

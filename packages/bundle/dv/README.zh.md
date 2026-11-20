@@ -60,7 +60,7 @@ patch 读取的环境变量：`DV_PROJECTS_FOLDER`（存放新对话和新项目
 <a id="model-experience"></a>
 ## 模型体验
 
-间接地，通过 bundle 挂载的工具、`@dv/project` 的 `dv:project` 提示词段落、项目状态消息和项目更新消息、`@dv/chat-references` 的提及上下文和 skill；bundle 本身不添加模型可见的文本。
+间接地，通过 bundle 挂载的工具、`@dv/project` 的 `dv:project` 提示词段落、项目状态消息和项目更新消息、`@dv/chat-references` 的提及上下文和 skill。配置的 DreamVerse 角色还会指导模型用所选模型的 `t2v` 条目直接渲染纯文本镜头，仅在用户要求或镜头需要参考素材时才准备图片。
 
 #### KV Cache 影响
 

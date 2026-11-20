@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write packages/dv/openrouter/README.md
-README.md: b2c249b3bbee13a6c4f2a00257d6e811a19237d6
-README.zh.md: ae8d24ee3511f4449f6f2d12db6054f56770e48d
+README.md: 775068f9a8f1fa211a154775a08108ebbfef1bb8
+README.zh.md: 5fa50548f56e35ab7fb80a23075eae38b0ef0a85

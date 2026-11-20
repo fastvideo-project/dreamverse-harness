@@ -48,6 +48,7 @@
 - **配置。** 每个随部署而变化的值都是经过校验的 `Config` 字段：基础 URL、超时、模型列表、凭据引用。`DEFAULT_*` 常量不算可配置。把 `models` 设为 `.volatile()`，使修改能到达运行中的注册表。用 `assertModelAlias` 检查别名，用 `isCredentialRefName` 检查凭据引用，使错误的值让插件加载失败。休眠安装（`models: {}`）不发出任何网络调用。
 - **注册。** 按别名和任务构建条目，并用 `syncModelEntries` 或 `syncModelEntriesAsync` 注册。固定条目使用 `ctx.effect(() => ctx.dvModels.register(entry), label)`。每项贡献都是 effect，所以卸载时会被释放。
 - **条目约定。** [ModelEntry](../../packages/dv/models/src/types.ts) 的 JSDoc 规定了 `facts`、`schema`、`validateGenerationRequest` 和 `render` 的语义。在任何付费调用之前，用面向智能体的一句话拒绝每个有问题的请求。用 `replacePromptCitations` 从提示中去掉引用。
+- **托管与调度。** 每个条目都设置 `hosting`：由提供商运营服务器时为 `managed`，由用户运行服务器时为 `self-hosted`。只有在渲染接受显式 `worker` 时才设置 `workerRouting: true`。智能体从 `dv_models_list` 读取这两项，并遵循 `video-model-selection` skill 的[调度规则](../../packages/dv/models/skills/video-model-selection.md)，因此托管模型无需检查设备即可渲染。
 - **输出。** 视频渲染按顺序产出 `last_frame`、`video_start`、`chunk` 和 `done`，末帧来自 `dvFfmpeg.lastFrame`。图像条目返回 PNG 字节和像素尺寸，语音条目返回带时长的 WAV 片段；其他格式用 `dvFfmpeg` 转换。
 - **密钥。** 每次操作都在主机端解析密钥，不缓存，`Config` 中只保存其引用名称。不要把密钥放进 argv、子进程环境、日志或错误。通过 stdin 把它传给子进程，并用 `scrubbedParentEnv()` 启动子进程。带鉴权的请求使用 `redirect: 'error'`，并且从不记录签名 URL。
 - **取消与计费。** 把中止信号传给每个请求，并以 `signal.reason` 拒绝。提供商没有取消路由时，在 schema 中声明 `cancellation: 'monitoring_only'`，并在描述中说明停止不会取消付费任务。付费请求只发送一次，绝不自动重试。

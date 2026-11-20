@@ -74,7 +74,7 @@ describe('DreamVerse bundle composition', () => {
     },
     load: async () => { loaded = true }, unload: async () => { loaded = false } }
     ctx.dvModels.register(Object.create(fasth3, { model: { value: 'pika' }, provider: { value: 'fastvideo' }, runtime: { value: runtime }, workerRouting: { value: true } }) as typeof fasth3)
-    const image = (model: string) => ({ modality: 'image', task: 't2i', provider: 'openrouter', model, description: model,
+    const image = (model: string) => ({ modality: 'image', task: 't2i', provider: 'openrouter', hosting: 'managed', model, description: model,
       facts: async () => ({ modelId: model }), schema: async () => ({}), validateGenerationRequest: async () => [],
       render: async () => { throw new Error('not rendered in this test') } }) as Parameters<typeof ctx.dvModels.register>[0]
     ctx.dvModels.register(image('flux'))
@@ -108,7 +108,8 @@ describe('DreamVerse bundle composition', () => {
     expect(loaded).toBe(false)
     expect((await call('dv_models_select', { modality: 'video', provider: '', model: '', reason: 'Let the operator choose' })).isError).toBeFalsy()
     expect(ctx.dvProject.getState(project).components.models).toEqual({ conversations: { anonymous: { image: { provider: 'openrouter', model: 'flux' } } } })
-    const definitions = ctx.tools.schemas().filter(tool => ['dv_models_select', 'dv_models_load', 'dv_models_unload', 'dv_models_status'].includes(tool.name))
+    const definitions = ctx.tools.schemas().filter(tool =>
+      ['dv_models_list', 'dv_models_select', 'dv_models_load', 'dv_models_unload', 'dv_models_status'].includes(tool.name))
     await expect(`${JSON.stringify(definitions, null, 2)}\n`).toMatchFileSnapshot('./expected/tools/model-controls.json')
   })
   it('mounts the reference nouns in the order character, location, style, on the host and in the browser', () => {

@@ -96,7 +96,7 @@ No runtime invariant companion is published because Reactor registers entries in
 
 #### What the model sees
 
-The agent can query the enabled Reactor models with `dv_models_list` and read their task schemas with `dv_models_get`. Each model receives the shot prompt with project asset citations expanded according to its own protocol. For LTX, the shot prompt is the spoken script.
+The agent can query the enabled Reactor models with `dv_models_list` and read their task schemas with `dv_models_get`. Each model receives the shot prompt with project asset citations expanded according to its own protocol. For LTX, the shot prompt is the spoken script. The catalog reports `hosting: managed`.
 
 #### Token effect
 

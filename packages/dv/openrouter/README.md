@@ -57,7 +57,7 @@ See the [OpenRouter video API guide](https://openrouter.ai/docs/guides/overview/
 
 #### What the model sees
 
-The agent sees provider `openrouter`, configured aliases, supported task schemas, exact duration choices, the image models' `extra` choices, the speech models' voices, the cloud cancellation limitation, and that video models take no audio or video references. While a video model is configured and the skill registry is mounted, the skill catalog lists the prompt skill `openrouter-video-prompting` with the description `Prompt rules for OpenRouter cloud video models, tasks t2v, ref2v, i2v and fl2v. OpenRouter video models take no audio or video references for now.`, so the agent knows the limit without listing models; loading the skill returns [`skills/openrouter-video-prompting.md`](skills/openrouter-video-prompting.md). Prompts contain endpoint labels rather than internal asset citation URLs.
+The agent sees provider `openrouter`, configured aliases, supported task schemas, exact duration choices, the image models' `extra` choices, the speech models' voices, the cloud cancellation limitation, and that video models take no audio or video references. While a video model is configured and the skill registry is mounted, the skill catalog lists the prompt skill `openrouter-video-prompting` with the description `Prompt rules for OpenRouter cloud video models, tasks t2v, ref2v, i2v and fl2v. OpenRouter video models take no audio or video references for now.`, so the agent knows the limit without listing models; loading the skill returns [`skills/openrouter-video-prompting.md`](skills/openrouter-video-prompting.md). Prompts contain endpoint labels rather than internal asset citation URLs. The catalog reports `hosting: managed`.
 
 #### Token effect
 

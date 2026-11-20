@@ -63,7 +63,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 | 成员 | 约定 |
 | --- | --- |
 | `description` | 模型的长处和短处。agent 和用户比较描述，在相似的模型之间选择。 |
-| `hosting` | 可选。运行模型的服务器由托管服务运营时为 `managed`，由用户自己运营时为 `self-hosted`。模型目录在条目上保留该值，不在 `dv_models_list` 或 `dv_models_get` 中返回。 |
+| `hosting` | 必填。运行模型的服务器由托管服务运营时为 `managed`，由用户自己运营时为 `self-hosted`。`dv_models_list` 和 `dv_models_get` 返回该值。 |
 | `facts()` | resolve 为后端报告的 `RenderModelFacts`。后端无法连接时 reject。 |
 | `schema()` | resolve 为描述模型所接受请求的 JSON：agent 需要的限制（例如时长、宽高比和分辨率）、各输入及其媒体类型和数量，以及 `extra` 中的参数。提供方插件定义该 JSON。模型目录把它原样交给 agent。后端无法连接时 reject。 |
 | `validateGenerationRequest(request)` | resolve 为模型无法渲染某个 `RenderRequest` 的每个原因，每个原因一句面向 agent 的话。原因包括无效的 `extra` 值。模型能渲染该请求时 resolve 为空列表。后端无法连接时 reject。 |
@@ -216,12 +216,12 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 
 #### 模型看到什么
 
-DSH 工具注册表挂载期间，agent 看到工具 `dv_models_list`，带下面的描述。该工具有三个可选字符串参数：`modality`、`task` 和 `provider`。生成的工具目录不列出 DreamVerse 工具，所以本节引用工具描述和参数描述。一次调用返回一个文本块，内容是缩进的 JSON：一个数组，每个匹配条目一项，包含 `modality`、`task`、`provider`、`model` 和 `description`；条目有提示词 skill 时，还包含 `prompt_skill`，即该 skill 的名称。本包不向系统提示词添加任何内容。agent 只通过这两个工具和 `video-model-selection` skill 读取模型目录。
+DSH 工具注册表挂载期间，agent 看到工具 `dv_models_list`，带下面的描述。该工具有三个可选字符串参数：`modality`、`task` 和 `provider`。生成的工具目录不列出 DreamVerse 工具，所以本节引用工具描述和参数描述。一次调用返回一个文本块，内容是缩进的 JSON：一个数组，每个匹配条目一项，包含 `modality`、`task`、`provider`、`model`、托管方式 `hosting` 和 `description`；条目声明相关信息时，还包含显示名称 `display_name`、工作器选择能力 `worker_selection` 和提示词 skill 名称 `prompt_skill`。本包不向系统提示词添加任何内容。agent 只通过这两个工具和 `video-model-selection` skill 读取模型目录。
 
 ##### dv_models_list 描述
 
 ```markdown
-List the models you can generate with, each with its key (modality, task, provider, model), its description and the name of its prompt skill, if it has one.
+List the models you can generate with, each with its key (modality, task, provider, model), its description, its hosting, and its display name, worker selection and prompt skill when available.
 ```
 
 ##### dv_models_list 参数描述

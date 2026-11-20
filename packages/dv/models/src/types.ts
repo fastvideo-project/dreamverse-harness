@@ -195,7 +195,7 @@ export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes
   /** Whether this provider honors explicit worker targets without fallback. */
   workerRouting?: boolean
   /** Who operates the server that runs the model. */
-  hosting?: 'managed' | 'self-hosted'
+  hosting: 'managed' | 'self-hosted'
   /** Creator-facing variant name; absent, use the model key. */
   displayName?: string
   /** Present when the provider supports native model loading and unloading. */

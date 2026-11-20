@@ -57,7 +57,7 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 
 #### 模型看到的内容
 
-智能体看到提供方 `openrouter`、已配置别名、支持的任务模式、精确时长选项、图片模型的 `extra` 选项、语音模型的声音、云端取消限制，以及视频模型不接受音频和视频参考。配置了视频模型且技能注册表已挂载时，技能目录列出提示词技能 `openrouter-video-prompting`，描述为 `Prompt rules for OpenRouter cloud video models, tasks t2v, ref2v, i2v and fl2v. OpenRouter video models take no audio or video references for now.`，因此智能体无需列出模型即可知道这一限制；加载该技能返回 [`skills/openrouter-video-prompting.md`](skills/openrouter-video-prompting.md)。提示词使用端点标签，而非内部素材引用 URL。
+智能体看到提供方 `openrouter`、已配置别名、支持的任务模式、精确时长选项、图片模型的 `extra` 选项、语音模型的声音、云端取消限制，以及视频模型不接受音频和视频参考。配置了视频模型且技能注册表已挂载时，技能目录列出提示词技能 `openrouter-video-prompting`，描述为 `Prompt rules for OpenRouter cloud video models, tasks t2v, ref2v, i2v and fl2v. OpenRouter video models take no audio or video references for now.`，因此智能体无需列出模型即可知道这一限制；加载该技能返回 [`skills/openrouter-video-prompting.md`](skills/openrouter-video-prompting.md)。提示词使用端点标签，而非内部素材引用 URL。模型目录报告 `hosting: managed`。
 
 #### Token 影响
 

@@ -4,16 +4,22 @@ Each shot renders with one video model. Each video model has a key of four field
 
 Providers may expose `dv_models_status`, `dv_models_load` and `dv_models_unload`. These operate on installed weights and GPU memory; they never download weights. Generation loads its requested model automatically, serializes switching with inference, and retains compatible shared components when supported. Do not unload a running generation. Do this procedure for each shot.
 
+## Placement
+
+Read `hosting` and `worker_selection` from `dv_models_list` or `dv_models_get` before consulting device availability. A `managed` model runs on the provider's servers: submit the render directly. A `self-hosted` model uses its configured server unless it reports `worker_selection: true`. Consult device availability only when the user asks about devices or the model reports `worker_selection: true`.
+
+When this conversation has a selected model (`video_model` is set, or the user named one), render with that model; do not list hardware or check other providers' servers for it. If a render with the selected model fails, report the error in plain words and stop. Do not retry, switch provider or model, or probe devices unless the user asks. A model with `hosting: managed` bills each attempt, so never retry it automatically.
+
 ## Independent workers
 
-When the model and render tools accept `worker`, use the IDs of enabled workers to select a device explicitly. For example, load Pika on a chosen worker, render its assigned clip there, then unload that worker only after its generation finishes. Omit `worker` only when automatic placement is intended. Never say you cannot control placement when `worker_selection` is available. Independent shots with all inputs available can run together: emit their render calls in the same tool batch. The provider reserves one worker per generation, prefers an already loaded model, and queues when eligible workers are busy.
+When the model and render tools accept `worker`, use the IDs of enabled workers for explicit placement. For example, load Pika on a chosen worker, render its assigned clip there, then unload that worker only after its generation finishes. Omit `worker` only when automatic placement is intended. Never say you cannot control placement when `worker_selection` is available. Independent shots with all inputs available can run together: emit their render calls in the same tool batch. The provider reserves one worker per generation, prefers an already loaded model, and queues when eligible workers are busy.
 
 ## Procedure
 
 1. Find the task of the shot.
    - Use `i2v` when the shot begins at one first-frame image, or `l2v` when it ends at one last-frame image. Neither accepts reference media.
    - Use `fl2v` when the shot must connect explicit first and last images. Both endpoint image inputs are required; general reference media are not accepted.
-   - Use `t2v` when the shot has only a prompt. A model registered only for `ref2v` can also serve a prompt-only shot if its schema permits zero references; check that entry before rejecting the conversation's selected model.
+   - Use `t2v` when the shot has only a prompt. Describe the scene in text and render straight from the prompt. A model registered only for `ref2v` can also serve a prompt-only shot if its schema permits zero references; check that entry before rejecting the conversation's selected model.
    - Use `ref2v` when the shot has reference media and a prompt. A `ref2v` shot can also have a first frame.
 2. If the user named a model or this conversation has a video default, call `dv_models_list` with the task of the shot. Use the entry of that model. If that model has no entry for the task, tell the user and offer a model switch. Go to step 9.
 3. Call `dv_models_list` with the task of the shot. Each model that `dv_models_list` returns is a candidate.

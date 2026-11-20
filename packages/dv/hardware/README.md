@@ -63,7 +63,7 @@ Generation hardware:
 When the user asks whether a device is connected, available, busy, or loaded, call dv_hardware_list immediately and report its result. Do not ask permission for this read-only inspection or claim no visibility before checking.
 The configured worker IDs below are routing targets, not evidence of current connectivity. Read dv_hardware_list for live state.
 <inventory>
-For explicit placement, pass the worker ID as worker to a render or model tool that accepts it. Use the exact enabled worker ID. A pinned operation never falls back to another device. Omit worker to let the provider place independent jobs automatically.
+The model catalog metadata says whether a model accepts a worker. For explicit placement, pass the worker ID as worker to a render or model tool that accepts it. Use the exact enabled worker ID. A pinned operation never falls back to another device. Omit worker to let the provider place independent jobs automatically.
 Check model status per worker before switching models. Loading retains compatible common components when supported. Never unload or replace a busy worker. Submit independent clips together; wait only for clips whose inputs depend on an earlier output.
 Only configured workers may be used. Do not infer distributed single-video support from multiple available workers, start Ray, change device connections, or access credentials from generation tools.
 ```

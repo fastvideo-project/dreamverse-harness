@@ -113,7 +113,7 @@ async function speak(baseUrl: string, served: ServedSpeech, request: AudioReques
  */
 export function speechEntry(model: string, served: ServedSpeech, baseUrl: string): ModelEntry<'t2a'> {
   return {
-    modality: 'audio', task: 't2a', provider: 'vllm-omni', model, description: served.description,
+    modality: 'audio', task: 't2a', provider: 'vllm-omni', hosting: 'self-hosted', model, description: served.description,
     async facts(): Promise<AudioModelFacts> {
       await checkServed(baseUrl, served.modelId)
       return { modelId: served.modelId }

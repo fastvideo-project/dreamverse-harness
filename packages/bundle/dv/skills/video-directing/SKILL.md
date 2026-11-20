@@ -8,6 +8,8 @@ whenToUse: "The user wants a video made or extended from a description and refer
 
 Every `dv_*` call becomes a record the user sees as a chat card, a canvas node, and a timeline clip. The project block in your system prompt is the current state; read it before every call. Follow this procedure in order unless the user asks for something narrower.
 
+For a single text-only shot, describe characters, places and style in the prompt. Use references when the user supplies or requests them, or when visual continuity requires them.
+
 ## 1. Project setup
 
 1. When the project block names a project, work in it; never create or switch projects. Only a conversation with no project starts one with `dv_proj_create`.
@@ -16,7 +18,7 @@ Every `dv_*` call becomes a record the user sees as a chat card, a canvas node, 
 
 ## 2. Organize the story and its shots
 
-1. Split the story into shots, one clear action each. Shot count = requested duration divided by the shot length (default 5 s, whole seconds inside the range of the model). "15 seconds" is three shots; "30 seconds" is six.
+1. Split the story into shots, one clear action each. Divide the requested duration by the shot length. Default to the duration the selected model lists that is closest to 5 s, and use only listed durations. "15 seconds" at 5 s is three shots; "30 seconds" is six.
 2. Write one line per shot: what happens, the camera, and which references appear. Mark whether the shot is independent, an intentional discontinuity, or continuity-linked to the previous shot.
 3. Write a compact cinematic profile for the whole story: style, palette, lighting, camera language, depth of field, motion blur, grain, aspect ratio and sound style. Note intentional per-shot changes.
 4. Keep the storyboard objective stable after the user agrees. For a continuity-linked shot, finalize its prompt only after the previous shot finishes and you have inspected the previous shot's actual ending.

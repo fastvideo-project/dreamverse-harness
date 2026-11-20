@@ -205,6 +205,7 @@ describe('dv-sglang-diffusion', () => {
     const fixture = await start(server.url)
     expect(value(await fixture.tool('dv_models_list', {}))).toEqual([{
       ...KEY,
+      hosting: 'self-hosted',
       description: 'Qwen-Image 2.1 Turbo: a text-to-image model that renders legible text inside the image, such as posters, '
         + 'labels and interface layouts. The same seed, size and prompt give the same image.',
     }])

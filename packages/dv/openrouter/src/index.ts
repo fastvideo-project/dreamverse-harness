@@ -126,7 +126,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     return found
   }
   const entry = (alias: string, selected: VideoModel, task: TaskOfPrimitive<'video'>): ModelEntry<TaskOfPrimitive<'video'>> => ({
-    modality: 'video', provider: 'openrouter', model: alias, task, displayName: selected.name,
+    modality: 'video', provider: 'openrouter', hosting: 'managed', model: alias, task, displayName: selected.name,
     description: `OpenRouter: ${selected.name}, task ${task}. Cloud generation billed by the provider. `
       + (task === 'ref2v' ? 'Takes reference images with no first or last frame. ' : '')
       + 'Uses provider-published durations and output choices. Stopping local monitoring does not cancel the paid cloud job. '
@@ -229,7 +229,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     return { bytes: png, mime: 'image/png', width: png.readUInt32BE(16), height: png.readUInt32BE(20) }
   }
   const imageEntry = (alias: string, selected: ImageModel): ModelEntry<'t2i'> => ({
-    modality: 'image', provider: 'openrouter', model: alias, task: 't2i', displayName: selected.name,
+    modality: 'image', provider: 'openrouter', hosting: 'managed', model: alias, task: 't2i', displayName: selected.name,
     description: `OpenRouter: ${selected.name}, an image from text. Cloud generation billed by the provider. The provider `
       + 'chooses the pixel size from extra.aspect_ratio and extra.resolution where the model offers them; size is not accepted.',
     facts: async () => ({ modelId: (await imageModel(selected.id)).id }),
@@ -292,7 +292,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     }
   }
   const speechEntry = (alias: string, selected: SpeechModel): ModelEntry<'t2a'> => ({
-    modality: 'audio', provider: 'openrouter', model: alias, task: 't2a', displayName: selected.name,
+    modality: 'audio', provider: 'openrouter', hosting: 'managed', model: alias, task: 't2a', displayName: selected.name,
     description: `OpenRouter: ${selected.name}, speech from text. Cloud generation billed by the provider. The prompt is `
       + 'the plain text to speak, without markup; extra.voice chooses the voice.',
     facts: async () => ({ modelId: (await speechModel(selected.id)).id }),

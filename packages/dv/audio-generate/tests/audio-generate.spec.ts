@@ -39,7 +39,7 @@ class FakeSpeech {
 
 function fakeEntry(speech: FakeSpeech, model = 'fake'): ModelEntry<'t2a'> {
   return {
-    modality: 'audio', task: 't2a', provider: 'test', model, description: 'Fixed clips',
+    modality: 'audio', task: 't2a', provider: 'test', hosting: 'self-hosted', model, description: 'Fixed clips',
     facts: () => Promise.resolve({ modelId: 'test-speech' }),
     schema: () => Promise.resolve({}),
     validateGenerationRequest: request => Promise.resolve(speech.check(request)),

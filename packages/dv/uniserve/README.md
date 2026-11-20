@@ -74,7 +74,7 @@ Run the opt-in test, which renders one five-second shot, with `DV_UNISERVE_TEST_
 
 #### What the model sees
 
-The `dv_models_list` results of `@dv/models` list the entry with its key (modality `video`, task `ref2v`, provider `uniserve`, model `fasth3`), the description below and the prompt skill `fasth3-uniserve-prompting`. The skill maps the official MiniMax-H3 full-reference guide to a DreamVerse shot and tells the agent to read the reference limits and durations from `dv_models_get`. `dv_models_get` adds the schema below, read from a server with 12 references, 9 images, 3 videos and 3 audio files. A rejection of `facts()` or `schema()` follows `Model video/ref2v/uniserve/fasth3 is unavailable: ` in a refusal, and a render failure fails the record and the tool call with its message.
+The `dv_models_list` results of `@dv/models` list the entry with its key (modality `video`, task `ref2v`, provider `uniserve`, model `fasth3`), the display name `FastH3-Omni`, the description below and the prompt skill `fasth3-uniserve-prompting`. The skill maps the official MiniMax-H3 full-reference guide to a DreamVerse shot and tells the agent to read the reference limits and durations from `dv_models_get`. `dv_models_get` adds the schema below, read from a server with 12 references, 9 images, 3 videos and 3 audio files. A rejection of `facts()` or `schema()` follows `Model video/ref2v/uniserve/fasth3 is unavailable: ` in a refusal, and a render failure fails the record and the tool call with its message. The catalog reports `hosting: self-hosted`.
 
 ##### Entry description
 

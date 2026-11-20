@@ -110,7 +110,8 @@ export function renderTimings(headers: { get(name: string): string | null }): Re
 
 /** Convert an entry to its key and its description, as `dv_models_list` and `dv_models_get` return them. */
 function toModelListItem(entry: ModelEntry): Record<string, JsonValue> {
-  return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, description: entry.description,
+  return { modality: entry.modality, task: entry.task, provider: entry.provider, model: entry.model, hosting: entry.hosting,
+    description: entry.description,
     ...entry.workerRouting === true ? { worker_selection: true } : {},
     ...entry.displayName === undefined ? {} : { display_name: entry.displayName } }
 }
@@ -342,8 +343,8 @@ export default class DvModels extends Service {
   private defineModelsListTool() {
     return defineTool({
       name: 'dv_models_list',
-      description: 'List the models you can generate with, each with its key (modality, task, provider, model), its description '
-        + 'and the name of its prompt skill, if it has one.',
+      description: 'List the models you can generate with, each with its key (modality, task, provider, model), its description, '
+        + 'its hosting, and its display name, worker selection and prompt skill when available.',
       parameters: {
         modality: { type: 'string', description: 'Only models of this modality.' },
         task: { type: 'string', description: 'Only models for this task.' },

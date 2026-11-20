@@ -1,5 +1,26 @@
 [
   {
+    "name": "dv_models_list",
+    "description": "List the models you can generate with, each with its key (modality, task, provider, model), its description, its hosting, and its display name, worker selection and prompt skill when available.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "modality": {
+          "type": "string",
+          "description": "Only models of this modality."
+        },
+        "task": {
+          "type": "string",
+          "description": "Only models for this task."
+        },
+        "provider": {
+          "type": "string",
+          "description": "Only models of this provider."
+        }
+      }
+    }
+  },
+  {
     "name": "dv_models_select",
     "description": "Choose the model of one modality (video, image or audio) for subsequent generations in this conversation. Pass empty provider and model strings to let the operator choose. Existing generations keep their model. Selecting does not download weights; the model loads when generation starts. The choice is not a project history step: dv_proj_undo and dv_proj_redo do not change it; to go back, select the earlier model again.",
     "parameters": {

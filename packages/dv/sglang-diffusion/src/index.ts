@@ -176,6 +176,7 @@ function modelEntry(model: string, server: ModelServer): ModelEntry<'t2i'> {
     modality: 'image',
     task: 't2i',
     provider: 'sglang-diffusion',
+    hosting: 'self-hosted',
     model,
     description: served.description,
     facts,

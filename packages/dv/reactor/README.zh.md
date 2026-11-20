@@ -96,7 +96,7 @@ Reactor 在共享模型目录中注册条目，并将媒体交给镜头渲染器
 
 #### 模型看到什么
 
-智能体可用 `dv_models_list` 查询已启用的 Reactor 模型，并用 `dv_models_get` 读取其任务 schema。每个模型收到按其协议展开项目素材引用的镜头提示词。对于 LTX，镜头提示词是要朗读的剧本。
+智能体可用 `dv_models_list` 查询已启用的 Reactor 模型，并用 `dv_models_get` 读取其任务 schema。每个模型收到按其协议展开项目素材引用的镜头提示词。对于 LTX，镜头提示词是要朗读的剧本。模型目录报告 `hosting: managed`。
 
 #### Token 影响
 

@@ -187,6 +187,7 @@ function modelEntry(model: string, server: ModelServer): ModelEntry<'t2a'> {
     modality: 'audio',
     task: 't2a',
     provider: 'sglang-omni',
+    hosting: 'self-hosted',
     model,
     description: served.description,
     promptSkill: {

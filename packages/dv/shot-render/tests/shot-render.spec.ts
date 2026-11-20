@@ -130,7 +130,7 @@ class FakeLane {
  */
 function fakeEntry(task: VideoTask, lane: FakeLane, model = 'fake'): ModelEntry<VideoTask> {
   return {
-    modality: 'video', task, provider: 'test', model, description: 'Solid-color clips',
+    modality: 'video', task, provider: 'test', hosting: 'self-hosted', model, description: 'Solid-color clips',
     facts: () => lane.unreachable === null ? Promise.resolve(lane.facts) : Promise.reject(lane.unreachable),
     schema: () => Promise.resolve({}),
     validateGenerationRequest: request => lane.validate(request),
@@ -436,6 +436,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
     const tool = fixture.ctx.tools.schemas().find(schema => schema.name === 'dv_shot_render')
     expect(tool?.description).toContain('modality, task, provider and model name it and are required')
     expect(tool?.description).toContain('Uses the GPU.')
+    expect(tool?.description).toContain('hosting: managed runs on the provider\'s servers and uses no local GPU')
     expect(JSON.stringify(tool?.parameters)).toContain('continue_from')
     // The catalog serves the labels of both tasks while the service lives.
     const labels = { t2v: { zh: '文字生成', en: 'From text' }, ref2v: { zh: '参考图生成', en: 'From references' }, fl2v: { zh: '首尾帧生成', en: 'From first and last frames' }, i2v: { zh: '首帧生成', en: 'From first frame' }, l2v: { zh: '尾帧生成', en: 'From last frame' }, v2v: { zh: '视频重生成（如 2K 超分）', en: 'Regenerate a video (e.g. 2K)' } }

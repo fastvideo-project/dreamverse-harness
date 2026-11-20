@@ -191,7 +191,9 @@ function modelEntry(ctx: Context, config: Config): ModelEntry {
     modality: 'video',
     task: 'ref2v',
     provider: 'uniserve',
+    hosting: 'self-hosted',
     model: 'fasth3',
+    displayName: 'FastH3-Omni',
     description: FASTH3_OMNI_DESCRIPTION,
     promptSkill: {
       name: PROMPT_SKILL.name, description: PROMPT_SKILL.description,

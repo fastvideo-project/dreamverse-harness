@@ -36,6 +36,7 @@ describe('dv-sglang-omni', () => {
     expect(fixture.ctx.dvModels.list().map(({ modality, task, provider, model }) => ({ modality, task, provider, model }))).toEqual([KEY])
     expect(value(await fixture.call('dv_models_list', {}))).toEqual([{
       ...KEY,
+      hosting: 'self-hosted',
       description: 'Fish Audio Drama 3: expressive speech from text in many languages, with sound events such as laughs and sighs '
         + 'written into the text.',
       prompt_skill: 'fish-audio-drama-3-prompting',
@@ -61,7 +62,7 @@ describe('dv-sglang-omni', () => {
     const { fixture } = await boot()
     expect(await fixture.entry().facts()).toEqual({ modelId: 'fishaudio/drama-3' })
     expect(value(await fixture.call('dv_models_get', KEY))).toEqual({
-      ...KEY, description: fixture.entry().description,
+      ...KEY, hosting: 'self-hosted', description: fixture.entry().description,
       schema: { speakers: [0], extra: { speed: { type: 'number', description: 'Speaking rate; 1 is normal.' } } },
     })
   })

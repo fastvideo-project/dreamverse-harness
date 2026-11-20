@@ -63,7 +63,7 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | Member | Contract |
 | --- | --- |
 | `description` | The strengths and weaknesses of the model. The agent and the user compare descriptions to choose between similar models. |
-| `hosting` | Optional. `managed` when a hosted service operates the server that runs the model, `self-hosted` when the user does. The catalog keeps the value on the entry and does not return it in `dv_models_list` or `dv_models_get`. |
+| `hosting` | Required. `managed` when a hosted service operates the server that runs the model, `self-hosted` when the user does. `dv_models_list` and `dv_models_get` return the value. |
 | `facts()` | Resolves with the `RenderModelFacts` that the backend reports. Rejects when the backend cannot be reached. |
 | `schema()` | Resolves with a JSON description of the requests that the model accepts: the limits that the agent needs, such as durations, aspect ratios and resolutions, the inputs with their media types and counts, and the parameters in `extra`. The provider plugin defines this JSON. The catalog gives it to the agent unchanged. Rejects when the backend cannot be reached. |
 | `validateGenerationRequest(request)` | Resolves with each reason that the model cannot render a `RenderRequest`, one agent-facing sentence for each reason. The reasons include invalid `extra` values. Resolves with an empty list when the model can render the request. Rejects when the backend cannot be reached. |
@@ -216,12 +216,12 @@ Duration-based cloud providers may omit `frameSizes` and `numFramesByDurationSec
 
 #### What the model sees
 
-While the DSH tool registry is mounted, the agent sees the tool `dv_models_list` with the description below. The tool has three optional string arguments: `modality`, `task` and `provider`. The generated tool catalog does not list DreamVerse tools, so this section quotes the description and the argument descriptions. A call returns one text block with indented JSON: an array of `modality`, `task`, `provider`, `model` and `description` for each matching entry, with `prompt_skill`, the name of the entry's prompt skill, when the entry has one. This package adds nothing to the system prompt. The agent reads the catalog only through the two tools and the `video-model-selection` skill.
+While the DSH tool registry is mounted, the agent sees the tool `dv_models_list` with the description below. The tool has three optional string arguments: `modality`, `task` and `provider`. The generated tool catalog does not list DreamVerse tools, so this section quotes the description and the argument descriptions. A call returns one text block with indented JSON: an array of `modality`, `task`, `provider`, `model`, `hosting` and `description` for each matching entry, with `display_name`, `worker_selection` and `prompt_skill` when the entry supplies them. This package adds nothing to the system prompt. The agent reads the catalog only through the two tools and the `video-model-selection` skill.
 
 ##### dv_models_list description
 
 ```markdown
-List the models you can generate with, each with its key (modality, task, provider, model), its description and the name of its prompt skill, if it has one.
+List the models you can generate with, each with its key (modality, task, provider, model), its description, its hosting, and its display name, worker selection and prompt skill when available.
 ```
 
 ##### dv_models_list argument descriptions

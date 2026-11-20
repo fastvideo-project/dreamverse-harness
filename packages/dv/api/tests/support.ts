@@ -72,6 +72,7 @@ export class FakeModel implements ModelEntry<'ref2v'> {
   readonly modality = 'video'
   readonly task = 'ref2v'
   readonly provider = 'fastvideo'
+  readonly hosting = 'self-hosted'
   readonly model = 'fasth3'
   readonly description = 'Solid-color clips.'
   readonly requests: RenderRequest[] = []

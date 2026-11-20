@@ -74,7 +74,7 @@ kind: "package-reference"
 
 #### 模型看到什么
 
-`@dv/models` 的 `dv_models_list` 结果列出该条目的键（模态 `video`、任务 `ref2v`、provider `uniserve`、模型 `fasth3`）、下面的描述和提示词 skill `fasth3-uniserve-prompting`。该 skill 把 MiniMax-H3 官方全参考指南对应到一个 DreamVerse 镜头，并让 agent 从 `dv_models_get` 读取参考上限和时长。`dv_models_get` 再加上下面的 schema，它读自一台支持 12 个参考、9 张图片、3 个视频和 3 个音频文件的服务器。`facts()` 或 `schema()` 的拒绝在拒绝消息中跟在 `Model video/ref2v/uniserve/fasth3 is unavailable: ` 之后，渲染失败则以其消息让记录和工具调用失败。
+`@dv/models` 的 `dv_models_list` 结果列出该条目的键（模态 `video`、任务 `ref2v`、provider `uniserve`、模型 `fasth3`）、显示名称 `FastH3-Omni`、下面的描述和提示词 skill `fasth3-uniserve-prompting`。该 skill 把 MiniMax-H3 官方全参考指南对应到一个 DreamVerse 镜头，并让 agent 从 `dv_models_get` 读取参考上限和时长。`dv_models_get` 再加上下面的 schema，它读自一台支持 12 个参考、9 张图片、3 个视频和 3 个音频文件的服务器。`facts()` 或 `schema()` 的拒绝在拒绝消息中跟在 `Model video/ref2v/uniserve/fasth3 is unavailable: ` 之后，渲染失败则以其消息让记录和工具调用失败。模型目录报告 `hosting: self-hosted`。
 
 ##### Entry description
 

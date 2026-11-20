@@ -366,6 +366,7 @@ function modelEntry(
     modality: 'video',
     task,
     provider: PROVIDER,
+    hosting: 'self-hosted',
     model,
     get concurrentRenders() { return useHardware() },
     get workerRouting() { return useHardware() },

@@ -115,7 +115,7 @@ export function imageEntry(model: string, served: ServedImage, baseUrl: string):
     return { modelId: served.modelId }
   }
   return {
-    modality: 'image', task: 't2i', provider: 'vllm-omni', model, description: served.description, facts,
+    modality: 'image', task: 't2i', provider: 'vllm-omni', hosting: 'self-hosted', model, description: served.description, facts,
     async schema(): Promise<JsonValue> {
       await facts()
       const rule = `width and height are multiples of ${String(served.grid)}, and width times height is at most `
