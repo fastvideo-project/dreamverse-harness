@@ -44,7 +44,7 @@ kind: "package-reference"
 | --- | --- |
 | `run({argv, inputs, outputs, dir, files?, timeoutMs?})` | 在 `dir` 中运行一条命令；`{{in:<n>}}` 展开为第 n 个输入路径，`{{out:<name>}}` 展开为 `dir/<name>`；`argv[0]` 为 `ffmpeg` 和 `ffprobe` 时映射到配置的可执行文件；按声明顺序返回输出路径和捕获的输出流 |
 | `probe(path)` | 时长、视频流时长、宽、高、是否有音频和视频编码；ffprobe 没有报告的字段为 null |
-| `lastFrame(video)` | MP4 字节 `video` 的最后一帧，为 PNG 字节 |
+| `lastFrame(video, videoDurationSec?)` | MP4 字节 `video` 的最后一帧，为 PNG 字节 |
 
 命令失败、占位符未知，或命令没有写出某个声明的输出时，抛出带命令 stderr 的 `FfmpegError`。
 
@@ -53,7 +53,7 @@ kind: "package-reference"
 <a id="understand-the-implementation"></a>
 ## 理解实现
 
-`run` 展开参数和声明的文本文件里的占位符，把这些文件写进 `dir`，解析程序，并带超时（默认十分钟）执行它。挂载了 `ctx.subprocess` 时命令在 harness 的受管进程范围内运行并收集 stdout 和 stderr；否则由 `child_process.execFile` 运行。退出后，`run` 检查每个声明的输出都在 `dir` 中。`probe` 以 JSON 输出运行 ffprobe，读取格式和第一个视频流。`lastFrame` 把视频写进一个新的临时目录，用 `-sseof -1` 和 `-update 1` 调用 `run`，让 ffmpeg 定位到最后一秒并只保留最后解码的一帧，读取 PNG，无论命令成功还是失败都删除该目录。
+`run` 展开参数和声明的文本文件里的占位符，把这些文件写进 `dir`，解析程序，并带超时（默认十分钟）执行它。挂载了 `ctx.subprocess` 时命令在 harness 的受管进程范围内运行并收集 stdout 和 stderr；否则由 `child_process.execFile` 运行。退出后，`run` 检查每个声明的输出都在 `dir` 中。`probe` 以 JSON 输出运行 ffprobe，读取格式和第一个视频流。`lastFrame` 将视频写入临时目录，并使用 ffmpeg 将最后解码的一帧保存为 PNG。如果音频比视频长，请传入视频流时长以按该时长定位。无法取得视频时长时传入 `null`，从头解码。省略时长时从容器末尾定位。该方法在返回或抛出错误前删除临时目录。
 
 | 文件 | 内容 |
 | --- | --- |

@@ -44,7 +44,7 @@ export const shotRenderBar = {
     const min = typeof low === 'number' ? Math.ceil(low) : 1
     const max = typeof high === 'number' ? Math.floor(high) : min
     const supported = duration.get('values')
-    const seconds = Array.isArray(supported) ? supported.filter((value): value is number => typeof value === 'number' && Number.isInteger(value)) : Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index)
+    const seconds = Array.isArray(supported) ? supported.filter((value): value is number => typeof value === 'number' && Number.isFinite(value)) : Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index)
     return [
       menu('aspect_ratio', ['画幅', 'Aspect ratio'], params['aspect_ratio'], strings(fields.get('aspect_ratios'))),
       menu('resolution', ['清晰度', 'Resolution'], params['resolution'], strings(fields.get('resolutions'))),

@@ -24,6 +24,8 @@ Use this bundle to run DreamVerse as a `dsh` profile. It inserts the model catal
 <a id="use-this-package"></a>
 ## Use this package
 
+Configure Reactor model aliases and a host credential to generate cloud video. See the [Reactor provider setup](../../dv/reactor/README.md).
+
 ```sh
 scripts/video-harness/launch.sh web --trusted-host <public host>   # chat page on DV_PORT (default 8092)
 scripts/video-harness/launch.sh headless "给我一个这个人跳舞的视频" --session-id demo   # one task, printed result

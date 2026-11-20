@@ -117,6 +117,13 @@ describe('DreamVerse bundle composition', () => {
     expect(nouns).toEqual(['dv-character', 'dv-location', 'dv-style', 'dv-ui-character', 'dv-ui-location', 'dv-ui-style'])
   })
 
+  it('pins the definition of the shot render tool that the agent sees', async () => {
+    const { ctx, dispose } = await bootBundle()
+    disposers.push(dispose)
+    const tools = ctx.tools.schemas().filter(tool => tool.name === 'dv_shot_render')
+    await expect(`${JSON.stringify(tools, null, 2)}\n`).toMatchFileSnapshot('./expected/tools/shot-render.json')
+  })
+
   it('pins the definitions of the text node tools that the agent sees', async () => {
     const { ctx, dispose } = await bootBundle()
     disposers.push(dispose)
@@ -127,7 +134,7 @@ describe('DreamVerse bundle composition', () => {
   it('boots the bundle rows through the Loader and turns a model tool call into a durable record', async () => {
     const rows = bundleRows()
     expect(rows.map(row => row.id)).toEqual(expect.arrayContaining([
-      'dv-openrouter', 'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
+      'dv-openrouter', 'dv-reactor', 'dv-models', 'dv-fastvideo', 'dv-uniserve', 'dv-project', 'dv-text-node', 'dv-shot-render', 'dv-timeline', 'dv-workflow-story', 'dv-chat-references', 'dv-api',
       'dv-sglang-diffusion', 'dv-image-generate', 'dv-sglang-omni', 'dv-audio-generate', 'dv-vllm-omni',
     ]))
     const { ctx, dir, services, dispose } = await bootBundle()
@@ -146,6 +153,7 @@ describe('DreamVerse bundle composition', () => {
     expect(ctx.get('tools')?.get('dv_image_generate')).toBeDefined()
     // The FastVideo row is disabled and keeps one server per task of fasth3, with valid model facts, for a deployment
     // that mounts it.
+    expect(rows.find(row => row.id === 'dv-reactor')?.config).toEqual({ models: {} })
     expect(fastVideo.mounted).toBe(false)
     const fastVideoRow = rows.find(row => row.id === 'dv-fastvideo')
     expect(fastVideoRow).toMatchObject({

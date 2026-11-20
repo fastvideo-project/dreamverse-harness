@@ -32,6 +32,7 @@ import DvHardware from '@dv/hardware'
 import DvModels, { type ModelEntry } from '@dv/models'
 import * as DvMiniMaxSkills from '@dv/minimax-skills'
 import * as OpenRouter from '@dv/openrouter'
+import * as Reactor from '@dv/reactor'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import DvImageGenerate from '@dv/image-generate'
 import * as SglangDiffusion from '@dv/sglang-diffusion'
@@ -79,7 +80,7 @@ const FakeUniserve = {
  * its config and registers a fake model.
  */
 const PLUGINS: Record<string, object> = {
-  '@dv/openrouter': OpenRouter, 'test-credentials': MemoryCredentials,
+  '@dv/openrouter': OpenRouter, '@dv/reactor': Reactor, 'test-credentials': MemoryCredentials,
   '@deepseek-ai/dsh-system-prompt': SystemPrompt, '@deepseek-ai/dsh-tools': ToolRuntime, '@dv/project': DvProject,
   '@dv/audio-edit': DvAudioEdit,
   '@dv/ffmpeg': DvFfmpeg, '@dv/asset-pool': DvAssetPool, '@dv/canvas': DvCanvasNodes, '@dv/inspector': DvInspector,
@@ -128,9 +129,14 @@ export interface Bundle {
  * @param extra - the plugin of each row a spec adds, by row id.
  * @param earlier - the directory and the stand-in services of a stopped composition, for a boot that plays a server
  *   restart over the same DreamVerse folder; omitted, the boot uses a new directory and new services.
+ * @param overrides - row overrides applied by the test before the Loader boots.
  * @returns the composition; `dispose` stops it, restores the environment and removes the directory.
  */
-export async function bootBundle(extra: Record<string, object> = {}, earlier?: Pick<Bundle, 'dir' | 'services'>): Promise<Bundle> {
+export async function bootBundle(
+  extra: Record<string, object> = {},
+  earlier?: Pick<Bundle, 'dir' | 'services'>,
+  overrides: Record<string, Partial<Pick<Row, 'config' | 'disabled'>>> = {},
+): Promise<Bundle> {
   const dir = earlier?.dir ?? mkdtempSync(join(tmpdir(), 'dv-composition-'))
   // The environment the bundle's `!!js` configuration reads.
   vi.stubEnv('DV_PROJECTS_FOLDER', join(dir, 'projects'))
@@ -147,7 +153,7 @@ export async function bootBundle(extra: Record<string, object> = {}, earlier?: P
     if (globals.__dvComposition?.[row.name] === undefined) throw new Error(`No plugin for bundle row ${row.id} (${row.name}).`)
     const file = join(dir, `${row.id}.mjs`)
     writeFileSync(file, `export default globalThis.__dvComposition[${JSON.stringify(row.name)}]\n`)
-    return { ...row, name: pathToFileURL(file).href }
+    return { ...row, ...overrides[row.id], name: pathToFileURL(file).href }
   })
   writeFileSync(join(dir, 'cordis.yml'), yaml.dump(entries, { schema: entryListSchema }))
 

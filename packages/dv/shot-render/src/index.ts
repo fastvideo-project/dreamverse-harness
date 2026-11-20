@@ -77,7 +77,7 @@ const CONTINUE_FROM_PARAM: ParameterSchemaSpec = {
  */
 const RENDER_PARAMS: OperationSpec['params'] = {
   worker: { type: 'string', description: 'The exact ID of an enabled worker. Omit for automatic placement. A pinned render never falls back to another worker.' },
-  duration_sec: { type: 'integer', description: 'Whole seconds within the model range; default the model minimum.' },
+  duration_sec: { type: 'number', description: 'Duration in seconds. Use a value the model supports. Defaults to the shortest.' },
   aspect_ratio: { type: 'string', description: 'One of the model aspect ratios; default the first.' },
   resolution: { type: 'string', description: 'One of the model resolutions; default the first.' },
 }
@@ -222,10 +222,11 @@ async function storeShot(
   const geometry = shotGeometry(facts, context.params)
   const streamed = await streamShot(ctx, context, record.id, stream)
   const shortId = record.id.slice(0, 8)
+  const durationSec = streamed.durationSec ?? geometry.durationSec
   const dimensions = geometry.width === undefined || geometry.height === undefined ? {}
     : { width: geometry.width, height: geometry.height }
   const video = context.importAsset({ path: streamed.videoPath }, {
-    mime: baseMime(streamed.mime), name: `${shortId}.mp4`, durationSec: geometry.durationSec,
+    mime: baseMime(streamed.mime), name: `${shortId}.mp4`, durationSec,
     ...dimensions,
   })
   const frame = context.importAsset(streamed.lastFrame, {
@@ -237,7 +238,7 @@ async function storeShot(
     outputs: [video, frame],
     report: {
       model_id: facts.modelId, aspect_ratio: geometry.aspectRatio, resolution: geometry.resolution,
-      duration_sec: geometry.durationSec,
+      duration_sec: durationSec,
       ...geometry.width === undefined || geometry.height === undefined ? {}
         : { frame_width: geometry.width, frame_height: geometry.height },
       ...geometry.numFrames === undefined ? {} : { num_frames: geometry.numFrames },
@@ -263,6 +264,7 @@ async function streamShot(
   mime: string
   lastFrame: Buffer
   timings: Record<string, number>
+  durationSec: number | undefined
   worker: { id: string; label: string } | null
 }> {
   const videoPath = join(context.scratchDir, 'shot.mp4')
@@ -270,6 +272,7 @@ async function streamShot(
   let lastFrame: Buffer | null = null
   let mime: string | null = null
   let timings: Record<string, number> = {}
+  let durationSec: number | undefined
   let worker: { id: string; label: string } | null = null
   let finished = false
   let live: LiveShot = null
@@ -293,6 +296,7 @@ async function streamShot(
           break
         case 'done':
           timings = event.timings
+          durationSec = event.durationSec
           worker = event.worker ?? null
           finished = true
           live?.complete()
@@ -315,7 +319,7 @@ async function streamShot(
   if (live !== null) live.fail(new Error('The render stream ended before the backend reported completion.'))
   if (!finished || mime === null) throw new Error('The render stream ended before the backend reported completion.')
   if (lastFrame === null) throw new Error('The backend returned no last frame.')
-  return { videoPath, mime, lastFrame, timings, worker }
+  return { videoPath, mime, lastFrame, timings, durationSec, worker }
 }
 
 /** @returns the optional live stream service, looked up per render so a service mounted later is still used. */

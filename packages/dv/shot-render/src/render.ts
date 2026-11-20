@@ -44,8 +44,9 @@ export function shotGeometry(facts: RenderModelFacts, params: Record<string, unk
   }
   const durationSec = number(params['duration_sec'], facts.minDurationSec)
   const numFrames = facts.numFramesByDurationSec?.[String(durationSec)]
-  const supported = facts.durationsSec === undefined ? numFrames !== undefined : facts.durationsSec.includes(durationSec)
-  if (!Number.isInteger(durationSec) || !supported) {
+  const supported = facts.durationsSec === undefined
+    ? Number.isInteger(durationSec) && numFrames !== undefined : facts.durationsSec.includes(durationSec)
+  if (!supported) {
     throw new Error(facts.durationsSec === undefined
       ? `duration_sec must be a whole number from ${facts.minDurationSec} to ${facts.maxDurationSec}.`
       : `duration_sec must be one of ${facts.durationsSec.join(', ')} seconds.`)

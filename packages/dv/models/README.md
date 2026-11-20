@@ -63,6 +63,7 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | Member | Contract |
 | --- | --- |
 | `description` | The strengths and weaknesses of the model. The agent and the user compare descriptions to choose between similar models. |
+| `hosting` | Optional. `managed` when a hosted service operates the server that runs the model, `self-hosted` when the user does. The catalog keeps the value on the entry and does not return it in `dv_models_list` or `dv_models_get`. |
 | `facts()` | Resolves with the `RenderModelFacts` that the backend reports. Rejects when the backend cannot be reached. |
 | `schema()` | Resolves with a JSON description of the requests that the model accepts: the limits that the agent needs, such as durations, aspect ratios and resolutions, the inputs with their media types and counts, and the parameters in `extra`. The provider plugin defines this JSON. The catalog gives it to the agent unchanged. Rejects when the backend cannot be reached. |
 | `validateGenerationRequest(request)` | Resolves with each reason that the model cannot render a `RenderRequest`, one agent-facing sentence for each reason. The reasons include invalid `extra` values. Resolves with an empty list when the model can render the request. Rejects when the backend cannot be reached. |
@@ -92,7 +93,7 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `aspectRatios` | The aspect ratios that the model renders. The default comes first. |
 | `resolutions` | The resolutions that the model renders. The default comes first. |
 | `frameSizes` | The `[width, height]` in pixels, by aspect ratio and then by resolution. |
-| `minDurationSec`, `maxDurationSec` | The shortest and the longest shot, in whole seconds. |
+| `minDurationSec`, `maxDurationSec` | The shortest and longest shot, in seconds. |
 | `numFramesByDurationSec` | The frame count for each whole-second duration from the minimum to the maximum. |
 
 | `RenderStreamEvent` kind | Meaning |
@@ -100,7 +101,7 @@ A provider plugin implements one `ModelEntry` for each key. `ModelEntry<T>` take
 | `last_frame` | `png`: the last frame of the video as PNG bytes. The event comes before `video_start` or after the last `chunk`. |
 | `video_start` | `mime`: the media type of the video. |
 | `chunk` | `bytes`: the next part of the video bytes. |
-| `done` | `timings`: the backend's timings. Keys that end in `_ms` are milliseconds. Other keys are seconds. |
+| `done` | `timings`: the backend's timings. Keys that end in `_ms` are milliseconds. Other keys are seconds. `durationSec` is optional and reports the delivered video duration when the provider measures it. |
 
 `renderTimings(headers)` reads the `done` timings from the headers of a FastVideo or UniServe answer: `inference_s` from `x-inference-time-s`, and one `<stage>_s` per stage of the JSON object in `x-stage-durations`. An absent header, an `x-stage-durations` that is not JSON, and a value that is not a finite number add no timing, so the provider still yields the finished video.
 
