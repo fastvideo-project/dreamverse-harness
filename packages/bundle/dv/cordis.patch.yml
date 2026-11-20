@@ -338,6 +338,11 @@
 
 # The reviewed plugin catalog: packages/dv/plugin-catalog/catalog.json, answered at GET /api/dv/plugins/catalog for the
 # 插件市场 / Marketplace page of the left navigator. `sources` adds catalogs (absolute paths, https URLs, or loopback http URLs) after it.
+# The source is the same file on the repository's main branch, read each time the page loads, so a merged listing reaches
+# every harness without a pull or a restart; the shipped copy stays the list when GitHub cannot be reached.
 - insert:
     - id: dv-plugin-catalog
       name: '@dv/plugin-catalog'
+      config:
+        sources:
+          - https://raw.githubusercontent.com/fastvideo-project/dreamverse-harness/main/packages/dv/plugin-catalog/catalog.json

@@ -25,7 +25,7 @@ Use this package to decide which plugins DreamVerse offers to install. It holds 
 <a id="use-this-package"></a>
 ## Use this package
 
-The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts the plugin; it needs a Connection service, which `dsh-web-app` provides.
+The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts the plugin with one source, `https://raw.githubusercontent.com/fastvideo-project/dreamverse-harness/main/packages/dv/plugin-catalog/catalog.json`: the catalog file on the repository's `main` branch, so a listing merged there shows on every harness the next time the Marketplace page loads, without a pull or a restart. The plugin needs a Connection service, which `dsh-web-app` provides.
 
 ```yaml
 - id: dv-plugin-catalog
@@ -44,29 +44,29 @@ The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts the plugi
 <a id="list-a-plugin"></a>
 ## Write and list a plugin
 
-A DreamVerse plugin reaches people as one npm bundle package that the Marketplace page installs; `@fastvideo/dreamverse-voice-acting` and its four plugin packages are the worked example.
+A DreamVerse plugin reaches people as one npm bundle package that the Marketplace page installs; `@fastvideo/dreamverse-voice-acting` and its four plugin packages are the worked example. [`PLUGIN-GUIDE.md`](../PLUGIN-GUIDE.md) walks through writing the plugin itself: what it can register, its packages, the bundle, tests and publishing.
 
 1. **Develop in a fork.** Add the plugin's packages under `packages/dv/<name>/` in a fork of this repository, so the `@dv/*` and `@deepseek-ai/*` packages it builds on resolve from the workspace with their types and tests; [`packages/dv/COMPONENT-TEMPLATE.md`](../COMPONENT-TEMPLATE.md) describes each package's files.
 2. **Make a bundle.** One package lists the plugin's packages in `dependencies` and declares `dsh.bundle.patch`, a `cordis.patch.yml` that inserts their plugin entries, so the install switches them on; an entry that needs configuration, such as a server address, ships `disabled: true`, and the README says what to set. [Package and install a plugin](../../../docs/user/develop/basic/publish.md) covers bundles in general.
 3. **Declare the harness as peers.** Each `@dv/*` and `@deepseek-ai/*` package the code imports is a `peerDependency`, which resolves from the running harness, and `publishConfig` points the published package at its built `lib/`.
-4. **Name and publish.** Publish on npm under your own scope or user name with a package name that starts with `dreamverse-`, such as `@alice/dreamverse-subtitles`; the `@fastvideo` scope holds the DreamVerse team's plugins. Run `pnpm run build`, then `pnpm --filter "<your packages>" publish --access public`.
+4. **Name and publish.** Publish on npm under any package name you own, such as `@alice/subtitles`; the `@fastvideo` scope holds the DreamVerse team's plugins. Run `pnpm run build`, then `pnpm --filter "<your packages>" publish --access public`.
 5. **Try the install.** Install the published version into a DreamVerse profile with `dsh plugin --profile video-harness add <package>@<version>` and use it.
 6. **Open a pull request** that adds an entry to [`catalog.json`](catalog.json):
 
 ```json
 {
-  "package": "@alice/dreamverse-subtitles",
+  "package": "@alice/subtitles",
   "version": "1.0.0",
   "title": { "zh": "…", "en": "…" },
   "description": { "zh": "…", "en": "…" },
   "setup": { "zh": "…", "en": "…" },
-  "homepage": "https://github.com/alice/dreamverse-subtitles"
+  "homepage": "https://github.com/alice/subtitles"
 }
 ```
 
 `package`, `version`, `title` and `description` are required, and each text needs both `zh` and `en`. `version` is one exact published version, such as `1.0.0`, never a range or a tag: 安装 / Install requests exactly that version, so a later publish reaches people only through another pull request that changes it. `setup` says what the plugin needs besides the install, such as a server, and `homepage` must be an https URL. A package appears at most once. An installed plugin runs inside the harness with its access to the machine and the person's files, so the review reads the code and checks that:
 
-- the package exists on npm at that version, and its name follows step 4;
+- the package exists on npm at that version, and only the DreamVerse team lists packages of the `@fastvideo` scope;
 - `homepage` links the public source of that version, and the published `lib/` is built from it;
 - the package is a bundle that inserts its plugins through `dsh.bundle.patch`, and declares the harness packages as peers;
 - it installs and loads in a DreamVerse profile, and its README states its setup and its model effects.
@@ -113,6 +113,6 @@ No direct effect.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **Catalog updates need a harness update** — the shipped catalog is read from the checkout at load, so a newly listed plugin appears after `git pull` and a restart; a hosted catalog in `sources` would show new entries at once.
+- **The live catalog follows `main`** — whoever can merge to the repository's `main` branch changes what every harness using the bundle's default source offers, without a harness update; GitHub serves the raw file with a cache of a few minutes, so a merged listing can take that long to show. When the source cannot be read, the page lists the shipped catalog of the checkout and names the problem.
 - **No update on the Marketplace page** — an entry pins one version and 安装 / Install requests it, but the page does not upgrade an installed plugin to a newer catalog version; the card notes the difference, and removing and installing again, then restarting, upgrades it.
 - **No minimum harness version** — an entry does not say which harness versions the plugin needs; the plugin manager's compatibility check refuses a version that declares an incompatible DSH peer.
