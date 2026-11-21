@@ -9,7 +9,7 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { credentialRef, isCredentialRefName } from '@deepseek-ai/dsh-credentials'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
-import type { ModelEntry, RenderModelFacts, RenderRequest, RenderStreamEvent } from '@dv/models'
+import { assertModelAlias, syncModelEntries, type ModelEntry, type RenderModelFacts, type RenderRequest, type RenderStreamEvent } from '@dv/models'
 import { citedAsset, citedInput, replacePromptCitations, type AssetId } from '@dv/project'
 import { listModels, ReactorCatalogError } from './catalog.ts'
 import { capture, type ClipRequest, type Upload } from './client.ts'
@@ -125,7 +125,7 @@ export function apply(ctx: Context, config: Config): void {
   const keyRef = credentialRef(config.credentialRef)
   const apiBaseUrl = apiOrigin(config.apiBaseUrl)
   const configured = () => Object.entries(config.models.get()).map(([alias, model]) => {
-    if (!/^[a-z0-9][a-z0-9-]{0,119}$/.test(alias)) throw new Error('Reactor model aliases use lowercase letters, numbers and hyphens.')
+    assertModelAlias(alias, 'Reactor model aliases use lowercase letters, numbers and hyphens.')
     return { alias, profile: profileFor(model.profile), facts: modelFacts(alias, model, config.timeoutSeconds) }
   })
   ctx.inject(['connection'], scope => scope.effect(() => scope.connection.fetch.register({
@@ -355,25 +355,9 @@ export function apply(ctx: Context, config: Config): void {
     })
   }
 
-  const registered = new Map<string, { stamp: string; remove: Array<() => void> }>()
-  ctx.effect(() => () => {
-    for (const model of registered.values()) for (const remove of model.remove) remove()
-    registered.clear()
-  }, 'Reactor models')
-  const sync = (): void => {
-    const next = new Map(configured().map(model => [model.alias, model]))
-    for (const [alias, previous] of registered) {
-      if (JSON.stringify(next.get(alias)) === previous.stamp) {
-        next.delete(alias)
-      } else {
-        for (const remove of previous.remove) remove()
-        registered.delete(alias)
-      }
-    }
-    for (const [alias, model] of next) {
-      registered.set(alias, { stamp: JSON.stringify(model), remove: entries(model).map(entry => ctx.dvModels.register(entry)) })
-    }
-  }
-  ctx.on('loader/volatile-update', sync)
-  sync()
+  syncModelEntries(ctx, {
+    label: 'Reactor models',
+    conflict: 'Another plugin already registered this Reactor model.',
+    groups: () => configured().map(model => ({ id: model.alias, stamp: JSON.stringify(model), entries: () => entries(model) })),
+  })
 }

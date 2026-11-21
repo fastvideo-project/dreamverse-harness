@@ -19,6 +19,8 @@ DreamVerse Harness 仍处于早期阶段，并在积极开发中，因此不同�
 
 ## Pull Request
 
+新增生成提供商时，需要提交该提供商的维护指南。参阅[提供商贡献指南](docs/cookbook/adding-a-dreamverse-provider.zh.md)。
+
 1. 从[开发指南](docs/development.zh.md)和[架构文档](docs/architecture.zh.md)开始。智能体遵循 [AGENTS.md](AGENTS.md)。
 2. 对于较大的改动，请先创建 Issue，以便在动手编写之前就实现方案达成一致。
 3. 每个 PR 只聚焦一项改动，并填写 PR 模板，包括你的测试方式。

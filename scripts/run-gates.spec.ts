@@ -298,6 +298,12 @@ describe('gate graph validation', () => {
     expect(ids).toContain('package-readme-summaries')
   })
 
+  it('keeps the provider maintenance guide check in the quick documentation aggregate', () => {
+    const ids = withPnpmEntrypoint(() => gatesForMode('doc-quick').map(subject => subject.id))
+
+    expect(ids).toContain('provider-maintenance-guides')
+  })
+
   it('derives the quick documentation aggregate from marked doc-sync leaves', () => {
     const full = withPnpmEntrypoint(() => gatesForMode('doc-sync'))
     const quick = withPnpmEntrypoint(() => gatesForMode('doc-quick'))

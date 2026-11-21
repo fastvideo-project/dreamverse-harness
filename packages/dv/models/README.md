@@ -152,7 +152,22 @@ None of these changes edits `@dv/models`:
 
 **No compatibility code.** `@dv/models` has one key format and one entry type. It contains no aliases, adapters, or fallback code for other catalog formats.
 
-The repository skill [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md) gives the procedures and the checks.
+The [provider contribution guide](../../../docs/cookbook/adding-a-dreamverse-provider.md) is the procedure for contributors. The repository skill [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md) gives the agent procedure and the checks.
+
+<a id="share-model-registration-code"></a>
+### Share model registration code
+
+Provider plugins that map configured aliases to entries use these exports instead of their own registration loops. Call them from `apply`; the registrations are effects of the calling plugin, so unloading the plugin disposes every entry.
+
+| Export | Use |
+| --- | --- |
+| `assertModelAlias(alias, message)` | Throws `message` for an alias that is not 1 to 120 lowercase letters, digits and hyphens that start with a letter or digit (`MODEL_ALIAS_PATTERN`). Call it for each key of the `models` configuration so a bad alias fails the load. |
+| `ModelGroup` | The entries of one configured model: an `id` such as the alias, a `stamp` string that changes when the entries must be rebuilt, and `entries()`, which builds them. |
+| `syncModelEntries(ctx, { label, conflict, groups })` | For a provider that resolves its models from configuration alone. It registers `groups()` during the call and again after each `loader/volatile-update`. A group whose stamp is unchanged keeps its entries, and a changed or removed group is disposed. It returns a function that runs one sync. A throw from `groups()` or a key that another plugin registered leaves the registered entries unchanged: the first call fails the plugin load, and later calls reject in the event emitter. |
+| `syncModelEntriesAsync(ctx, { label, conflict, stamp, resolve, settled })` | For a provider that reads a remote catalog to resolve its models. `resolve(signal)` returns the groups and one sentence for each configured model that its catalog lacks. Those models are skipped, the others register, and the next sync retries. A sync that a newer one superseded drops its result. A failed current sync disposes every entry. A volatile update never rejects, and the failure reaches `settled`. Unloading aborts `signal` and waits for the running syncs. It returns `{ sync }` for the first sync during `apply` and for discovery routes. |
+| `createModelEntryRegistry(dvModels, conflict)` | The registry under both syncs, for a provider that needs its own wiring. `replace(groups)` and `clear()` do not register an effect, so the caller disposes it. |
+
+[`@dv/reactor`](../reactor/README.md) uses `syncModelEntries`, and [`@dv/openrouter`](../openrouter/README.md) uses `syncModelEntriesAsync`.
 
 -----
 
@@ -185,6 +200,7 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 ## Further Exploration
 
 - [`@dv/fastvideo`](../fastvideo/README.md): the provider plugin to use as the example.
+- [Provider contribution guide](../../../docs/cookbook/adding-a-dreamverse-provider.md): who can add a provider, which packages to reuse, and how to maintain it.
 - [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md): the procedures to add a provider, a model, or a server.
 - [`@dv/shot-render`](../shot-render/README.md): the consumer that renders a shot with an entry.
 - [`@dv/bundle`](../../bundle/dv/README.md): the rows `dv-models` and `dv-fastvideo`.

@@ -47,6 +47,9 @@ DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“�
 
 参阅 [OpenRouter 视频 API 指南](https://openrouter.ai/docs/guides/overview/multimodal/video-generation)、[图片生成指南](https://openrouter.ai/docs/guides/overview/multimodal/image-generation)和[文字转语音指南](https://openrouter.ai/docs/features/multimodal/tts)。
 
+- [OpenRouter 维护指南](../../../docs/cookbook/providers/openrouter.zh.md)
+- [贡献 DreamVerse 提供方](../../../docs/cookbook/adding-a-dreamverse-provider.zh.md)
+
 <a id="model-experience"></a>
 ## 模型体验
 

@@ -86,6 +86,7 @@ Reactor 在共享模型目录中注册条目，并将媒体交给镜头渲染器
 - [Reactor 模型 API 参考](https://docs.reactor.inc/model-api-reference/overview)
 - [Reactor 录制](https://docs.reactor.inc/concepts/recordings)
 - [Reactor 维护指南](../../../docs/cookbook/providers/reactor.zh.md)
+- [贡献 DreamVerse 提供方](../../../docs/cookbook/adding-a-dreamverse-provider.zh.md)
 - [DreamVerse 镜头渲染](../shot-render/README.zh.md)
 
 <a id="model-experience"></a>

@@ -152,7 +152,22 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
 
 **没有兼容代码。**`@dv/models` 只有一种键格式和一种条目类型。它不包含面向其他目录格式的别名、适配器或回退代码。
 
-仓库 skill [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md) 给出操作步骤和检查。
+[提供方贡献指南](../../../docs/cookbook/adding-a-dreamverse-provider.zh.md)是贡献者的操作流程。仓库 skill [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md) 给出智能体的操作步骤和检查。
+
+<a id="share-model-registration-code"></a>
+### 共用的模型注册代码
+
+把配置的别名映射为条目的提供方插件使用这些导出，而不是自己写注册循环。在 `apply` 中调用它们；这些注册是调用方插件的 effect，所以卸载插件会释放全部条目。
+
+| 导出 | 用途 |
+| --- | --- |
+| `assertModelAlias(alias, message)` | 当别名不是 1 到 120 个小写字母、数字和连字符，或不是以字母或数字开头时，抛出 `message`（`MODEL_ALIAS_PATTERN`）。对 `models` 配置的每个键调用它，使错误的别名让加载失败。 |
+| `ModelGroup` | 一个已配置模型的条目：`id`（如别名）、条目必须重建时会变化的 `stamp` 字符串，以及构建条目的 `entries()`。 |
+| `syncModelEntries(ctx, { label, conflict, groups })` | 用于只从配置解析模型的提供方。它在调用时注册 `groups()`，并在每次 `loader/volatile-update` 后再次注册。`stamp` 未变的组保留其条目，已变化或已移除的组被释放。它返回一个运行一次同步的函数。`groups()` 抛出，或某个键已被其他插件注册时，已注册的条目保持不变：第一次调用让插件加载失败，之后的调用在事件发射器中拒绝。 |
+| `syncModelEntriesAsync(ctx, { label, conflict, stamp, resolve, settled })` | 用于读取远程目录来解析模型的提供方。`resolve(signal)` 返回各组，以及对每个其目录中没有的已配置模型的一句说明。这些模型被跳过，其余照常注册，下一次同步会重试。被更新的同步取代的同步会丢弃其结果。当前同步失败会释放全部条目。volatile 更新从不拒绝，失败会传给 `settled`。卸载会中止 `signal` 并等待正在运行的同步。它返回 `{ sync }`，用于 `apply` 中的第一次同步和发现路由。 |
+| `createModelEntryRegistry(dvModels, conflict)` | 两种同步之下的注册表，供需要自己接线的提供方使用。`replace(groups)` 和 `clear()` 不注册 effect，所以由调用方释放。 |
+
+[`@dv/reactor`](../reactor/README.zh.md) 使用 `syncModelEntries`，[`@dv/openrouter`](../openrouter/README.zh.md) 使用 `syncModelEntriesAsync`。
 
 -----
 
@@ -185,6 +200,7 @@ DSH skill 注册表（`skills`）挂载期间，本服务从 `skills/video-model
 ## 进一步探索
 
 - [`@dv/fastvideo`](../fastvideo/README.zh.md)：用作示例的提供方插件。
+- [提供方贡献指南](../../../docs/cookbook/adding-a-dreamverse-provider.zh.md)：谁可以添加提供方、应复用哪些包，以及如何维护。
 - [`dv-add-model-provider`](../../../.agents/skills/dv-add-model-provider/SKILL.md)：添加提供方、模型或服务器的操作步骤。
 - [`@dv/shot-render`](../shot-render/README.zh.md)：用条目渲染镜头的消费方。
 - [`@dv/bundle`](../../bundle/dv/README.zh.md)：行 `dv-models` 和 `dv-fastvideo`。

@@ -19,6 +19,8 @@ To report a security vulnerability, do not open a public issue; follow [SECURITY
 
 ## Pull requests
 
+Every new generation provider must include a provider-specific maintenance guide. Follow the [provider contribution guide](docs/cookbook/adding-a-dreamverse-provider.md).
+
 1. Start with the [development guide](docs/development.md) and the [architecture documentation](docs/architecture.md). Agents follow [AGENTS.md](AGENTS.md).
 2. For a larger change, open an issue first so that we can agree on the approach before you write it.
 3. Keep each pull request focused on one change, and fill in the pull request template, including how you tested it.

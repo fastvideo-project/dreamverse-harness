@@ -86,6 +86,7 @@ No runtime invariant companion is published because Reactor registers entries in
 - [Reactor model API reference](https://docs.reactor.inc/model-api-reference/overview)
 - [Reactor recordings](https://docs.reactor.inc/concepts/recordings)
 - [Reactor maintenance guide](../../../docs/cookbook/providers/reactor.md)
+- [Contribute a DreamVerse provider](../../../docs/cookbook/adding-a-dreamverse-provider.md)
 - [DreamVerse shot rendering](../shot-render/README.md)
 
 <a id="model-experience"></a>

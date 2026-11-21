@@ -1,0 +1,18 @@
+# Maintain the OpenRouter provider
+
+English | [中文](openrouter.zh.md)
+
+Use this guide to update `@dv/openrouter` when OpenRouter adds a model type, changes a catalog or generation API, or changes how a model bills. For host setup and configuration, see the [OpenRouter plugin README](../../../packages/dv/openrouter/README.md).
+
+## Change a model or protocol
+
+1. The package holds no model list. A user maps a local alias to an OpenRouter model ID in the `models`, `imageModels` or `audioModels` configuration, and the provider registers the model only when the matching live catalog lists it. A new model that fits an existing task needs no code change. [OpenRouter video guide](https://openrouter.ai/docs/guides/overview/multimodal/video-generation) · [image guide](https://openrouter.ai/docs/guides/overview/multimodal/image-generation) · [speech guide](https://openrouter.ai/docs/features/multimodal/tts)
+2. For a new field or a changed catalog row, update the parsers in [catalog.ts](../../../packages/dv/openrouter/src/catalog.ts). A video model needs durations, resolutions and aspect ratios, and models with an upscale factor are left out. The tasks a video model serves come from `tasks()` in [index.ts](../../../packages/dv/openrouter/src/index.ts): `ref2v` from the image input of the models catalog, `i2v` and `fl2v` from the frame images the video catalog lists. The speech vendors that OpenRouter serves only as PCM are in `PCM_ONLY_VENDORS`, and the image `extra` choices are described in `IMAGE_PARAMETER_TEXT`. Keep the prompt rules in [openrouter-video-prompting.md](../../../packages/dv/openrouter/skills/openrouter-video-prompting.md) true to the registered tasks.
+3. Resolve the key through the host credential service. `credentialRef` names it and defaults to `OPENROUTER_API_KEY`. The client sends it only in the `Authorization` header of requests to `baseUrl`, refuses redirects, and keeps it out of error text. A video call submits once to `videos` and polls the job every `pollIntervalMs` (default 5000 ms). Aborting stops local polling; OpenRouter documents no cancellation route, so the paid job continues, and the schema declares `cancellation: 'monitoring_only'`. Do not add automatic retries: a failed or ambiguous submission may already be billed. If OpenRouter publishes a cancellation route, call it on abort and update the schema, the entry descriptions and the README limitation together.
+4. Registration is lazy. An empty configuration makes no request, and a configured ID that its catalog lacks is skipped and named in the catalog route's `error` field. Keep that behavior when you change `resolve` in `apply`; the sync helpers in [`@dv/models`](../../../packages/dv/models/README.md#share-model-registration-code) own the supersede, retry and disposal rules.
+
+## Verify and submit
+
+Run the provider tests with `ffmpeg` and `ffprobe` available; set `DV_FFMPEG` and `DV_FFPROBE` to their paths when they are not on the default path. The fake OpenRouter server covers catalog parsing, registration and removal, request bodies, polling, failures, abort and media conversion. [Client tests](../../../packages/dv/openrouter/tests/client.spec.ts) · [Provider tests](../../../packages/dv/openrouter/tests/openrouter.spec.ts)
+
+The package has no automated paid test. For a protocol or model change, use an approved test key and billing limit, add the model to a scratch profile, check it with `dv_models_get`, and render the shortest duration or a short text. Include the model ID, task, result, and any limit or billing behavior that differs from the catalog in the PR. Keep keys and signed media URLs out of the PR. [Contribution guide](../../../CONTRIBUTING.md)

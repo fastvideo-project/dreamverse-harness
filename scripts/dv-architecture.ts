@@ -100,6 +100,8 @@ const IMPORTS: Partial<Record<Layer, [Layer[], Layer[]]>> = {
 }
 /** Skill layer order of R8 (a). */
 const SKILL_ORDER: Layer[] = ['kernel', 'base', 'provider', 'domain', 'workflow', 'bundle']
+/** A provider registers entries with `dvModels.register(` or through the `@dv/models` sync helpers (not their declarations). */
+export const PROVIDER_REGISTRATION = /\bdvModels\.register\(|(?<!function\s)\bsyncModelEntries(?:Async)?\(/u
 const KERNEL_WORDS = /\b(?:character|location|style|shot|timeline|clip)s?\b/giu
 const OPERATION = /^([a-z_]+)\.([a-z_]*)$/u
 const TOOL = /(?<!\w)dv_([a-z]+)_\w+/gu
@@ -209,7 +211,7 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
     if (skill !== undefined) facts.ownerRows.push({ what: 'skill', name: skill, pkg: packageOf(file.path), where: `${file.path}:1`, extra: '' })
   }
   for (const { path, pkg, sf } of sources) {
-    if (sf.text.includes('dvModels.register(')) facts.providers.add(pkg)
+    if (PROVIDER_REGISTRATION.test(sf.text)) facts.providers.add(pkg)
     walk(sf, (node) => {
       const callee = ts.isCallExpression(node) ? textOf(node.expression) : undefined
       const arg = ts.isCallExpression(node) ? node.arguments[0] : undefined
@@ -262,7 +264,7 @@ function collectFacts(sources: readonly Source[], files: readonly ScanFile[]): F
   return facts
 }
 
-/** The layer of a package, inferred from its name and, for providers, from `dvModels.register(` in its `src`. */
+/** The layer of a package, inferred from its name and, for providers, from `dvModels.register(` or `syncModelEntries(` in its `src`. */
 function layerOf(pkg: string, facts: Facts): Layer {
   if (pkg === 'project') return 'kernel'
   if (pkg === 'bundle') return 'bundle'

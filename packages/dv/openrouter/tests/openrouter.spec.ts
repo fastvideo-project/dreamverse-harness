@@ -35,7 +35,7 @@ function isVideoEntry(entry: ModelEntry): entry is ModelEntry<TaskOfPrimitive<'v
 const ffmpeg = process.env['DV_FFMPEG'] ?? 'ffmpeg'
 const ffprobe = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
-async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean | Record<string, string>; speech?: 'mp3' | 'pcm'; references?: string[] } = {}) {
+async function fixture(options: { failCatalog?: boolean; models?: Record<string, string>; images?: boolean | Record<string, string>; speech?: 'mp3' | 'pcm'; references?: string[]; credentialRef?: string } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'dv-openrouter-'))
   cleanup.push(async () => { rmSync(dir, { recursive: true, force: true }) })
   const videoPath = join(dir, 'fixture.mp4')
@@ -96,6 +96,7 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
     { id: 'assets', name: 'cordis:assetPool' }, { id: 'models', name: 'cordis:models' },
     { id: 'provider', name: 'cordis:openrouter', config: {
       baseUrl: `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1/`, models: options.models ?? { cloud: 'fixture/video' }, pollIntervalMs: 1,
+      ...options.credentialRef === undefined ? {} : { credentialRef: options.credentialRef },
       ...options.images === true ? { imageModels: { flux: 'fixture/image' } } : typeof options.images === 'object' ? { imageModels: options.images } : {},
       ...options.speech === undefined ? {} : { audioModels: { narrator: 'fixture/speech', cloner: 'heygen/fixture-voice' } },
     } },
@@ -252,6 +253,15 @@ it('fails at load for a configured alias that breaks the alias rule', async () =
   const { ctx } = await fixture({ models: { Bad: 'fixture/video' } })
   expect([...ctx.loader.entries()].find(entry => entry.options.id === 'provider')?.fiber?.state).toBe(3)
   expect(ctx.dvModels.list()).toEqual([])
+})
+
+it('registers an image model alone and answers a catalog request with an error for a credential reference that is not a name', async () => {
+  const { ctx } = await fixture({ models: {}, images: true })
+  expect(ctx.dvModels.list().map(entry => [entry.modality, entry.model])).toEqual([['image', 'flux']])
+  const invalid = await fixture({ credentialRef: 'not a name' })
+  expect(invalid.ctx.dvModels.list()).toEqual([])
+  const response = await invalid.routes.get('/api/dv/openrouter/catalog')?.fetch(new Request('http://dsh.local/api/dv/openrouter/catalog'))
+  expect(response?.status).toBe(502)
 })
 
 it('applies saved model settings after a failed boot catalog sync', async () => {

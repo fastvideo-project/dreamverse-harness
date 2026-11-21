@@ -47,6 +47,9 @@ Duration-based requests omit unknown pixel dimensions and frame counts. Native F
 
 See the [OpenRouter video API guide](https://openrouter.ai/docs/guides/overview/multimodal/video-generation), the [image generation guide](https://openrouter.ai/docs/guides/overview/multimodal/image-generation) and the [text-to-speech guide](https://openrouter.ai/docs/features/multimodal/tts).
 
+- [OpenRouter maintenance guide](../../../docs/cookbook/providers/openrouter.md)
+- [Contribute a DreamVerse provider](../../../docs/cookbook/adding-a-dreamverse-provider.md)
+
 <a id="model-experience"></a>
 ## Model Experience
 
