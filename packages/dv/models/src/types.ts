@@ -240,3 +240,17 @@ export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes
 
 /** A filter of `dvModels.list`: an entry matches when it equals every given field. */
 export type ModelFilter = Partial<Pick<ModelKey, 'modality' | 'task' | 'provider'>>
+
+/**
+ * What `GET` and `POST /api/dv/<provider>/account` answer, discriminated by `status`. `missing`: the host has no saved
+ * key. `rejected`: the provider refused the key. `unavailable`: the check could not reach a verdict, such as a network
+ * failure. `needs-setup`: the host lacks something a render needs, described for the user in `message`. `connected`:
+ * the provider accepted the key; a figure the provider does not report is null.
+ */
+export type AccountStatus =
+  | { status: 'missing' | 'rejected' | 'unavailable' }
+  | { status: 'needs-setup'; message: string }
+  | { status: 'connected'; balanceUsd: number | null; label: string | null; limitRemainingUsd: number | null }
+
+/** The figures of a `connected` {@link AccountStatus}, as a provider's account check returns them. */
+export type AccountDetails = Omit<Extract<AccountStatus, { status: 'connected' }>, 'status'>

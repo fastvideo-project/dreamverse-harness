@@ -15,10 +15,10 @@ import type {} from '@deepseek-ai/cordis-plugin-loader'
 import { replacePromptCitations, type AssetId } from '@dv/project'
 import type {} from '@dv/asset-pool'
 import type {} from '@dv/ffmpeg'
-import { assertModelAlias, syncModelEntriesAsync, type ModelEntry, type ModelGroup, type ModelSyncResult, type RenderRequest, type TaskOfPrimitive } from '@dv/models'
+import { assertModelAlias, catalogFailure, catalogMissingKey, registerAccountRoute, syncModelEntriesAsync, type ModelEntry, type ModelGroup, type ModelSyncResult, type RenderRequest, type TaskOfPrimitive } from '@dv/models'
 import type { GeneratedImage, ImageRequest } from '@dv/image-generate'
 import type { AudioRequest, GeneratedAudio } from '@dv/audio-generate'
-import { OpenRouterApi } from './client.ts'
+import { OpenRouterApi, OpenRouterHttpError } from './client.ts'
 import type { ImageModel, ReferenceMedia, SpeechModel, VideoModel } from './types.ts'
 
 export interface Config {
@@ -28,6 +28,8 @@ export interface Config {
   audioModels: Volatile<Record<string, string>>
   credentialRef: Volatile<string>
   pollIntervalMs: number
+  /** Deadline for one catalog or account request, in seconds. */
+  catalogTimeoutSeconds: number
 }
 export const Config = z.object({
   baseUrl: z.string().default('https://openrouter.ai/api/v1/'),
@@ -36,6 +38,7 @@ export const Config = z.object({
   audioModels: z.dict(z.string().required()).default({}).volatile(),
   credentialRef: z.string().default('OPENROUTER_API_KEY').volatile(),
   pollIntervalMs: z.natural().min(1).default(5000),
+  catalogTimeoutSeconds: z.natural().min(1).max(300).default(10),
 })
 export const name = 'dv-openrouter'
 export const inject = ['dvModels', 'dvAssetPool', 'dvFfmpeg', 'credentials']
@@ -67,6 +70,11 @@ function taskInputs(task: TaskOfPrimitive<'video'>, model: VideoModel): Record<s
   if (task === 'ref2v') return { reference: { min: 1, media_types: Object.fromEntries(sendable(model).map(kind => [kind, {}])) } }
   const frame = { min: 1, max: 1, media_types: { image: { max: 1 } } }
   return task === 'fl2v' ? { first_frame: frame, last_frame: frame } : { first_frame: frame }
+}
+
+/** Whether OpenRouter refused the key with HTTP 401 or 403. */
+function isKeyRefused(error: unknown): boolean {
+  return error instanceof OpenRouterHttpError && (error.status === 401 || error.status === 403)
 }
 
 const ALIAS_MESSAGE = 'Choose a model alias using lowercase letters, numbers, and hyphens.'
@@ -112,13 +120,17 @@ const VIDEO_PROMPT_SKILL = {
 
 /** Register only explicitly configured models. A dormant installation makes no network call. */
 export async function apply(ctx: Context, config: Config): Promise<void> {
-  const client = new OpenRouterApi(config.baseUrl, async () => {
+  const savedKey = async (): Promise<string | undefined> => {
     const ref = config.credentialRef.get()
     if (!isCredentialRefName(ref)) throw new Error('Invalid OpenRouter credential reference.')
-    const credential = await ctx.credentials.resolve(credentialRef(ref))
-    if (credential === undefined) throw new Error('Save an OpenRouter API key in Video APIs settings.')
-    return credential.value
-  }, config.pollIntervalMs)
+    return (await ctx.credentials.resolve(credentialRef(ref)))?.value
+  }
+  const catalogTimeoutMs = config.catalogTimeoutSeconds * 1000
+  const client = new OpenRouterApi(config.baseUrl, async () => {
+    const key = await savedKey()
+    if (key === undefined) throw new Error('Save an OpenRouter API key in Video APIs settings.')
+    return key
+  }, config.pollIntervalMs, undefined, catalogTimeoutMs)
   let registrationError: string | null = null
   const model = async (id: string, task: TaskOfPrimitive<'video'>): Promise<VideoModel> => {
     const found = (await client.catalog()).find(row => row.id === id)
@@ -379,14 +391,21 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     path: '/api/dv/openrouter/catalog', methods: ['GET'], requestBody: 'buffered',
     fetch: async (request) => {
       try {
+        if (await savedKey() === undefined) return catalogMissingKey('OpenRouter')
         const [data, images, speech] = await Promise.all([client.catalog(request.signal), client.imageCatalog(request.signal),
           client.speechCatalog(request.signal)])
         // A failed registration answers through `error`, so Settings still lists the catalogs to change the choices.
         await sync().catch(() => undefined)
         return Response.json({ data, images, speech, error: registrationError })
-      } catch { return Response.json({ error: 'Could not load OpenRouter models. Check the saved API key and connection.' }, { status: 502 }) }
+      } catch (error) { return catalogFailure('OpenRouter', isKeyRefused(error)) }
     },
   }), 'OpenRouter model discovery'))
+  registerAccountRoute(ctx, {
+    provider: 'openrouter', description: 'OpenRouter account status', timeoutSeconds: config.catalogTimeoutSeconds, savedKey,
+    check: (key, signal) => new OpenRouterApi(config.baseUrl, () => Promise.resolve(key), config.pollIntervalMs, undefined,
+      catalogTimeoutMs).account(signal),
+    isRejected: isKeyRefused,
+  })
   // A configured alias is checked without the network, so a bad alias in cordis.yml fails the load.
   for (const models of [config.models, config.imageModels, config.audioModels]) {
     for (const alias of Object.keys(models.get())) assertModelAlias(alias, ALIAS_MESSAGE)

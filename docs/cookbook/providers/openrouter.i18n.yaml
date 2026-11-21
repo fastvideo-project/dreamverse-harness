@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/cookbook/providers/openrouter.md
-openrouter.md: 216a43ad0c5e9301bc6c247d48481fcc4af1f9ee
-openrouter.zh.md: 8ffb463c8c784f9d524974dce06656ada41dd196
+openrouter.md: 3a83e47b45493f1524379e2437596045922363f9
+openrouter.zh.md: 960881cdffdffb9417d2e80f4d52d172653fa8ed

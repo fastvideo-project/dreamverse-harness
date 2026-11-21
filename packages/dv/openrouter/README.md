@@ -25,10 +25,14 @@ Configure OpenRouter cloud video, image and speech models for the DreamVerse cat
 
 The DreamVerse bundle mounts `dv-openrouter` with no configured models. Use Video, image & audio APIs settings to save a key and enable models. The operator LLM continues to use the existing Models settings and pi-ai OpenRouter adapter.
 
-`models` maps a local alias to an OpenRouter video model ID, `imageModels` maps a local alias to an OpenRouter image model ID, and `audioModels` maps a local alias to an OpenRouter speech model ID; aliases use lowercase letters, numbers and hyphens. `credentialRef` defaults to `OPENROUTER_API_KEY`; it names the existing credential store. `baseUrl` defaults to `https://openrouter.ai/api/v1/`. `pollIntervalMs` defaults to 5000.
+`models` maps a local alias to an OpenRouter video model ID, `imageModels` maps a local alias to an OpenRouter image model ID, and `audioModels` maps a local alias to an OpenRouter speech model ID; aliases use lowercase letters, numbers and hyphens. `credentialRef` defaults to `OPENROUTER_API_KEY`; it names the existing credential store. `baseUrl` defaults to `https://openrouter.ai/api/v1/`. `pollIntervalMs` defaults to 5000. `catalogTimeoutSeconds` (integer from 1 to 300, default 10) is the deadline for each catalog or account request to OpenRouter.
 
 Only configured models appear in the pickers. T2V is available for compatible catalog entries; REF2V is registered when the models catalog lists image input for the model, and I2V and FL2V when the video catalog advertises their endpoint images. Each image model is registered for T2I, so `image.generate` (`dv_image_generate`) can use it, and each speech model for T2A, so `audio.generate` (`dv_audio_generate`) can use it. API models require no local weight download or GPU load.
 
+
+`GET /api/dv/openrouter/account` checks the host's saved key without generating media, and `POST /api/dv/openrouter/account` with the body `{ "key": "<candidate>" }` runs the same check on a candidate key without saving it. Both are the shared [account-status route](../models/README.md#share-the-account-status-route) and answer `status` `missing`, `rejected`, `unavailable` or `connected` with `Cache-Control: no-store`. The check reads `GET /api/v1/key`. A connected response includes the key's `label` when available (a label that contains the key is dropped), `limitRemainingUsd` from the key's `limit_remaining` (null when the key has no limit), and `balanceUsd`. The balance comes from `GET /api/v1/credits`, which only a management key can read, so it is null for other keys and when that request fails. `limitRemainingUsd` and `balanceUsd` are never combined. Invalid key metadata answers `unavailable`.
+
+`GET /api/dv/openrouter/catalog` answers 503 `{ "error": ... }` without a saved key, 401 when OpenRouter refuses the key (HTTP 401 or 403), and 502 for any other failure, the same statuses and fields as the [Reactor catalog route](../reactor/README.md).
 
 <a id="understand-the-implementation"></a>
 ## Understand the implementation

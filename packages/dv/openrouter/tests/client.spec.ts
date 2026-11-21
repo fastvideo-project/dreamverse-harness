@@ -129,6 +129,40 @@ describe('OpenRouter image API', () => {
   })
 })
 
+describe('OpenRouter account lookup', () => {
+  const keyBody = (data: unknown) => Response.json({ data })
+  const isKeyRequest = (input: Parameters<typeof fetch>[0]): boolean => (input instanceof Request ? input.url : input.toString()).endsWith('/key')
+
+  it('stops a lookup after the configured deadline', async () => {
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, (_input, init) =>
+      new Promise((_resolve, reject) => { init?.signal?.addEventListener('abort', () => { reject(new Error('timed out')) }) }), 20)
+    await expect(client.account(new AbortController().signal)).rejects.toThrow('timed out')
+  })
+
+  it.each([null, 'x', { is_management_key: 'yes' }, { label: 'x' }])('refuses key metadata %j', async (data) => {
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async () => keyBody(data))
+    await expect(client.account(new AbortController().signal)).rejects.toThrow('invalid key metadata')
+  })
+
+  it('ignores a label that is not a string and non-finite credits', async () => {
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async input =>
+      isKeyRequest(input) ? keyBody({ label: 5, is_management_key: true })
+        : keyBody({ total_credits: 'many', total_usage: 1 }))
+    expect(await client.account(new AbortController().signal)).toEqual({ balanceUsd: null, label: null, limitRemainingUsd: null })
+  })
+
+  it('rethrows the abort reason when the signal aborts during the credits lookup', async () => {
+    const controller = new AbortController()
+    const reason = new Error('Cancelled')
+    const client = new OpenRouterApi('https://openrouter.ai/api/v1/', async () => 'fixture-key', 1, async (input) => {
+      if (isKeyRequest(input)) return keyBody({ is_management_key: true })
+      controller.abort(reason)
+      throw reason
+    })
+    await expect(client.account(controller.signal)).rejects.toBe(reason)
+  })
+})
+
 export const speechRows = { data: [
   { id: 'fixture/speech', name: 'Fixture Speech', architecture: { input_modalities: ['text'], output_modalities: ['speech'] },
     supported_voices: ['alloy', 'nova', 'alloy'], endpoints: ['/api/v1/audio/speech'] },

@@ -53,14 +53,16 @@ python3 -m pip install 'reactor-sdk==1.15.0'
 | `timeoutSeconds` | `360` | 单次渲染的最长时长，单位为秒。对 Clip Generation 模型，涵盖上传、生成和下载。对 SDK 模型，它是会话时长，涵盖连接、上传、生成、流式输出、录制和下载。取 1 到 3600 的整数。 |
 | `apiBaseUrl` | `https://api.reactor.inc` | Reactor API 的 HTTPS 源，不含路径、查询或凭据。它用于模型目录、Clip Generation 请求、PixVerse 保存步骤的下载，以及通过 `api_url` 参数创建的 SDK 会话。其他取值会导致加载失败。 |
 | `pollIntervalMs` | `5000` | Clip Generation 状态轮询的间隔，单位为毫秒。Reactor 返回更长的 `Retry-After` 头时以其为准，最长 60 秒。取 1 到 60000 的整数。 |
-| `catalogTimeoutSeconds` | `30` | 单次 `GET /api/dv/reactor/catalog` 请求 Reactor 的时限，单位为秒。取 1 到 300 的整数。 |
+| `catalogTimeoutSeconds` | `30` | 单次 `GET /api/dv/reactor/catalog` 请求 Reactor 和单次账户检查的时限，单位为秒。取 1 到 300 的整数。 |
 | `models` | DreamVerse bundle 默认为空 | 可用于生成工具的模型别名。每项包含 `profile`，并可覆盖 `modelId` 和 `durationsSec`。 |
 
 `timeoutSeconds` 必须大于片段时长加上准备和生成所需时间。超过时限的 Clip Generation 渲染会在 Reactor 端取消。流式 SDK 工作流按实时速度运行，Reactor 按会话时长对 SDK 会话收费，因此 `timeoutSeconds` 也是单次 SDK 渲染的费用上限。Clip Generation 参考文档没有说明 Reactor 如何对生成计费，请在 Reactor 账户中确认这些模型的计费方式。插件只注册短于 `timeoutSeconds` 的时长，所以 `dv_models_get` 不会列出无法完成的时长。例如默认值 `360` 会去掉 LTX 中 360 秒及以上的时长，而 LTX 最长支持 300 秒。如果某个别名没有短于 `timeoutSeconds` 的时长，加载插件或应用新设置时会失败，错误信息指明该别名和 `timeoutSeconds`。
 
 如果账户只能访问部分模型，请在 `models` 中配置所需的配置子集。对于实现相同模型命令的私有部署，请将完整的 `owner/name` 填入 `modelId`，并选择对应的 `profile`。
 
-在 Web profile 中，`GET /api/dv/reactor/catalog` 列出配置的 API 密钥可见的所有模型。每项的 `shotModels` 列出该模型在 DreamVerse 中已配置的别名。
+在 Web profile 中，`GET /api/dv/reactor/catalog` 列出配置的 API 密钥可见的所有模型。每项的 `shotModels` 列出该模型在 DreamVerse 中已配置的别名。没有已保存的密钥时该路由返回 503，Reactor 拒绝密钥（HTTP 401 或 403）时返回 401，其他失败返回 502。每种情况的 JSON 请求体都是 `{ "error": "..." }`，字段和状态与 [OpenRouter 目录路由](../openrouter/README.zh.md)相同，客户端据此区分“密钥被拒绝”和“无法连接”。
+
+`GET /api/dv/reactor/account` 通过一次只读的模型目录请求检查主机已保存的密钥，`POST /api/dv/reactor/account` 以请求体 `{ "key": "<candidate>" }` 对候选密钥执行同样的检查而不保存。两者都是共用的[账户状态路由](../models/README.zh.md#share-the-account-status-route)，返回 `status` 为 `missing`、`rejected`、`unavailable`、`needs-setup` 或 `connected`，并带 `Cache-Control: no-store`。没有密钥时为 `missing`。否则，只要至少有一个已配置的模型使用 SDK 桥接程序，检查就先在清理后的环境中、不带密钥地运行配置的 `pythonPath`，参数为 `-B -c "import reactor_sdk"`；只配置 Clip Generation 模型时跳过这一步。解释器缺失或无法导入 SDK 时返回 `needs-setup`，其 `message` 指出该解释器和安装命令 `python3 -m pip install 'reactor-sdk==1.15.0'`。连接成功时，`label` 为账户邮箱，`balanceUsd` 为额度余额，二者读取自 [Reactor 控制台](https://docs.reactor.inc/resources/billing#usage-tracking)所用的 `/me` 和 `/accounts/{id}/credits` 端点。Reactor 未公开余额 API，因此这些端点失败或变更时，对应值为 null；`limitRemainingUsd` 始终为 null。两项检查都在 `catalogTimeoutSeconds` 后停止。
 
 -----
 

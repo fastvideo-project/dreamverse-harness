@@ -25,10 +25,14 @@ kind: "package-reference"
 
 DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“视频、图片和音频 API”设置中保存密钥并启用模型。操作员 LLM 继续使用现有“模型”设置和 pi-ai OpenRouter 适配器。
 
-`models` 将本地别名映射到 OpenRouter 视频模型 ID，`imageModels` 将本地别名映射到 OpenRouter 图片模型 ID，`audioModels` 将本地别名映射到 OpenRouter 语音模型 ID；别名使用小写字母、数字和连字符。`credentialRef` 默认为 `OPENROUTER_API_KEY`，引用现有凭据存储。`baseUrl` 默认为 `https://openrouter.ai/api/v1/`。`pollIntervalMs` 默认为 5000。
+`models` 将本地别名映射到 OpenRouter 视频模型 ID，`imageModels` 将本地别名映射到 OpenRouter 图片模型 ID，`audioModels` 将本地别名映射到 OpenRouter 语音模型 ID；别名使用小写字母、数字和连字符。`credentialRef` 默认为 `OPENROUTER_API_KEY`，引用现有凭据存储。`baseUrl` 默认为 `https://openrouter.ai/api/v1/`。`pollIntervalMs` 默认为 5000。`catalogTimeoutSeconds`（1 到 300 的整数，默认 10）是每次向 OpenRouter 发出目录或账户请求的时限。
 
 选择器仅显示已配置模型。兼容目录条目提供 T2V；模型目录为该模型列出图片输入时注册 REF2V，视频目录声明相应端点图像时注册 I2V 和 FL2V。每个图片模型注册为 T2I，因此 `image.generate`（`dv_image_generate`）可以使用它；每个语音模型注册为 T2A，因此 `audio.generate`（`dv_audio_generate`）可以使用它。API 模型不需要下载本地权重或加载 GPU。
 
+
+`GET /api/dv/openrouter/account` 检查主机已保存的密钥，无需生成媒体，`POST /api/dv/openrouter/account` 以请求体 `{ "key": "<candidate>" }` 对候选密钥执行同样的检查而不保存。两者都是共用的[账户状态路由](../models/README.zh.md#share-the-account-status-route)，返回 `status` 为 `missing`、`rejected`、`unavailable` 或 `connected`，并带 `Cache-Control: no-store`。检查读取 `GET /api/v1/key`。连接成功时返回密钥的 `label`（如有；包含密钥的 label 会被丢弃）、来自密钥 `limit_remaining` 的 `limitRemainingUsd`（密钥没有限额时为 null）和 `balanceUsd`。余额来自 `GET /api/v1/credits`，只有管理密钥能读取，所以其他密钥以及该请求失败时为 null。`limitRemainingUsd` 与 `balanceUsd` 从不合并。密钥元数据无效时返回 `unavailable`。
+
+`GET /api/dv/openrouter/catalog` 没有已保存的密钥时返回 503 `{ "error": ... }`，OpenRouter 拒绝密钥（HTTP 401 或 403）时返回 401，其他失败返回 502，状态和字段与 [Reactor 目录路由](../reactor/README.zh.md)相同。
 
 <a id="understand-the-implementation"></a>
 ## 理解实现

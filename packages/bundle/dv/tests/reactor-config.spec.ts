@@ -1,6 +1,12 @@
-/** Exercise the Reactor catalog route, the session-lifetime bound on durations, and setting updates through the bundle Loader. */
+/**
+ * Exercise the Reactor catalog and account routes, the session-lifetime bound on durations, and setting updates through
+ * the bundle Loader.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { boot, catalogRoute, disposeBooted, model } from './reactor-support.ts'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { accountRoute, boot, catalogRoute, disposeBooted, model } from './reactor-support.ts'
 
 afterEach(async () => {
   await disposeBooted()
@@ -67,6 +73,102 @@ describe('Reactor catalog route', () => {
     const started = Date.now()
     const response = await get()
     expect(response.status).toBe(502)
+    expect(Date.now() - started).toBeLessThan(5000)
+  })
+})
+
+describe('Reactor account route', () => {
+  const connected = { status: 'connected', balanceUsd: null, label: null, limitRemainingUsd: null }
+  const cleanup: string[] = []
+
+  afterEach(() => {
+    for (const dir of cleanup.splice(0)) rmSync(dir, { recursive: true, force: true })
+  })
+
+  /** A stand-in interpreter that fails the SDK import. */
+  function brokenPython(): string {
+    const dir = mkdtempSync(join(tmpdir(), 'dv-reactor-account-'))
+    cleanup.push(dir)
+    const python = join(dir, 'python')
+    writeFileSync(python, '#!/bin/sh\nexit 1\n')
+    chmodSync(python, 0o755)
+    return python
+  }
+
+  it('connects the saved key after one catalog page and the SDK import', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json([]))
+    vi.stubGlobal('fetch', fetch)
+    const response = await (await accountRoute()).get()
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(await response.json()).toEqual(connected)
+    expect((fetch.mock.calls[0]?.[0] as URL).href).toBe('https://api.reactor.inc/models?limit=1&offset=0')
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: 'Bearer rk_fixture' }, redirect: 'error' })
+  })
+
+  it('answers missing without calling Reactor when no key is saved', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+    const response = await (await accountRoute({ credentialRef: 'REACTOR_MISSING_KEY' })).get()
+    expect(await response.json()).toEqual({ status: 'missing' })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('checks a candidate key on POST and keeps the saved key out of the request', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json([]))
+    vi.stubGlobal('fetch', fetch)
+    const response = await (await accountRoute({ credentialRef: 'REACTOR_MISSING_KEY' })).post('{"key":"rk_candidate"}')
+    expect(await response.json()).toEqual(connected)
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({ headers: { Authorization: 'Bearer rk_candidate' } })
+  })
+
+  it('answers 400 for a malformed POST body', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+    expect((await (await accountRoute()).post('{"key":5}')).status).toBe(400)
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it.each([401, 403])('answers rejected when Reactor refuses the key with HTTP %i', async (status) => {
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(null, { status })))
+    expect(await (await (await accountRoute()).get()).json()).toEqual({ status: 'rejected' })
+  })
+
+  it('answers unavailable when Reactor cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>().mockRejectedValue(new Error('socket closed')))
+    expect(await (await (await accountRoute()).get()).json()).toEqual({ status: 'unavailable' })
+  })
+
+  it('answers needs-setup, before the key check, when the interpreter cannot import reactor_sdk', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+    vi.stubGlobal('fetch', fetch)
+    const python = brokenPython()
+    const models = { quick: { profile: 'fast-h3' }, streamed: { profile: 'ltx2' } }
+    const body = await (await (await accountRoute({ pythonPath: python, models })).get()).json() as { status: string; message: string }
+    expect(body.status).toBe('needs-setup')
+    expect(body.message).toContain(python)
+    expect(body.message).toContain("python3 -m pip install 'reactor-sdk==1.15.0'")
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('skips the SDK check and connects when every configured model uses Clip Generation', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>().mockResolvedValue(Response.json([])))
+    const models = { quick: { profile: 'fast-h3' }, omni: { profile: 'fast-h3-omni' } }
+    const response = await (await accountRoute({ pythonPath: brokenPython(), models })).get()
+    expect(await response.json()).toEqual(connected)
+  })
+
+  it('answers missing, not needs-setup, when the key is absent and the interpreter is broken', async () => {
+    const response = await (await accountRoute({ pythonPath: brokenPython(), credentialRef: 'REACTOR_MISSING_KEY' })).get()
+    expect(await response.json()).toEqual({ status: 'missing' })
+  })
+
+  it('bounds the check by catalogTimeoutSeconds, independent of the session lifetime', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>().mockImplementation((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => { reject(new Error('aborted')) })
+    })))
+    const started = Date.now()
+    const response = await (await accountRoute({ catalogTimeoutSeconds: 1, timeoutSeconds: 3600 })).get()
+    expect(await response.json()).toEqual({ status: 'unavailable' })
     expect(Date.now() - started).toBeLessThan(5000)
   })
 })

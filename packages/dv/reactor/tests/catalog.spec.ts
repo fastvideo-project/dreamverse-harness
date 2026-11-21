@@ -1,6 +1,6 @@
 /** Check pagination and validation of Reactor's official model listing. */
 import { afterEach, expect, it, vi } from 'vitest'
-import { listModels } from '../src/catalog.ts'
+import { checkAccess, listModels, readBalance } from '../src/catalog.ts'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -50,4 +50,56 @@ it('requests the catalog from the configured API origin', async () => {
   vi.stubGlobal('fetch', fetch)
   await listModels('rk_fixture', new AbortController().signal, 'https://reactor.example.test')
   expect((fetch.mock.calls[0]?.[0] as URL).href).toBe('https://reactor.example.test/models?limit=200&offset=0')
+})
+
+it('checks access with one authenticated catalog page and preserves rejection', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(Response.json([]))
+    .mockResolvedValueOnce(new Response(null, { status: 403 }))
+  vi.stubGlobal('fetch', fetch)
+  const signal = new AbortController().signal
+  await expect(checkAccess('rk_fixture', signal, 'https://api.reactor.inc')).resolves.toBeUndefined()
+  expect(fetch.mock.calls[0]?.[0]).toEqual(new URL('https://api.reactor.inc/models?limit=1&offset=0'))
+  expect(fetch.mock.calls[0]?.[1]).toEqual({
+    headers: { Authorization: 'Bearer rk_fixture' }, signal, redirect: 'error',
+  })
+  await expect(checkAccess('rk_fixture', signal, 'https://api.reactor.inc')).rejects.toMatchObject({ status: 403 })
+})
+
+it('reads the account email and credit balance, and hides figures Reactor does not report', async () => {
+  const origin = 'https://api.reactor.inc'
+  const signal = new AbortController().signal
+  const fetch = vi.fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(Response.json({ email: 'me@example.test', account_id: 'acct/1' }))
+    .mockResolvedValueOnce(Response.json({ balance_usd: '12.50' }))
+    .mockResolvedValueOnce(Response.json({ email: 'me@example.test' }))
+    .mockResolvedValueOnce(new Response(null, { status: 404 }))
+    .mockResolvedValueOnce(Response.json({ account_id: 'acct' }))
+    .mockResolvedValueOnce(Response.json({ balance_usd: 3 }))
+    .mockResolvedValueOnce(Response.json({ account_id: 'acct' }))
+    .mockResolvedValueOnce(Response.json({ balance_usd: 'n/a' }))
+    .mockRejectedValueOnce(new TypeError('network'))
+    .mockResolvedValueOnce(Response.json({ email: 'me@example.test', account_id: '' }))
+    .mockResolvedValueOnce(Response.json({ account_id: 'acct' }))
+    .mockResolvedValueOnce(new Response(null, { status: 500 }))
+  vi.stubGlobal('fetch', fetch)
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: 'me@example.test', balanceUsd: 12.5 })
+  expect(fetch.mock.calls.map(([url]) => (url as URL).href)).toEqual([`${origin}/me`, `${origin}/accounts/acct%2F1/credits`])
+  expect(fetch.mock.calls[0]?.[1]).toEqual({ headers: { Authorization: 'Bearer rk_fixture' }, signal, redirect: 'error' })
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: 'me@example.test', balanceUsd: null })
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: null, balanceUsd: null })
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: null, balanceUsd: 3 })
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: null, balanceUsd: null })
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: null, balanceUsd: null })
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: 'me@example.test', balanceUsd: null })
+  expect(await readBalance('rk_fixture', signal, origin)).toEqual({ label: null, balanceUsd: null })
+})
+
+it('rejects a balance read that the caller aborts', async () => {
+  const controller = new AbortController()
+  vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>().mockImplementation(() => {
+    controller.abort()
+    return Promise.reject(new DOMException('aborted', 'AbortError'))
+  }))
+  await expect(readBalance('rk_fixture', controller.signal, 'https://api.reactor.inc')).rejects.toThrow('aborted')
 })

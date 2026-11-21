@@ -24,11 +24,12 @@ export async function disposeBooted(): Promise<void> {
 /**
  * Boot the bundle with the Reactor row configured by `reactor` and the SDK stand-in on the Python path.
  * @param reactor - config of the `dv-reactor` row; empty registers every bundled profile.
+ * @param credentials - the saved credentials; defaults to a Reactor key.
  * @returns the bundle, the trace and recording paths of the stand-in, and a reader for the trace rows.
  */
-export async function boot(reactor: Record<string, unknown> = {}) {
+export async function boot(reactor: Record<string, unknown> = {}, credentials: Record<string, string> = { REACTOR_API_KEY: 'rk_fixture' }) {
   const app = await bootBundle({}, undefined, {
-    'dv-reactor': { config: reactor }, credentials: { config: { REACTOR_API_KEY: 'rk_fixture' } },
+    'dv-reactor': { config: reactor }, credentials: { config: credentials },
   })
   booted.push(app)
   const { dir } = app
@@ -43,17 +44,36 @@ export async function boot(reactor: Record<string, unknown> = {}) {
 }
 
 const catalogUrl = 'http://dsh.local/api/dv/reactor/catalog'
+const accountUrl = 'http://dsh.local/api/dv/reactor/account'
 
-/** Mount a connection stand-in after boot so the plugin registers its catalog route, and return that route's fetch. */
-export async function catalogRoute(reactor: Record<string, unknown> = {}): Promise<(signal?: AbortSignal) => Promise<Response>> {
-  const { ctx } = await boot(reactor)
+/** Mount a connection stand-in after boot so the plugin registers its routes, and return the routes by path. */
+async function mountRoutes(reactor: Record<string, unknown>, credentials?: Record<string, string>) {
+  const app = await boot(reactor, credentials)
   const routes = new Map<string, ConnectionFetchRoute>()
-  ctx.provide('connection', { fetch: { register: (route: ConnectionFetchRoute) => {
+  app.ctx.provide('connection', { fetch: { register: (route: ConnectionFetchRoute) => {
     routes.set(route.path, route)
     return () => { routes.delete(route.path); return Promise.resolve() }
   } } } as never)
   await vi.waitFor(() => { expect(routes.has('/api/dv/reactor/catalog')).toBe(true) })
-  const route = routes.get('/api/dv/reactor/catalog')!
+  return routes
+}
+
+/** Mount a connection stand-in after boot so the plugin registers its catalog route, and return that route's fetch. */
+export async function catalogRoute(reactor: Record<string, unknown> = {}): Promise<(signal?: AbortSignal) => Promise<Response>> {
+  const route = (await mountRoutes(reactor)).get('/api/dv/reactor/catalog')!
   expect(route.methods).toEqual(['GET'])
   return signal => route.fetch(new Request(catalogUrl, signal === undefined ? {} : { signal }))
+}
+
+/**
+ * Mount the account route of a booted Reactor plugin.
+ * @param reactor - config of the `dv-reactor` row.
+ * @param credentials - overrides the saved credentials of the bundle.
+ * @returns a reader for the saved key (`get`) and one for a candidate key (`post`, given the raw body).
+ */
+export async function accountRoute(reactor: Record<string, unknown> = {}, credentials?: Record<string, string>) {
+  const route = (await mountRoutes(reactor, credentials)).get('/api/dv/reactor/account')!
+  expect(route.methods).toEqual(['GET', 'POST'])
+  return { get: () => route.fetch(new Request(accountUrl)),
+    post: (body: string) => route.fetch(new Request(accountUrl, { method: 'POST', body })) }
 }

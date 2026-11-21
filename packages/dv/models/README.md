@@ -169,6 +169,25 @@ Provider plugins that map configured aliases to entries use these exports instea
 
 [`@dv/reactor`](../reactor/README.md) uses `syncModelEntries`, and [`@dv/openrouter`](../openrouter/README.md) uses `syncModelEntriesAsync`.
 
+<a id="share-the-account-status-route"></a>
+### Share the account-status route
+
+A provider that needs a credential reports it through `registerAccountRoute(ctx, options)` instead of its own route code. The call registers `GET` and `POST /api/dv/<provider>/account` on `connection.fetch` as an effect of the calling plugin. Both answer an `AccountStatus` (exported from `@dv/models/types`, so a client can read it) with `Cache-Control: no-store`.
+
+| `status` | Meaning |
+| --- | --- |
+| `missing` | The host has no saved key. The provider is not called. |
+| `rejected` | The provider refused the key (`options.isRejected(error)` is true). |
+| `unavailable` | The check reached no verdict: a network failure, a timeout, or an unreadable key reference. |
+| `needs-setup` | The host cannot run renders. `message` tells the user what to install. A check raises `AccountNeedsSetupError` to answer it. |
+| `connected` | The provider accepted the key. `balanceUsd`, `label` and `limitRemainingUsd` are numbers or strings, or null when the provider does not report them. The route drops a `label` that contains the key. |
+
+`GET` checks the saved key from `options.savedKey()`. `POST` takes the JSON body `{ "key": "<candidate>" }` and checks that key without saving it, so Settings verifies a key before it stores one. The body must be exactly that object with a printable-ASCII key of 1 to `MAX_ACCOUNT_KEY_LENGTH` (512) characters and at most 4096 characters in total. Any other body answers 400 with `{ "error": ... }` that does not repeat the body. Each check runs under `options.timeoutSeconds` and the request signal. Neither route logs or echoes a key, and the provider's `check` must not put the key in argv, environment variables or log lines.
+
+`catalogMissingKey(label)` and `catalogFailure(label, rejected)` build the answers of a provider's catalog route: 503 `{ "error": "Set the <label> API key on the host." }` without a key, 401 `{ "error": "<label> rejected the API key." }` when the provider refuses it, and 502 `{ "error": "Could not load <label> models. Check the API key and connection." }` for any other failure. A client reads the status to tell "key rejected" from "could not connect" for every provider.
+
+[`@dv/reactor`](../reactor/README.md) and [`@dv/openrouter`](../openrouter/README.md) use both.
+
 -----
 
 <a id="understand-the-implementation"></a>
@@ -188,7 +207,8 @@ While the DSH skill registry (`skills`) is mounted, the service registers the ru
 | File | Content |
 | --- | --- |
 | [`src/index.ts`](src/index.ts) | `Config`, `formatModelKey`, `modelKey`, `servesTask`, `renderTimings`, the `DvModels` service, and the two tools |
-| [`src/types.ts`](src/types.ts) | `PrimitiveTypes`, `PrimitiveId`, `TaskMap`, `ModalityId`, `TaskOfPrimitive`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter` |
+| [`src/account.ts`](src/account.ts) | `registerAccountRoute`, `AccountNeedsSetupError`, `catalogMissingKey`, `catalogFailure` |
+| [`src/types.ts`](src/types.ts) | `PrimitiveTypes`, `PrimitiveId`, `TaskMap`, `ModalityId`, `TaskOfPrimitive`, `ModelKey`, `RenderModelFacts`, `RenderRequest`, `RenderStreamEvent`, `ModelEntry`, `ModelFilter`, `AccountStatus`, `AccountDetails` |
 | [`skills/video-model-selection.md`](skills/video-model-selection.md) | The model selection skill |
 | [`tests/models.spec.ts`](tests/models.spec.ts) | The catalog, the tools, the skill, and the system prompt in a Loader composition |
 

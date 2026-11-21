@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryCredentials } from '../../../credentials/credentials/tests/memory.ts'
 import { provideChatServices } from '../../project/tests/workspaces.ts'
 import { shotGeometry } from '../../shot-render/src/render.ts'
+import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import * as OpenRouter from '../src/index.ts'
 import { imageRows, speechRows } from './client.spec.ts'
@@ -42,7 +43,8 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
   await promisify(execFile)(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=64x64:d=1:r=8',
     '-pix_fmt', 'yuv420p', videoPath])
   const clip = readFileSync(videoPath)
-  const remote = { failCatalog: options.failCatalog ?? false }
+  const remote = { failCatalog: options.failCatalog ?? false, keyStatus: 200, creditStatus: 200,
+    managementKey: false, keyLabel: 'Fixture', keyLimit: 10 as unknown, catalogStatus: 200 }
   const jpegPath = join(dir, 'fixture.jpg')
   await promisify(execFile)(ffmpeg, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=red:s=64x36', '-frames:v', '1', jpegPath])
   const jpeg = readFileSync(jpegPath)
@@ -59,8 +61,21 @@ async function fixture(options: { failCatalog?: boolean; models?: Record<string,
     requests.push({ path, method: request.method ?? 'GET', body: parts.length === 0 ? null
       : JSON.parse(Buffer.concat(parts).toString()), key: request.headers.authorization })
     response.setHeader('content-type', 'application/json')
-    if (path === '/api/v1/videos/models' && remote.failCatalog) { response.statusCode = 503; response.end('{}') }
+    if (path === '/api/v1/videos/models' && (remote.failCatalog || remote.catalogStatus !== 200)) {
+      response.statusCode = remote.failCatalog ? 503 : remote.catalogStatus
+      response.end('{}')
+    }
     else if (path === '/api/v1/videos/models') response.end(JSON.stringify(CATALOG))
+    else if (path === '/api/v1/key') {
+      response.statusCode = remote.keyStatus
+      response.end(JSON.stringify({
+        data: { label: remote.keyLabel, is_management_key: remote.managementKey, limit_remaining: remote.keyLimit },
+      }))
+    }
+    else if (path === '/api/v1/credits') {
+      response.statusCode = remote.creditStatus
+      response.end(JSON.stringify({ data: { total_credits: 25, total_usage: 12.5 } }))
+    }
     else if (path === '/api/v1/images/models') response.end(JSON.stringify(imageRows))
     else if (path === '/api/v1/models?output_modalities=speech') response.end(JSON.stringify(speechRows))
     else if (path === '/api/v1/models?output_modalities=video') {
@@ -195,6 +210,133 @@ describe('OpenRouter video provider composition', () => {
 
 })
 
+
+it('reports OpenRouter key status and reads only account-wide credits', async () => {
+  const { ctx, requests, remote, routes } = await fixture({ models: {} })
+  const route = routes.get('/api/dv/openrouter/account')
+  if (route === undefined) throw new Error('Missing OpenRouter account route')
+  const account = async () => {
+    const response = await route.fetch(new Request('http://dsh.local/api/dv/openrouter/account'))
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    return response.json() as Promise<unknown>
+  }
+
+  expect(await account()).toEqual({ status: 'connected', balanceUsd: null, label: 'Fixture', limitRemainingUsd: 10 })
+  expect(requests.map(({ path }) => path)).toEqual(['/api/v1/key'])
+  remote.managementKey = true
+  expect(await account()).toEqual({ status: 'connected', balanceUsd: 12.5, label: 'Fixture', limitRemainingUsd: 10 })
+  remote.creditStatus = 403
+  remote.keyLabel = 'fixture-key'
+  expect(await account()).toEqual({ status: 'connected', balanceUsd: null, label: null, limitRemainingUsd: 10 })
+  remote.keyStatus = 401
+  expect(await account()).toEqual({ status: 'rejected' })
+  remote.keyStatus = 503
+  expect(await account()).toEqual({ status: 'unavailable' })
+  await ctx.credentials.unset(credentialRef('OPENROUTER_API_KEY'))
+  expect(await account()).toEqual({ status: 'missing' })
+  expect(requests.map(({ path }) => path)).toEqual([
+    '/api/v1/key', '/api/v1/key', '/api/v1/credits', '/api/v1/key', '/api/v1/credits', '/api/v1/key', '/api/v1/key',
+  ])
+  expect(requests.every(({ method, key }) => method === 'GET' && key === 'Bearer fixture-key')).toBe(true)
+})
+
+describe('OpenRouter account route', () => {
+  const url = 'http://dsh.local/api/dv/openrouter/account'
+  const route = (routes: Map<string, ConnectionFetchRoute>): ConnectionFetchRoute => {
+    const found = routes.get('/api/dv/openrouter/account')
+    if (found === undefined) throw new Error('Missing OpenRouter account route')
+    return found
+  }
+
+  it('reports the key limit apart from account credits, and null when the key has none', async () => {
+    const { routes, remote } = await fixture({ models: {} })
+    const get = async () => (await route(routes).fetch(new Request(url))).json() as Promise<unknown>
+    remote.managementKey = true
+    expect(await get()).toEqual({ status: 'connected', balanceUsd: 12.5, label: 'Fixture', limitRemainingUsd: 10 })
+    remote.keyLimit = null
+    expect(await get()).toMatchObject({ balanceUsd: 12.5, limitRemainingUsd: null })
+    remote.keyLimit = undefined
+    expect(await get()).toMatchObject({ limitRemainingUsd: null })
+    remote.managementKey = false
+    remote.keyLimit = 0
+    expect(await get()).toEqual({ status: 'connected', balanceUsd: null, label: 'Fixture', limitRemainingUsd: 0 })
+  })
+
+  it.each(['10', {}, true])('answers unavailable when limit_remaining is %j', async (limit) => {
+    const { routes, remote } = await fixture({ models: {} })
+    remote.keyLimit = limit
+    expect(await (await route(routes).fetch(new Request(url))).json()).toEqual({ status: 'unavailable' })
+  })
+
+  it('checks a candidate key on POST without reading or replacing the saved key', async () => {
+    const { ctx, routes, requests, remote } = await fixture({ models: {} })
+    remote.keyLabel = 'label-with-candidate-key'
+    const response = await route(routes).fetch(new Request(url, { method: 'POST', body: '{"key":"candidate-key"}' }))
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    expect(await response.json()).toEqual({ status: 'connected', balanceUsd: null, label: null, limitRemainingUsd: 10 })
+    expect(requests.map(({ path, key }) => [path, key])).toEqual([['/api/v1/key', 'Bearer candidate-key']])
+    expect((await ctx.credentials.resolve(credentialRef('OPENROUTER_API_KEY')))?.value).toBe('fixture-key')
+    remote.keyStatus = 401
+    const rejected = await route(routes).fetch(new Request(url, { method: 'POST', body: '{"key":"candidate-key"}' }))
+    expect(await rejected.json()).toEqual({ status: 'rejected' })
+  })
+
+  it('checks a candidate key even when no key is saved', async () => {
+    const { ctx, routes } = await fixture({ models: {} })
+    await ctx.credentials.unset(credentialRef('OPENROUTER_API_KEY'))
+    const response = await route(routes).fetch(new Request(url, { method: 'POST', body: '{"key":"candidate-key"}' }))
+    expect(await response.json()).toMatchObject({ status: 'connected' })
+  })
+
+  it('answers 400 for a malformed candidate without calling OpenRouter', async () => {
+    const { routes, requests } = await fixture({ models: {} })
+    const response = await route(routes).fetch(new Request(url, { method: 'POST', body: '{"key":""}' }))
+    expect(response.status).toBe(400)
+    expect(requests).toEqual([])
+  })
+
+  it('answers unavailable for a saved credential reference that is not a name', async () => {
+    const { routes } = await fixture({ models: {}, credentialRef: 'not a name' })
+    expect(await (await route(routes).fetch(new Request(url))).json()).toEqual({ status: 'unavailable' })
+  })
+})
+
+describe('OpenRouter catalog route key errors', () => {
+  const url = 'http://dsh.local/api/dv/openrouter/catalog'
+  const answer = async (routes: Map<string, ConnectionFetchRoute>) => {
+    const response = await routes.get('/api/dv/openrouter/catalog')!.fetch(new Request(url))
+    return { status: response.status, body: await response.json() as unknown }
+  }
+
+  it('answers 503 without a saved key and does not call OpenRouter', async () => {
+    const { ctx, routes, requests } = await fixture()
+    await ctx.credentials.unset(credentialRef('OPENROUTER_API_KEY'))
+    requests.length = 0
+    expect(await answer(routes)).toEqual({ status: 503, body: { error: 'Set the OpenRouter API key on the host.' } })
+    expect(requests).toEqual([])
+  })
+
+  it.each([401, 403])('answers 401 when OpenRouter refuses the key with HTTP %i', async (status) => {
+    const { routes, remote } = await fixture()
+    remote.catalogStatus = status
+    expect(await answer(routes)).toEqual({ status: 401, body: { error: 'OpenRouter rejected the API key.' } })
+  })
+
+  it('answers 502 for any other failure', async () => {
+    const { routes, remote } = await fixture()
+    remote.catalogStatus = 500
+    expect(await answer(routes)).toEqual({ status: 502,
+      body: { error: 'Could not load OpenRouter models. Check the API key and connection.' } })
+  })
+})
+
+describe('OpenRouter configuration', () => {
+  it('defaults the request deadline to 10 seconds and bounds it between 1 and 300', () => {
+    expect(OpenRouter.Config({}).catalogTimeoutSeconds).toBe(10)
+    expect(OpenRouter.Config({ catalogTimeoutSeconds: 300 }).catalogTimeoutSeconds).toBe(300)
+    for (const seconds of [0, 301, 1.5]) expect(() => OpenRouter.Config({ catalogTimeoutSeconds: seconds })).toThrow()
+  })
+})
 
 it('withdraws removed cloud choices when replacement settings cannot register, still lists the catalogs, and recovers', async () => {
   const { ctx, routes } = await fixture()
