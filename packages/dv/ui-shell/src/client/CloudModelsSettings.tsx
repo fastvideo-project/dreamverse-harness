@@ -13,8 +13,10 @@ import type {} from '@deepseek-ai/dsh-api-remotes/client'
 import type { ModelCatalog } from '@deepseek-ai/dsh-api-remotes/client'
 import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import { providerName, type CloudAccount, type CloudMedia, type CloudModel, type CloudModelSettings, type CloudSelection } from '@dv/ui-kit/cloud-model-settings.ts'
+import { llmPickerEnabled, llmPickerKey, readLlmPickerChoices, setLlmPickerModel, subscribeLlmPicker } from '@dv/ui-kit/llm-picker.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { createRegistry, type Registry } from '@dv/ui-kit/registries.ts'
+import { createLlmReadiness, type LlmReadiness } from './llm-readiness.ts'
 import { CloudConnections, type AccountState, type SaveResult } from './cloud-connections.ts'
 import { DefaultModels, type DefaultModelsProps } from './DefaultModels.tsx'
 import css from './CloudModelsSettings.module.css'
@@ -72,8 +74,13 @@ interface InjectedProps {
   connections: CloudConnections
 }
 
+/** The LLM providers the Models page found usable, which its header publishes and the model table lists models of. */
+interface ReadinessProps {
+  readiness: LlmReadiness
+}
+
 /** The page's own contributions, on top of the provider join the Models section hands to its header entries. */
-export interface ModelsPageProps extends ModelsHeaderOwnerProps, InjectedProps {
+export interface ModelsPageProps extends ModelsHeaderOwnerProps, InjectedProps, ReadinessProps {
   /** The settings forms and catalogs the default model rows read and write. */
   source: DefaultModelsProps['source']
 }
@@ -83,7 +90,9 @@ export interface ModelsPageProps extends ModelsHeaderOwnerProps, InjectedProps {
  * @param props - the provider join, the settings forms, and the provider registry.
  * @returns the page content.
  */
-export function ModelsPage({ source, providers, connections, ...owner }: ModelsPageProps) {
+export function ModelsPage({ source, providers, connections, readiness, ...owner }: ModelsPageProps) {
+  const { rows } = owner
+  useEffect(() => { readiness.set(new Set(rows.filter(providerUsable).map(row => row.entry.provider))) }, [readiness, rows])
   return <>
     <DefaultModels source={source} providers={providers} />
     <Connections providers={providers} connections={connections} page={owner} />
@@ -97,6 +106,7 @@ export function ModelsPage({ source, providers, connections, ...owner }: ModelsP
 export function applyCloudModelsSettings(ctx: Context): void {
   const providers = createRegistry<CloudModelSettings>(entry => [entry.id], entry => entry.name)
   const connections = new CloudConnections()
+  const readiness = createLlmReadiness()
   ctx.effect(() => () => { connections.dispose() }, 'ui-shell: cloud connections')
   ctx.reflect.provide('dvCloudModels', providers)
   ctx.inject(['configForms', 'remote'], (scope) => {
@@ -116,11 +126,11 @@ export function applyCloudModelsSettings(ctx: Context): void {
     }
     scope.effect(() => scope.slots.inject('settings.models.header', () => scope.slots.register({
       name: 'settings.models.header', id: 'dv-models-page', order: 0,
-      inject: () => ({ source: defaults, providers, connections }),
+      inject: () => ({ source: defaults, providers, connections, readiness }),
     }, ModelsPage)), 'ui-shell: models page')
     scope.effect(() => scope.slots.inject('settings.models.footer', () => scope.slots.register({
       name: 'settings.models.footer', id: 'dv-cloud-models',
-      inject: () => ({ providers, connections, loadLlmCatalog: defaults.llmCatalog }),
+      inject: () => ({ providers, connections, readiness, loadLlmCatalog: defaults.llmCatalog }),
     }, ModelTable)), 'ui-shell: model table')
   })
 
@@ -191,21 +201,27 @@ export function Connections({ providers: registry, connections, page }: Injected
   }, [drawer])
   // A provider stays listed in every state, so a rejected or unreachable key can be fixed or removed from its row.
   const generation = providers
-  const generationConnected = providers.filter(({ provider }) => accounts.get(provider.id)?.status === 'connected').length
   const rows = page?.rows ?? []
   const llm = rows.filter(row => row.entry.active && providerUsable(row))
+  // One card per provider: a provider that serves generation and chat keeps its generation card, which lists Chat too.
+  const generationIds = new Set(providers.map(({ provider }) => provider.id))
+  const chatIds = new Set(llm.map(row => row.entry.provider))
+  const chatOnly = llm.filter(row => !generationIds.has(row.entry.provider))
   const editing = drawer?.kind === 'llm' ? rows.find(row => row.entry.provider === drawer.provider) : undefined
   const editingNamespace = editing === undefined ? undefined : page?.namespaces.get(editing.entry.settingsNs)
   const piAi = page?.namespaces.get('llm-pi-ai')
   const protocols = piAi === undefined || page === undefined ? [] : protocolChoices(piAi, page.schema)
   const needle = picking.trim().toLowerCase()
-  const offered = rows.filter(row => (mediaFilter === '' || mediaFilter === 'llm')
+  const offered = rows.filter(row => (mediaFilter === '' || mediaFilter === 'llm') && !generationIds.has(row.entry.provider)
     && `${row.entry.displayName} ${row.entry.provider}`.toLowerCase().includes(needle))
   // The generation providers that serve the chosen media type, or can serve chat when LLM is chosen.
   const offeredGeneration = providers.filter(({ provider }) => (mediaFilter === '' ? true
     : mediaFilter === 'llm' ? provider.enableOperator !== undefined : provider.media.includes(mediaFilter))
     && (needle === '' || provider.name.toLowerCase().includes(needle)))
-  const connected = generationConnected + llm.length
+  const connected = new Set([
+    ...providers.filter(({ provider }) => accounts.get(provider.id)?.status === 'connected').map(({ provider }) => provider.id),
+    ...chatIds,
+  ]).size
   const removeEditing = async (): Promise<void> => {
     if (editing === undefined || page === undefined) return
     setRemoving(true)
@@ -251,7 +267,7 @@ export function Connections({ providers: registry, connections, page }: Injected
               </span>
               <span className={css.rowMeta}>
                 <span className={css.metaLabel}>{text('类型', 'Serves')}</span>
-                <span>{provider.media.map(mediaName).join(' · ')}</span>
+                <span>{[...provider.media.map(mediaName), ...chatIds.has(provider.id) ? [text('聊天', 'Chat')] : []].join(' · ')}</span>
               </span>
               <span className={css.rowMeta}>
                 <span className={css.metaLabel}>{text('已启用', 'In picker')}</span>
@@ -265,7 +281,7 @@ export function Connections({ providers: registry, connections, page }: Injected
             </button>
           </li>
         })}
-        {llm.map(row => <li key={row.entry.provider}>
+        {chatOnly.map(row => <li key={row.entry.provider}>
           <button type="button" className={css.row} aria-haspopup="dialog"
             aria-label={text(`管理 ${row.entry.displayName}`, `Manage ${row.entry.displayName}`)}
             onClick={() => { setDrawer({ kind: 'llm', provider: row.entry.provider }) }}>
@@ -599,7 +615,7 @@ function ConnectionSheet(props: Parameters<typeof ProviderKeyForm>[0]) {
  * @param props - the provider registry and the shared catalogs.
  * @returns the generation model table.
  */
-export function ModelTable({ providers: registry, connections, loadLlmCatalog }: InjectedProps & {
+export function ModelTable({ providers: registry, connections, readiness, loadLlmCatalog }: InjectedProps & ReadinessProps & {
   loadLlmCatalog?: () => Promise<ModelCatalog>
 }) {
   const text = useText()
@@ -610,6 +626,8 @@ export function ModelTable({ providers: registry, connections, loadLlmCatalog }:
   const [source, setSource] = useState('')
   const [media, setMedia] = useState<CloudMedia | 'llm' | ''>('')
   const [llm, setLlm] = useState<ModelCatalog | null>(null)
+  const usable = useSyncExternalStore(listener => readiness.subscribe(listener), () => readiness.getSnapshot())
+  const picked = useSyncExternalStore(subscribeLlmPicker, readLlmPickerChoices)
   const [sourceOpen, setSourceOpen] = useState(false)
   const [sourceQuery, setSourceQuery] = useState('')
   const [enabledOnly, setEnabledOnly] = useState(false)
@@ -633,10 +651,12 @@ export function ModelTable({ providers: registry, connections, loadLlmCatalog }:
     for (const model of loaded ?? []) models.set(modelKey(model), { model, enabled: enabled.has(modelKey(model)) })
     return Array.from(models.values(), row => ({ ...row, provider, writable: state.writable, kind: 'generation' as const }))
   })
-  const groups = llm?.groups.filter(group => llm.routableProviders.includes(group.id)) ?? []
+  // The providers the Models page found usable; before it joins its rows, the routes the host reports.
+  const groups = llm?.groups.filter(group => usable?.has(group.id) ?? llm.routableProviders.includes(group.id)) ?? []
+  const inPicker = llmPickerEnabled(picked, groups)
   const rows = [...generation, ...groups.flatMap(group => group.models.map(model => ({
     kind: 'llm' as const, model: { ...model, media: 'llm' as const, unavailable: undefined },
-    provider: { id: group.id, name: group.name }, enabled: true,
+    provider: { id: group.id, name: group.name }, enabled: inPicker.has(llmPickerKey(group.id, model.id)),
   })))]
   const needle = query.trim().toLowerCase()
   const visible = rows.filter(row => (source === '' || row.provider.id === source) && (media === '' || row.model.media === media)
@@ -705,6 +725,7 @@ export function ModelTable({ providers: registry, connections, loadLlmCatalog }:
           {shown.map((row) => {
             const { model, provider, enabled } = row
             const id = `${provider.id}/${model.media}/${model.id}`
+            const pickerLabel = text(`在选择器中使用 ${model.name}`, `Use ${model.name} in the picker`)
             return <tr key={id} data-enabled={enabled}>
               <th scope="row">
                 <span className={css.modelCell}>
@@ -721,8 +742,9 @@ export function ModelTable({ providers: registry, connections, loadLlmCatalog }:
               </span></td>
               <td className={css.sourceCell}>{provider.name}</td>
               <td className={css.switchCell}>
-                {row.kind === 'llm' ? text('可用', 'Available') : <Switch checked={enabled}
-                  label={text(`在选择器中使用 ${model.name}`, `Use ${model.name} in the picker`)}
+                {row.kind === 'llm' ? <Switch checked={enabled} label={pickerLabel}
+                  onChange={(next) => { setLlmPickerModel(llmPickerKey(provider.id, model.id), next) }} /> : <Switch checked={enabled}
+                  label={pickerLabel}
                   disabled={!row.writable || pending !== null || (!enabled && row.model.unavailable !== undefined)}
                   onChange={(next) => {
                     setPending(id)

@@ -16,6 +16,7 @@ vi.mock('@deepseek-ai/dsh-client-ui-settings-models/client', () => ({
 
 const { ModelsPage, Connections, applyCloudModelsSettings } = await import('../src/client/CloudModelsSettings.tsx')
 const { CloudConnections } = await import('../src/client/cloud-connections.ts')
+const { createLlmReadiness } = await import('../src/client/llm-readiness.ts')
 
 const EMPTY_SELECTION = { writable: true, enabled: [] }
 const LOADING = { status: 'loading', writable: false, revision: 0 }
@@ -132,12 +133,49 @@ it('draws the default models above the connections', () => {
   const connections = new CloudConnections()
   const form = { getSnapshot: () => LOADING, subscribe: () => () => {} }
   render(createElement(ModelsPage, {
-    ...(page(async () => undefined) as Record<string, unknown>), providers, connections,
+    ...(page(async () => undefined) as Record<string, unknown>), providers, connections, readiness: createLlmReadiness(),
     source: {
       llmForm: form, mediaForm: form, llmCatalog: async () => ({ groups: [], routableProviders: [] }), mediaCatalog: async () => [],
     },
   } as never))
   expect(screen.getByRole('heading', { name: 'Default models' })).toBeTruthy()
   expect(screen.getByRole('heading', { name: 'Your connections' })).toBeTruthy()
+  connections.dispose()
+})
+
+it('draws one card per provider, listing chat among the roles of a provider that serves generation and chat', () => {
+  const providers = createRegistry<CloudModelSettings>(p => [p.id], p => p.name)
+  providers.register({
+    id: 'openrouter', name: 'OpenRouter', domain: 'openrouter.ai', keyUrl: 'https://x', logo: () => null, media: ['video', 'image', 'audio'],
+    settings: { getSnapshot: () => EMPTY_SELECTION, subscribe: () => () => {} },
+    account: async () => ({ status: 'missing' }), verify: async () => ({ status: 'missing' }), removeKey: async () => {},
+    load: async () => ({ models: [] }), setEnabled: async () => {},
+  })
+  const connections = new CloudConnections()
+  const shared = { ...page(async () => undefined) as { rows: unknown[] } }
+  shared.rows = [row('openrouter', 'OpenRouter', true), row('deepseek', 'DeepSeek', true)]
+  render(<Connections providers={providers} connections={connections} page={shared as never} />)
+  expect(screen.getAllByRole('button', { name: 'Manage OpenRouter' })).toHaveLength(1)
+  expect(within(screen.getByRole('button', { name: 'Manage OpenRouter' })).getByText('Video · Image · Audio · Chat')).toBeTruthy()
+  expect(within(screen.getByRole('button', { name: 'Manage DeepSeek' })).getByText('LLM')).toBeTruthy()
+  expect(screen.getByText('2 connected')).toBeTruthy()
+  fireEvent.click(screen.getByRole('button', { name: 'Add a connection' }))
+  const drawer = screen.getByRole('dialog', { name: 'Add a connection' })
+  expect(within(drawer).getAllByText('OpenRouter')).toHaveLength(1)
+  connections.dispose()
+})
+
+it('publishes the usable LLM providers of the Models page for the model table', () => {
+  const providers = createRegistry<CloudModelSettings>(p => [p.id], p => p.name)
+  const connections = new CloudConnections()
+  const readiness = createLlmReadiness()
+  const form = { getSnapshot: () => LOADING, subscribe: () => () => {} }
+  render(createElement(ModelsPage, {
+    ...(page(async () => undefined) as Record<string, unknown>), providers, connections, readiness,
+    source: {
+      llmForm: form, mediaForm: form, llmCatalog: async () => ({ groups: [], routableProviders: [] }), mediaCatalog: async () => [],
+    },
+  } as never))
+  expect([...readiness.getSnapshot() ?? []]).toEqual(['deepseek', 'mine'])
   connections.dispose()
 })

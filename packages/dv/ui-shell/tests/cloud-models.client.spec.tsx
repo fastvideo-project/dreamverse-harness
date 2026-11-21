@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { cloudSelection, type CloudAccount, type CloudModel, type CloudModelSettings } from '@dv/ui-kit/cloud-model-settings.ts'
 import { createRegistry } from '@dv/ui-kit/registries.ts'
 import { CloudConnections } from '../src/client/cloud-connections.ts'
+import { createLlmReadiness } from '../src/client/llm-readiness.ts'
 import { Connections, ModelTable } from '../src/client/CloudModelsSettings.tsx'
 
 afterEach(cleanup)
@@ -46,7 +47,7 @@ it('shows saved keys with balances and pages one source-aware table of picker ch
   try {
     render(<>
       <Connections providers={providers} connections={connections} />
-      <ModelTable providers={providers} connections={connections} />
+      <ModelTable providers={providers} connections={connections} readiness={createLlmReadiness()} />
     </>)
     const openrouterRow = await screen.findByRole('button', { name: 'Manage OpenRouter' })
     await waitFor(() => { expect(within(openrouterRow).getByText('Connected')).toBeTruthy() })
