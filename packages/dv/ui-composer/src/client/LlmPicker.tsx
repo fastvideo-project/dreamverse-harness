@@ -53,7 +53,7 @@ export function LlmPicker({ locked, available, directory, load, select, routable
     const selected = current?.provider === group.id && current.model === model.id
     const efforts = model.reasoning?.efforts ?? []
     return {
-      id: rowOf(group.id, model.id), group: group.id, label: model.name, note: group.name, selected,
+      id: rowOf(group.id, model.id), group: group.id, label: model.name, keywords: group.name, selected,
       facts: [
         [text('提供商', 'Provider'), group.name],
         [text('模型', 'Model'), model.id],

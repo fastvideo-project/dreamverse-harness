@@ -190,24 +190,6 @@
   text-overflow: ellipsis;
 }
 
-.note {
-  flex: none;
-  max-width: 40%;
-  overflow: hidden;
-  color: var(--dsw-alias-label-tertiary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tag {
-  flex: none;
-  padding: 0 6px;
-  border-radius: 999px;
-  font-size: 11px;
-  line-height: 18px;
-  color: var(--dsw-alias-label-tertiary);
-  border: 0.5px solid var(--dsw-alias-border-l3);
-}
 
 .check { flex: none; color: var(--dsw-alias-label-primary); }
 

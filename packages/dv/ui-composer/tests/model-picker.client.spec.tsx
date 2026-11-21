@@ -48,7 +48,7 @@ describe('conversation model choices', () => {
     expect(restored.getByRole('button', { name: 'Generation model: FastH3 Omni · FastVideo' })).toBeTruthy()
   })
 
-  it('names the provider next to every model, so equal model names stay distinguishable', () => {
+  it('groups every model under its provider, so equal model names stay distinguishable', () => {
     const project = fixtureState()
     project.components['models'] = { conversations: { s1: { video: { provider: 'uniserve', model: 'fasth3' } } } }
     const state = createSnapshotStore(project)
@@ -62,11 +62,11 @@ describe('conversation model choices', () => {
       logoOf={id => id === 'reactor' ? ({ size }) => <i data-testid="logo">{size}</i> : undefined} />)
     fireEvent.click(view.getByRole('button', { name: 'Generation model: FastH3-Omni · Uniserve' }))
     const list = within(document.body).getByRole('listbox', { name: 'Generation model' })
-    expect(within(list).getByRole('option', { name: /FastH3-Omni\s*Reactor/ })).toBeTruthy()
-    expect(within(list).getByRole('option', { name: /FastH3-Omni\s*Uniserve/ })).toBeTruthy()
+    expect(within(within(list).getByRole('group', { name: 'Reactor' })).getByRole('option', { name: /^FastH3-Omni/ })).toBeTruthy()
+    expect(within(within(list).getByRole('group', { name: 'Uniserve' })).getByRole('option', { name: /^FastH3-Omni/ })).toBeTruthy()
     expect(within(document.body).getAllByTestId('logo').length).toBeGreaterThan(0)
     fireEvent.change(within(document.body).getByRole('searchbox', { name: 'Search models' }), { target: { value: 'reactor' } })
-    expect(within(list).queryByRole('option', { name: /Uniserve/ })).toBeNull()
+    expect(within(list).queryByRole('group', { name: 'Uniserve' })).toBeNull()
   })
 
   it('falls back to the capitalized provider id when no provider name is supplied', () => {

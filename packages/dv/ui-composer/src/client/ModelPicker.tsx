@@ -118,7 +118,7 @@ export function ModelPickers({
     const current = selected.get(modality)
     return {
       id: rowOf(modality, entry), group: entry.provider, filter: modality, label: entry.display_name ?? entry.model,
-      note: providerName(entry.provider), tag: kind(modality),
+      keywords: `${providerName(entry.provider)} ${kind(modality)}`,
       selected: current !== undefined && current.provider === entry.provider && current.model === entry.model,
       facts: [
         [pick('提供商', 'Provider'), providerName(entry.provider)],

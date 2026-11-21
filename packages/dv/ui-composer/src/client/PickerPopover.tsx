@@ -28,10 +28,8 @@ export interface PickerItem {
   /** The {@link PickerFilter} id this row belongs to, when the popover has filters. */
   filter?: string
   label: string
-  /** The provider's display name, shown beside the label so equal model names stay distinguishable. */
-  note?: string
-  /** Short text at the row's end, such as the media type. */
-  tag?: string
+  /** Words that search also matches, such as the provider and media type; the group heading already shows them. */
+  keywords?: string
   selected: boolean
   /** Rows of the detail card, label then value. */
   facts: readonly (readonly [string, string])[]
@@ -146,7 +144,7 @@ export function PickerPopover(props: PickerPopoverProps) {
 
   const needle = query.trim().toLowerCase()
   const visible = useMemo(() => items.filter(item => (filter === null || (filters === undefined ? item.group : item.filter) === filter)
-    && `${item.label} ${item.note ?? ''} ${item.tag ?? ''}`.toLowerCase().includes(needle)), [items, filters, filter, needle])
+    && `${item.label} ${item.keywords ?? ''}`.toLowerCase().includes(needle)), [items, filters, filter, needle])
   const shownGroups = groups.filter(entry => visible.some(item => item.group === entry.id))
   const shownLeading = needle === '' && filter === null ? leading : []
   // The detail card follows the pointer and the keyboard, and stays out of the way when neither is on a row.
@@ -162,8 +160,6 @@ export function PickerPopover(props: PickerPopoverProps) {
       onMouseEnter={() => { setFocus(item.id) }} onFocus={() => { setFocus(item.id) }} onClick={() => { choose(item.id) }}>
       <span className={css.rowIcon}>{groups.find(entry => entry.id === item.group)?.icon}</span>
       <span className={css.rowLabel}>{item.label}</span>
-      {item.note === undefined ? null : <span className={css.note}>{item.note}</span>}
-      {item.tag === undefined ? null : <span className={css.tag}>{item.tag}</span>}
       {item.selected ? <IconCheckOutlineRegular size={14} className={css.check} /> : null}
     </button>
   </li>

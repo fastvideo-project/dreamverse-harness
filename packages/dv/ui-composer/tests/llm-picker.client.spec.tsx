@@ -38,14 +38,14 @@ const open = (view: ReturnType<typeof render>) => {
   return within(document.body).getByRole('listbox', { name: 'Language model' })
 }
 
-it('shows the provider next to the model, so equal names stay distinguishable, and lists routable providers only', async () => {
+it('groups models under their provider, so equal names stay distinguishable, and lists routable providers only', async () => {
   const { view } = setup()
   expect(view.getByRole('button', { name: 'Language model: Chat · OpenRouter · Low' })).toBeTruthy()
   await act(async () => {})
   const list = open(view)
   expect(within(list).getAllByRole('option', { name: /^Chat/ })).toHaveLength(2)
-  expect(within(list).getByRole('option', { name: /Chat\s*DeepSeek/ })).toBeTruthy()
-  expect(within(list).getByRole('option', { name: /Chat\s*OpenRouter/ })).toBeTruthy()
+  expect(within(within(list).getByRole('group', { name: 'DeepSeek' })).getByRole('option', { name: /^Chat/ })).toBeTruthy()
+  expect(within(within(list).getByRole('group', { name: 'OpenRouter' })).getByRole('option', { name: /^Chat/ })).toBeTruthy()
   expect(within(list).queryByRole('option', { name: /Tiny/ })).toBeNull()
   expect(within(document.body).getByText('Connect more providers in Settings → Models.')).toBeTruthy()
 })
@@ -53,17 +53,17 @@ it('shows the provider next to the model, so equal names stay distinguishable, a
 it('selects a model with its default effort, and keeps the current effort when the model offers it', async () => {
   const { view, select } = setup()
   await act(async () => {})
-  fireEvent.click(within(open(view)).getByRole('option', { name: /Chat\s*DeepSeek/ }))
+  fireEvent.click(within(within(open(view)).getByRole('group', { name: 'DeepSeek' })).getByRole('option', { name: /^Chat/ }))
   await waitFor(() => { expect(select).toHaveBeenCalledWith({ provider: 'deepseek', model: 'chat' }) })
   fireEvent.click(view.getByRole('button', { name: /^Language model/ }))
-  fireEvent.click(within(document.body).getByRole('option', { name: /Chat\s*OpenRouter/ }))
+  fireEvent.click(within(within(document.body).getByRole('group', { name: 'OpenRouter' })).getByRole('option', { name: /^Chat/ }))
   await waitFor(() => { expect(select).toHaveBeenLastCalledWith({ provider: 'openrouter', model: 'chat', reasoningEffort: 'low' }) })
 })
 
 it('picks the default effort for a model that does not offer the current one', async () => {
   const { view, select } = setup({}, { current: { provider: 'deepseek', model: 'chat', reasoningEffort: 'max' } })
   await act(async () => {})
-  fireEvent.click(within(open(view)).getByRole('option', { name: /Chat\s*OpenRouter/ }))
+  fireEvent.click(within(within(open(view)).getByRole('group', { name: 'OpenRouter' })).getByRole('option', { name: /^Chat/ }))
   await waitFor(() => { expect(select).toHaveBeenCalledWith({ provider: 'openrouter', model: 'chat', reasoningEffort: 'low' }) })
 })
 
@@ -71,7 +71,7 @@ it('sets the reasoning effort from the detail card of the selected model and rep
   const { view, select } = setup()
   await act(async () => {})
   const list = open(view)
-  fireEvent.mouseEnter(within(list).getByRole('option', { name: /Chat\s*OpenRouter/ }))
+  fireEvent.mouseEnter(within(within(list).getByRole('group', { name: 'OpenRouter' })).getByRole('option', { name: /^Chat/ }))
   select.mockResolvedValueOnce({ ok: false, error: { message: 'Effort refused' } } as never)
   fireEvent.click(within(document.body).getByRole('button', { name: 'High' }))
   expect((await view.findByRole('alert')).textContent).toBe('Effort refused')
