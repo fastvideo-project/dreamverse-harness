@@ -36,6 +36,9 @@
       "path": "../../client/ui-renderer"
     },
     {
+      "path": "../../client/ui-settings-models"
+    },
+    {
       "path": "../../client/ui-sidebar-right"
     },
     {
