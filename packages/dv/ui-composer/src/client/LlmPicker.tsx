@@ -1,6 +1,10 @@
-/** The composer's LLM seat as a provider-grouped popover; lists only providers that can serve a request now. */
+/**
+ * The composer's LLM seat as a provider-grouped popover; lists only providers that can serve a request now, and of
+ * those only the models switched on in Settings → Models, plus the model in use.
+ */
 import { useEffect, useState, useSyncExternalStore, type ComponentType } from 'react'
 import type { ModelSelectInjected } from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import { llmPickerEnabled, llmPickerKey, readLlmPickerChoices, subscribeLlmPicker } from '@dv/ui-kit/llm-picker.ts'
 import { useText } from '@dv/ui-kit/locale.ts'
 import { PickerPopover, type PickerItem } from './PickerPopover.tsx'
 import { ProviderGlyph } from './ProviderGlyph.tsx'
@@ -35,19 +39,35 @@ export function LlmPicker({ locked, available, directory, load, select, routable
     })
   }
   useEffect(refresh, [available])
+  const choices = useSyncExternalStore(subscribeLlmPicker, readLlmPickerChoices)
   if (!available) return null
   const glyph = (provider: string, name: string) => <ProviderGlyph logo={logoOf(provider)} name={name} />
   const current = state.current
-  const groups = state.groups.filter(group => routes === null || routes.includes(group.id)
+  const routed = state.groups.filter(group => routes === null || routes.includes(group.id)
     || (current !== null && current.provider === group.id))
+  const offered = llmPickerEnabled(choices, routed)
+  const groups = routed.map(group => ({
+    ...group,
+    models: group.models.filter(model => offered.has(llmPickerKey(group.id, model.id))
+      || (current?.provider === group.id && current.model === model.id)),
+  })).filter(group => group.models.length > 0)
   const currentModel = current === null ? undefined
     : state.groups.find(group => group.id === current.provider)?.models.find(model => model.id === current.model)
+  const providerLabel = state.groups.find(group => group.id === current?.provider)?.name
   const effortName = currentModel?.reasoning?.efforts.find(effort => effort.id === current?.reasoningEffort)?.name
   const choose = (selection: Parameters<typeof select>[0]): void => {
     setFailure(null)
     select(selection).then((result) => {
       if (result !== undefined && !result.ok) setFailure(result.error.message)
     }, (error: unknown) => { setFailure(error instanceof Error ? error.message : String(error)) })
+  }
+  // The trigger drops the provider name when the provider's logo already names it; the accessible name keeps it.
+  const triggerText = (full: boolean): string => {
+    if (currentModel === undefined) {
+      return current?.model ?? (groups.length === 0 && state.status === 'ready' ? text('连接提供商', 'Connect a provider') : text('选择模型', 'Choose a model'))
+    }
+    const named = full || (current !== null && logoOf(current.provider) === undefined)
+    return [currentModel.name, named ? providerLabel : undefined, effortName].filter(part => part !== undefined).join(' · ')
   }
   const items: PickerItem[] = groups.flatMap(group => group.models.map((model) => {
     const selected = current?.provider === group.id && current.model === model.id
@@ -74,16 +94,16 @@ export function LlmPicker({ locked, available, directory, load, select, routable
   }))
   return <span className="dv-model-choice">
     <PickerPopover label={text('语言模型', 'Language model')} disabled={locked || state.status === 'selecting'}
-      value={currentModel === undefined ? current?.model ?? text('选择模型', 'Choose a model')
-        : [currentModel.name, state.groups.find(group => group.id === current?.provider)?.name, effortName]
-          .filter(part => part !== undefined).join(' · ')}
+      value={triggerText(false)} fullValue={triggerText(true)}
       valueIcon={current === null ? undefined
         : glyph(current.provider, groups.find(group => group.id === current.provider)?.name ?? current.provider)}
       searchLabel={text('搜索模型', 'Search models')} emptyLabel={text('没有匹配的模型。', 'No models match.')}
+      noneLabel={() => text('还没有可选的模型。请在 设置 → 模型 中连接提供商或开启模型。',
+        'No models to pick yet. Connect a provider or switch models on in Settings → Models.')}
       onOpen={refresh}
       groups={groups.map(group => ({ id: group.id, name: group.name, icon: glyph(group.id, group.name) }))}
       items={items}
-      footer={text('在 设置 → 模型 中连接更多提供商。', 'Connect more providers in Settings → Models.')}
+      footer={text('在 设置 → 模型 中连接提供商并选择要显示的模型。', 'Connect providers and choose which models appear in Settings → Models.')}
       onSelect={(id) => {
         const [provider, model] = JSON.parse(id) as [string, string]
         const efforts = groups.find(group => group.id === provider)?.models.find(entry => entry.id === model)?.reasoning

@@ -17,14 +17,13 @@ async function settledSettings(form: ConfigForm<unknown>): Promise<ConfigFormSna
   const first = form.getSnapshot()
   if (first.status !== 'loading') return first
   return await new Promise((resolve) => {
-    let stop = (): void => {}
     const finish = (snapshot: ConfigFormSnapshot<unknown> | undefined): void => {
       clearTimeout(timer)
       stop()
       resolve(snapshot)
     }
     const timer = setTimeout(() => { finish(undefined) }, SETTINGS_WAIT_MS)
-    stop = form.subscribe(() => {
+    const stop = form.subscribe(() => {
       const next = form.getSnapshot()
       if (next.status !== 'loading') finish(next)
     })

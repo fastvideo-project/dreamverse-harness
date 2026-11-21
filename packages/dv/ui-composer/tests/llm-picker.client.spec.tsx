@@ -4,10 +4,11 @@ import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-libra
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ModelDirectoryState } from '@deepseek-ai/dsh-client-ui-model-selection/src/client/directory.ts'
+import { setLlmPickerModel } from '@dv/ui-kit/llm-picker.ts'
 import { LlmPicker, type LlmPickerInjected } from '../src/client/LlmPicker.tsx'
 import { PickerPopover } from '../src/client/PickerPopover.tsx'
 
-beforeEach(() => { document.documentElement.lang = 'en' })
+beforeEach(() => { document.documentElement.lang = 'en'; window.localStorage.clear() })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 const effort = (id: string, name: string) => ({ id, name, description: `${name} effort` })
@@ -47,7 +48,7 @@ it('groups models under their provider, so equal names stay distinguishable, and
   expect(within(within(list).getByRole('group', { name: 'DeepSeek' })).getByRole('option', { name: /^Chat/ })).toBeTruthy()
   expect(within(within(list).getByRole('group', { name: 'OpenRouter' })).getByRole('option', { name: /^Chat/ })).toBeTruthy()
   expect(within(list).queryByRole('option', { name: /Tiny/ })).toBeNull()
-  expect(within(document.body).getByText('Connect more providers in Settings → Models.')).toBeTruthy()
+  expect(within(document.body).getByText('Connect providers and choose which models appear in Settings → Models.')).toBeTruthy()
 })
 
 it('selects a model with its default effort, and keeps the current effort when the model offers it', async () => {
@@ -124,7 +125,7 @@ it('closes the popover on Escape and on an outside press, and filters by search 
 it('keeps a popover open when the selection handler asks and places it beside the trigger on a narrow window', () => {
   const onSelect = vi.fn(() => false)
   vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(420)
-  const view = render(<PickerPopover label="Pick" value="v" searchLabel="Search" emptyLabel="Empty" groups={[{ id: 'g', name: 'G', icon: null }]}
+  const view = render(<PickerPopover label="Pick" value="v" searchLabel="Search" emptyLabel="Empty" noneLabel={() => 'None'} groups={[{ id: 'g', name: 'G', icon: null }]}
     items={[{ id: 'a', group: 'g', label: 'A', selected: false, facts: [] }]} onSelect={onSelect} />)
   fireEvent.click(view.getByRole('button', { name: 'Pick: v' }))
   fireEvent.click(within(document.body).getByRole('option', { name: 'A' }))
@@ -132,4 +133,38 @@ it('keeps a popover open when the selection handler asks and places it beside th
   expect(within(document.body).getByRole('dialog', { name: 'Pick' }).getAttribute('data-side')).toBe('stack')
   fireEvent.mouseEnter(within(document.body).getByRole('option', { name: 'A' }))
   fireEvent(window, new Event('resize'))
+})
+
+it('keeps the trigger to the model and effort when the provider has a logo, and the accessible name in full', async () => {
+  const { view } = setup()
+  await act(async () => {})
+  const trigger = view.getByRole('button', { name: 'Language model: Chat · OpenRouter · Low' })
+  expect(trigger.textContent).not.toContain('OpenRouter')
+  expect(within(trigger).getByText('Chat · Low')).toBeTruthy()
+  expect(trigger.getAttribute('title')).toBe('Chat · OpenRouter · Low')
+  cleanup()
+  const plain = setup({}, { current: { provider: 'deepseek', model: 'chat' } })
+  expect(plain.view.getByRole('button', { name: 'Language model: Chat · DeepSeek' }).textContent).toContain('DeepSeek')
+})
+
+it('offers the first few models of each provider, then only the models switched on, and always the model in use', async () => {
+  const many = { id: 'deepseek', name: 'DeepSeek', models: ['a', 'b', 'c', 'd', 'e'].map(id => ({ id, name: id.toUpperCase() })) }
+  const { view, directory } = setup({}, { groups: [many, groups[1]!], current: { provider: 'openrouter', model: 'chat' } })
+  await act(async () => {})
+  const list = open(view)
+  const names = () => within(list).getAllByRole('option').map(option => option.children[1]?.textContent)
+  expect(names()).toEqual(expect.arrayContaining(['A', 'B', 'C']))
+  expect(names()).not.toContain('D')
+  act(() => { setLlmPickerModel('deepseek/d', true); setLlmPickerModel('deepseek/a', false) })
+  expect(names()).toContain('D')
+  expect(names()).not.toContain('A')
+  act(() => { directory.update((draft) => { draft.current = { provider: 'deepseek', model: 'e' } }) })
+  expect(names()).toContain('E')
+})
+
+it('says to connect a provider when none can serve a request', async () => {
+  const { view } = setup({ routable: async () => [] }, { current: null, groups: [] })
+  await act(async () => {})
+  fireEvent.click(view.getByRole('button', { name: 'Language model: Connect a provider' }))
+  expect(within(document.body).getByText(/No models to pick yet\./)).toBeTruthy()
 })

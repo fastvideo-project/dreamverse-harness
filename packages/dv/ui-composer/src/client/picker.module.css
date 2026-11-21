@@ -4,7 +4,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 260px;
+  min-width: 0;
+  max-width: 220px;
   height: 28px;
   padding: 0 8px;
   border: 0;
@@ -13,6 +14,7 @@
   color: var(--dsw-alias-label-secondary);
   font: inherit;
   font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }
@@ -25,7 +27,8 @@
 .trigger:disabled { opacity: 0.5; cursor: default; }
 .trigger:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: 1px; }
 
-.triggerIcon { display: inline-flex; }
+.triggerIcon { display: inline-flex; flex: none; }
+.trigger > svg { flex: none; }
 
 .triggerValue {
   min-width: 0;

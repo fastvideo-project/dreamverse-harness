@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /** The DreamVerse LLM seat lists a configurable provider only once its settings profile exists and the key it names is stored. */
-import { act, cleanup, fireEvent, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -54,7 +54,7 @@ async function mount(options: Options = {}) {
   ))
   const session = await runtime.sessions.add({ id: 's1' })
   await runtime.mount({ inject: [...inject], apply })
-  return { runtime, directory, select, load, ready: () => { piAi = { status: 'ready', value: { providers: { openrouter: {} } } }; for (const l of listeners) l() } }
+  return { runtime, directory, select, load, poke: () => { for (const l of listeners) l() }, ready: () => { piAi = { status: 'ready', value: { providers: { openrouter: {} } } }; for (const l of listeners) l() } }
 }
 
 const optionsOf = async (view: ReturnType<SlotTestRuntime['renderRoot']>) => {
@@ -82,8 +82,9 @@ it('hides a provider whose profile names a key that is not stored, and lists one
 })
 
 it('waits for a settings document that is still loading', async () => {
-  const { runtime, ready } = await mount({ forms: 'loading' })
+  const { runtime, ready, poke } = await mount({ forms: 'loading' })
   const view = runtime.renderRoot()
+  setTimeout(poke, 2)
   setTimeout(ready, 5)
   const shown = await optionsOf(view)
   expect(shown.some(text => text?.includes('openrouter model'))).toBe(true)
@@ -107,5 +108,24 @@ it('lists every routable provider when a settings document never loads', async (
   await act(async () => { await vi.advanceTimersByTimeAsync(2100) })
   fireEvent.click(view.getByRole('button', { name: /^Language model/ }))
   expect(within(document.body).getAllByRole('option').some(option => option.textContent?.includes('local model'))).toBe(true)
+  await runtime.dispose()
+})
+
+it('treats a profile path that runs through a non-object as no profile', async () => {
+  const { runtime } = await mount({ providers: { ok: true, value: [
+    { provider: 'groq', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openrouter', 'apiKeyEnv', 'x'] },
+  ] } })
+  const shown = await optionsOf(runtime.renderRoot())
+  expect(shown.some(text => text?.includes('groq model'))).toBe(false)
+  await runtime.dispose()
+})
+
+it('selects the chosen model through the session model directory', async () => {
+  const { runtime, select } = await mount()
+  const view = runtime.renderRoot()
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+  fireEvent.click(view.getByRole('button', { name: /^Language model/ }))
+  fireEvent.click(within(document.body).getByRole('option', { name: /deepseek model/ }))
+  await waitFor(() => { expect(select).toHaveBeenCalledWith({ provider: 'deepseek', model: 'deepseek-m' }) })
   await runtime.dispose()
 })
