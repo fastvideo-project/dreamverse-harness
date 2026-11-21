@@ -191,19 +191,3 @@
 .search:focus-visible,
 .uploadLabel input:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 .tab:disabled { cursor: wait; }
-
-.launcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  border: none;
-  border-radius: var(--dv-radius-md);
-  background: transparent;
-  color: var(--dv-text-2);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.launcher:hover { background: var(--dv-surface-3); }
-.launcher:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }

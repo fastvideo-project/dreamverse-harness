@@ -330,6 +330,7 @@ export interface WireModelEntry {
   description: string
   /** Optional creator-facing name; the stable model key still identifies the model. */
   display_name?: string
+  hosting?: 'managed' | 'self-hosted'
   /** Providers without model lifecycle support omit this field. */
   runtime?: { installed: boolean; loaded: boolean; loading: boolean; busy: boolean } | null
   /** The entry's `schema()`, whose fields its primitive owns; null when the backend cannot be reached. */

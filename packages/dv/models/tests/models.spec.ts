@@ -15,7 +15,7 @@ import SkillRegistry from '@deepseek-ai/dsh-skill'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime from '@deepseek-ai/dsh-tools'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import DvModels, { formatModelKey, modelKey, renderTimings, servesTask, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
+import DvModels, { Config, formatModelKey, modelKey, renderTimings, servesTask, type ModelEntry, type RenderModelFacts, type TaskId } from '../src/index.ts'
 
 /** The facts every fake entry reports. */
 const FACTS: RenderModelFacts = {
@@ -319,5 +319,19 @@ describe('dvModels', () => {
     expect(ctx.tools.get('dv_models_get')).toBeUndefined()
     expect(await ctx.skills.get('video-model-selection')).toBeUndefined()
     expect(await ctx.skills.get('gamma-prompting')).toBeUndefined()
+  })
+})
+
+describe('Config', () => {
+  it('defaults the starting models to none and reads a model per modality through a volatile reference', () => {
+    expect(Config({}).defaults.get()).toEqual({})
+    const parsed = Config({ defaults: { video: { provider: 'reactor', model: 'fast' } } })
+    expect(parsed.defaults.get()).toEqual({ video: { provider: 'reactor', model: 'fast' } })
+    expect(parsed.catalogSchemaTimeoutMs).toBe(5000)
+  })
+
+  it('refuses a default without its provider or model', () => {
+    expect(() => Config({ defaults: { video: { provider: 'reactor' } } as never })).toThrow()
+    expect(() => Config({ defaults: { video: { model: 'fast' } } as never })).toThrow()
   })
 })

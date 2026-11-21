@@ -16,6 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { DV_TRAJECTORY_FOCUS_EVENT, type DvWorkspaceEventMap } from '@dv/ui-kit/workspace-events.ts'
 import { createActions } from './actions.ts'
 import { CenterPanel, type ShellInjected } from './Center.tsx'
+import { applyCloudModelsSettings } from './CloudModelsSettings.tsx'
 import { applyChrome } from './chrome.tsx'
 import { BrandName, Navigator } from './Navigator.tsx'
 import { ActionFailureToast, clearActionFailure } from './notice.tsx'
@@ -46,6 +47,7 @@ export function apply(ctx: ClientContext): void {
   const center: DvCenter = { show: showInCenter }
   ctx.reflect.provide('dvCenter', center)
   applyTheme(ctx)
+  applyCloudModelsSettings(ctx)
   const injected: ShellInjected = { shell: createActions(ctx) }
   ctx.effect(() => ctx.slots.inject('main.conversation', () => ctx.slots.register(
     {

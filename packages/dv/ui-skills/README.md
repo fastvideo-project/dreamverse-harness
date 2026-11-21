@@ -87,5 +87,7 @@ None; the page sends nothing to a model.
 
 <a id="known-limitations-and-deferred-work"></a>
 
+- **No composer launcher** — the chat composer no longer carries a Skills button. Open Skills from the navigator or from the Explore tab of the entry page, or type `/name` in the composer.
+
 - **English descriptions** — the cards show each skill's `description` as its file writes it; skill files carry one description, which the model also reads, so the page has no Chinese text for them.
 - **Built-in list requires a session** — Available skills uses the session-addressed Remote; My Skills and uploads do not require one. Bundled resources are stored unchanged; uploading a script does not add tools or execute it.

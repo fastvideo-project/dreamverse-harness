@@ -40,7 +40,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 以行 `dv-models
   name: '@dv/models'
 ```
 
-本插件没有配置字段。
+插件有两个配置字段。`defaults` 把模态映射到新对话开始时使用的 `{ provider, model }`，例如 `defaults.video`。修改后无需重新加载插件即可生效。DreamVerse composer 从设置读取它，并在客户端界面打开没有选择的对话时，把每个默认值作为该对话的 `models.select` 选择记录一次；缺少的模态从自动开始。目录本身不读取 `defaults`，因此通过 SDK 或无界面运行创建的会话不会应用它。`catalogSchemaTimeoutMs`（默认 5000）是 `catalog()` 等待单个条目 `schema()` 的时长，超时后该条目以空 schema 列出。
 
 <a id="model-keys"></a>
 ### 模型键
@@ -312,6 +312,8 @@ skill 注册表挂载期间，目录中约 40 个 token。agent 每次加载该 
 ## 已知限制与延期工作
 
 <a id="known-limitations-and-deferred-work"></a>
+
+- **默认值只在客户端界面生效** — `defaults` 在 DreamVerse composer 于客户端界面打开没有选择的对话时应用；通过 SDK 或无界面运行创建的会话从自动开始。在创建对话时由主机端写入默认值是延期工作。
 
 以下限制适用于模型目录、两个工具和选择 skill。
 

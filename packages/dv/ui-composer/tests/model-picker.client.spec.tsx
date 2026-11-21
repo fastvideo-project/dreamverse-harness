@@ -8,7 +8,7 @@ import type { HostObservable } from '@deepseek-ai/dsh-client-ui-slots'
 import type { WireModelEntry } from '@dv/ui-kit/types.ts'
 import { fixtureState } from '../../ui-kit/tests/fixture.client.tsx'
 import { catalogSource } from '../src/client/prompt.ts'
-import { ModelPicker, ModelPickers, modelChoices, pickerModalities } from '../src/client/ModelPicker.tsx'
+import { ModelPickers, modelChoices, pickerModalities } from '../src/client/ModelPicker.tsx'
 
 let originalLanguage: string
 beforeEach(() => { originalLanguage = document.documentElement.lang; document.documentElement.lang = 'en' })
@@ -19,42 +19,83 @@ const image = (name: string): WireModelEntry => ({ modality: 'image', task: 't2i
   model: name, description: name, display_name: name === 'flux' ? 'FLUX 3' : 'Seedream 5', schema: {} })
 
 describe('conversation model choices', () => {
+  const props = (
+    state: ReturnType<typeof createSnapshotStore<ReturnType<typeof fixtureState>>>,
+    models: HostObservable<readonly WireModelEntry[] | null>,
+    extra: Partial<Parameters<typeof ModelPickers>[0]> = {}) =>
+    ({ sessionId: 's1', state, models, reloadModels: () => {}, save: async () => {}, ...extra })
+
   it('groups tasks into one choice and follows an agent switch and a restored conversation', async () => {
     const state = createSnapshotStore(fixtureState())
-    const catalog = createSnapshotStore([model('pika'), model('pika', 'ref2v'), model('omni', 'ref2v')])
-    const save = vi.fn(async (selection) => {
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika'), model('pika', 'ref2v'), model('omni', 'ref2v')])
+    const save = vi.fn(async (writes: readonly (readonly [string, { provider: string; model: string } | null])[]) => {
       state.set({ ...state.getSnapshot(), components: { ...state.getSnapshot().components,
-        models: { conversations: { s1: { video: selection } } } } })
+        models: { conversations: { s1: { video: writes[0]?.[1] } } } } })
     })
-    const view = render(<ModelPicker sessionId="s1" modality="video" state={state} models={catalog} reloadModels={() => {}} save={save} />)
-    fireEvent.click(view.getByRole('button', { name: 'Video model: Auto' }))
-    const menu = within(document.body).getByRole('menu')
-    expect(within(menu).getAllByText('Pika H3 Flex')).toHaveLength(1)
-    fireEvent.click(within(menu).getByText('Pika H3 Flex'))
+    const view = render(<ModelPickers {...props(state, catalog, { save })} providerName={() => 'FastVideo'} />)
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: Auto' }))
+    const list = within(document.body).getByRole('listbox', { name: 'Generation model' })
+    expect(within(list).getAllByRole('option', { name: /Pika H3 Flex/ })).toHaveLength(1)
+    fireEvent.click(within(list).getByRole('option', { name: /Pika H3 Flex/ }))
     await act(async () => {})
-    expect(save).toHaveBeenCalledWith({ provider: 'fastvideo', model: 'pika' })
-    expect(view.getByRole('button', { name: 'Video model: Pika H3 Flex' })).toBeTruthy()
+    expect(save).toHaveBeenCalledWith([['video', { provider: 'fastvideo', model: 'pika' }]])
+    expect(view.getByRole('button', { name: 'Generation model: Pika H3 Flex · FastVideo' })).toBeTruthy()
     act(() => { state.set({ ...state.getSnapshot(), components: { ...state.getSnapshot().components,
       models: { conversations: { s1: { video: { provider: 'fastvideo', model: 'omni' } } } } } }) })
-    expect(view.getByRole('button', { name: 'Video model: FastH3 Omni' })).toBeTruthy()
+    expect(view.getByRole('button', { name: 'Generation model: FastH3 Omni · FastVideo' })).toBeTruthy()
     view.unmount()
-    const restored = render(<ModelPicker sessionId="s1" modality="video" state={state} models={catalog} reloadModels={() => {}} save={save} />)
-    expect(restored.getByRole('button', { name: 'Video model: FastH3 Omni' })).toBeTruthy()
+    const restored = render(<ModelPickers {...props(state, catalog, { save })} providerName={() => 'FastVideo'} />)
+    expect(restored.getByRole('button', { name: 'Generation model: FastH3 Omni · FastVideo' })).toBeTruthy()
+  })
+
+  it('groups every model under its provider, so equal model names stay distinguishable', () => {
+    const project = fixtureState()
+    project.components['models'] = { conversations: { s1: { video: { provider: 'uniserve', model: 'fasth3' } } } }
+    const state = createSnapshotStore(project)
+    const fasth3 = { ...model('fasth3'), display_name: 'FastH3-Omni' }
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([
+      { ...fasth3, provider: 'reactor', hosting: 'managed' },
+      { ...fasth3, provider: 'uniserve', hosting: 'self-hosted' },
+    ])
+    const names: Record<string, string> = { reactor: 'Reactor' }
+    const view = render(<ModelPickers {...props(state, catalog)} providerName={id => names[id] ?? 'Uniserve'}
+      logoOf={id => id === 'reactor' ? ({ size }) => <i data-testid="logo">{size}</i> : undefined} />)
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: FastH3-Omni · Uniserve' }))
+    const list = within(document.body).getByRole('listbox', { name: 'Generation model' })
+    expect(within(within(list).getByRole('group', { name: 'Reactor' })).getByRole('option', { name: /^FastH3-Omni/ })).toBeTruthy()
+    expect(within(within(list).getByRole('group', { name: 'Uniserve' })).getByRole('option', { name: /^FastH3-Omni/ })).toBeTruthy()
+    expect(within(document.body).getAllByTestId('logo').length).toBeGreaterThan(0)
+    fireEvent.change(within(document.body).getByRole('searchbox', { name: 'Search models' }), { target: { value: 'reactor' } })
+    expect(within(list).queryByRole('group', { name: 'Uniserve' })).toBeNull()
+  })
+
+  it('falls back to the capitalized provider id when no provider name is supplied', () => {
+    const state = createSnapshotStore(fixtureState())
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika')])
+    const view = render(<ModelPickers {...props(state, catalog)} defaults={{ video: { provider: 'fastvideo', model: 'pika' } }} />)
+    expect(view.getByRole('button', { name: 'Generation model: Pika H3 Flex · Fastvideo' })).toBeTruthy()
   })
 
   it('keeps the previous choice and reports a save failure, and hides missing weights', async () => {
     const project = fixtureState()
     project.components['models'] = { conversations: { s1: { video: { provider: 'fastvideo', model: 'pika' } } } }
     const state = createSnapshotStore(project)
-    const catalog = createSnapshotStore([model('pika'), { ...model('omni'), runtime: { installed: false, loaded: false, loading: false, busy: false } }])
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika'), { ...model('omni'), runtime: { installed: false, loaded: false, loading: false, busy: false } }])
     const save = vi.fn(async () => { throw new Error('Connection interrupted. Try again.') })
-    const view = render(<ModelPicker sessionId="s1" modality="video" state={state} models={catalog} reloadModels={() => {}} save={save} />)
-    fireEvent.click(view.getByRole('button', { name: 'Video model: Pika H3 Flex' }))
-    expect(within(document.body).queryByRole('menuitem', { name: 'FastH3 Omni' })).toBeNull()
-    fireEvent.click(within(document.body).getByText('Auto · let the operator choose'))
+    const view = render(<ModelPickers {...props(state, catalog, { save })} />)
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: Pika H3 Flex · Fastvideo' }))
+    expect(within(document.body).queryByRole('option', { name: /FastH3 Omni/ })).toBeNull()
+    fireEvent.click(within(document.body).getByRole('option', { name: /Pika H3 Flex/ }))
     await act(async () => {})
     expect(view.getByRole('alert').textContent).toContain('Connection interrupted')
-    expect(view.getByRole('button', { name: 'Video model: Pika H3 Flex' })).toBeTruthy()
+    expect(view.getByRole('button', { name: 'Generation model: Pika H3 Flex · Fastvideo' })).toBeTruthy()
+  })
+
+  it('shows a notice about the conversation models', () => {
+    const state = createSnapshotStore(fixtureState())
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika')])
+    const view = render(<ModelPickers {...props(state, catalog)} notice="Could not apply your default models." />)
+    expect(view.getByRole('alert').textContent).toBe('Could not apply your default models.')
   })
 
   it('loads the catalog again when the user opens the picker after a failed load', async () => {
@@ -62,9 +103,9 @@ describe('conversation model choices', () => {
     const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue([model('pika')])
     const models = catalogSource(load)
     const state = createSnapshotStore(fixtureState())
-    const view = render(<ModelPicker sessionId="s1" modality="video" state={state} models={models} reloadModels={models.reload} save={async () => {}} />)
+    const view = render(<ModelPickers {...props(state, models, { reloadModels: models.reload })} />)
     await act(async () => {})
-    fireEvent.click(view.getByRole('button', { name: 'Video model: Auto' }))
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: Auto' }))
     await act(async () => {})
     expect(load).toHaveBeenCalledTimes(2)
     expect(within(document.body).getByText('Pika H3 Flex')).toBeTruthy()
@@ -75,7 +116,7 @@ describe('conversation model choices', () => {
     const load = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue([model('pika')])
     const models = catalogSource(load)
     const state = createSnapshotStore(fixtureState())
-    render(<ModelPicker sessionId="s1" modality="video" state={state} models={models} reloadModels={models.reload} save={async () => {}} />)
+    render(<ModelPickers {...props(state, models, { reloadModels: models.reload })} />)
     await act(async () => {})
     const prompt = render(<CatalogReader models={models} />)
     await act(async () => {})
@@ -83,20 +124,142 @@ describe('conversation model choices', () => {
     expect(prompt.getByTestId('catalog').textContent).toBe('1 models')
   })
 
-  it('shows an image picker only while an image model is configured, and saves each modality on its own', async () => {
+  it('lists every reachable media model in one picker and saves the chosen model for its own media type', async () => {
+    const project = fixtureState()
+    project.components['models'] = { conversations: { s1: { video: { provider: 'fastvideo', model: 'pika' } } } }
+    const state = createSnapshotStore(project)
+    const unreachable = { ...image('seedream'), schema: null }
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika'), image('flux'), unreachable])
+    const save = vi.fn(async () => {})
+    const view = render(<ModelPickers sessionId="s1" state={state} models={catalog} reloadModels={() => {}} save={save} />)
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: Video: Pika H3 Flex · Fastvideo, Image: Auto' }))
+    const list = within(document.body).getByRole('listbox', { name: 'Generation model' })
+    expect(within(list).getByRole('option', { name: /Pika H3 Flex/, selected: true })).toBeTruthy()
+    expect(within(list).queryByText('Seedream 5')).toBeNull()
+    const dialog = view.getByRole('dialog', { name: 'Generation model' })
+    expect(within(dialog).getByRole('button', { name: 'Audio' }).hasAttribute('disabled')).toBe(true)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Image', pressed: false }))
+    expect(within(dialog).getByRole('button', { name: 'Image', pressed: true })).toBeTruthy()
+    expect(within(list).queryByRole('option', { name: /Pika H3 Flex/ })).toBeNull()
+    fireEvent.click(within(list).getByRole('option', { name: /FLUX 3/ }))
+    await act(async () => {})
+    expect(save).toHaveBeenCalledWith([['image', { provider: 'openrouter', model: 'flux' }]])
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: Video: Pika H3 Flex · Fastvideo, Image: Auto' }))
+    fireEvent.click(within(within(document.body).getByRole('listbox', { name: 'Generation model' })).getByRole('option', { name: /Pika H3 Flex/ }))
+    await act(async () => {})
+    expect(save).toHaveBeenLastCalledWith([['video', null]])
+  })
+
+  it('returns one media type to Auto at a time, and shows a default only before the conversation chooses', async () => {
+    const state = createSnapshotStore(fixtureState())
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika'), image('flux')])
+    const save = vi.fn(async () => {})
+    const defaults = { video: { provider: 'fastvideo', model: 'pika' }, image: { provider: 'openrouter', model: 'flux' } }
+    const view = render(<ModelPickers sessionId="s1" state={state} models={catalog} reloadModels={() => {}} save={save}
+      defaults={defaults} />)
+    // No project choice yet: the saved defaults stand in, and every media type has its own Auto row.
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: Video: Pika H3 Flex · Fastvideo, Image: FLUX 3 · Openrouter' }))
+    const list = within(document.body).getByRole('listbox', { name: 'Generation model' })
+    expect(within(list).getByRole('option', { name: 'Video · Auto', selected: false })).toBeTruthy()
+    expect(within(list).getByRole('option', { name: 'Image · Auto', selected: false })).toBeTruthy()
+    fireEvent.click(within(list).getByRole('option', { name: 'Video · Auto' }))
+    await act(async () => {})
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith([['video', null]])
+    // Once the conversation holds a choice, a media type it left on Auto no longer shows the default.
+    state.update((draft) => {
+      (draft.components as Record<string, unknown>)['models'] = { conversations: { s1: { image: { provider: 'openrouter', model: 'flux' } } } }
+    })
+    await act(async () => {})
+    expect(view.getByRole('button', { name: 'Generation model: Video: Auto, Image: FLUX 3 · Openrouter' })).toBeTruthy()
+    state.update((draft) => {
+      (draft.components as Record<string, unknown>)['models'] = { conversations: { s1: {} } }
+    })
+    await act(async () => {})
+    expect(view.getByRole('button', { name: 'Generation model: Auto' })).toBeTruthy()
+  })
+
+  it('shows the Auto choice of the active media filter alone, selected while that type has no model', async () => {
+    const project = fixtureState()
+    project.components['models'] = { conversations: { s1: { image: { provider: 'openrouter', model: 'flux' } } } }
+    const state = createSnapshotStore(project)
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika'), image('flux')])
+    const save = vi.fn(async () => {})
+    const view = render(<ModelPickers sessionId="s1" state={state} models={catalog} reloadModels={() => {}} save={save} />)
+    fireEvent.click(view.getByRole('button', { name: /^Generation model/ }))
+    const dialog = within(document.body).getByRole('dialog', { name: 'Generation model' })
+    // Combined view: video is on Auto while image holds a model, and both states show.
+    expect(within(dialog).getByRole('option', { name: 'Video · Auto', selected: true })).toBeTruthy()
+    expect(within(dialog).getByRole('option', { name: 'Image · Auto', selected: false })).toBeTruthy()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Video' }))
+    expect(within(dialog).getByRole('option', { name: 'Auto', selected: true })).toBeTruthy()
+    expect(within(dialog).queryByRole('option', { name: /Image/ })).toBeNull()
+    fireEvent.click(within(dialog).getByRole('option', { name: 'Auto' }))
+    await act(async () => {})
+    expect(save).not.toHaveBeenCalled()
+    fireEvent.click(view.getByRole('button', { name: /^Generation model/ }))
+    fireEvent.click(within(document.body).getByRole('button', { name: 'Image' }))
+    fireEvent.click(within(document.body).getByRole('option', { name: 'Auto', selected: false }))
+    await act(async () => {})
+    expect(save).toHaveBeenCalledWith([['image', null]])
+  })
+
+  it('keeps the trigger to the model name when the provider has a logo, and the accessible name in full', () => {
     const project = fixtureState()
     project.components['models'] = { conversations: { s1: { video: { provider: 'fastvideo', model: 'pika' } } } }
     const state = createSnapshotStore(project)
     const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika')])
-    const save = vi.fn(async () => {})
-    const view = render(<ModelPickers sessionId="s1" state={state} models={catalog} reloadModels={() => {}} save={save} />)
-    expect(view.queryByRole('button', { name: /^Image model/ })).toBeNull()
-    act(() => { catalog.set([model('pika'), image('flux'), image('seedream')]) })
-    expect(view.getByRole('button', { name: 'Video model: Pika H3 Flex' })).toBeTruthy()
-    fireEvent.click(view.getByRole('button', { name: 'Image model: Auto' }))
-    fireEvent.click(within(within(document.body).getByRole('menu')).getByText('FLUX 3'))
-    await act(async () => {})
-    expect(save).toHaveBeenCalledWith('image', { provider: 'openrouter', model: 'flux' })
+    const view = render(<ModelPickers {...props(state, catalog)} providerName={() => 'FastVideo'}
+      logoOf={() => ({ size }) => <i data-testid="logo">{size}</i>} />)
+    const trigger = view.getByRole('button', { name: 'Generation model: Pika H3 Flex · FastVideo' })
+    expect(within(trigger).getByText('Pika H3 Flex')).toBeTruthy()
+    expect(trigger.textContent).not.toContain('FastVideo')
+    expect(trigger.getAttribute('title')).toBe('Pika H3 Flex · FastVideo')
+    expect(within(trigger).getByTestId('logo')).toBeTruthy()
+  })
+
+  it('says so when no model is available, per media type and in the trigger', () => {
+    const state = createSnapshotStore(fixtureState())
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([])
+    const view = render(<ModelPickers {...props(state, catalog)} />)
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: No models' }))
+    const dialog = within(document.body).getByRole('dialog', { name: 'Generation model' })
+    expect(within(dialog).getByText('No models yet. Connect a provider in Settings → Models.')).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: 'Image' }).getAttribute('title')).toBe('No image models')
+    fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'x' } })
+    expect(within(dialog).getByText('No models match.')).toBeTruthy()
+  })
+
+  it('names the media type in the empty list when a model catalog reload leaves the active filter without models', () => {
+    const state = createSnapshotStore(fixtureState())
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika'), image('flux')])
+    const view = render(<ModelPickers {...props(state, catalog)} />)
+    fireEvent.click(view.getByRole('button', { name: /^Generation model/ }))
+    const dialog = within(document.body).getByRole('dialog', { name: 'Generation model' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Image' }))
+    act(() => { catalog.set([model('pika')]) })
+    expect(within(dialog).getByText('No image models yet. Connect a provider in Settings → Models.')).toBeTruthy()
+  })
+
+  it('moves between the search field and the rows with the arrow keys', () => {
+    const state = createSnapshotStore(fixtureState())
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([model('pika'), model('omni')])
+    const view = render(<ModelPickers {...props(state, catalog)} />)
+    fireEvent.click(view.getByRole('button', { name: /^Generation model/ }))
+    const dialog = within(document.body).getByRole('dialog', { name: 'Generation model' })
+    const options = within(dialog).getAllByRole('option')
+    const search = within(dialog).getByRole('searchbox')
+    fireEvent.keyDown(search, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(options[0])
+    fireEvent.keyDown(options[0]!, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(options[1])
+    options.at(-1)!.focus()
+    fireEvent.keyDown(options.at(-1)!, { key: 'ArrowDown' })
+    expect(document.activeElement).toBe(options.at(-1))
+    options[0]!.focus()
+    fireEvent.keyDown(options[0]!, { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(search)
+    fireEvent.keyDown(search, { key: 'a' })
   })
 
   it('keeps its catalog subscriptions across re-renders, so a re-render loads no catalog', async () => {
@@ -112,6 +275,39 @@ describe('conversation model choices', () => {
       await act(async () => {})
     }
     expect(load).toHaveBeenCalledTimes(loads)
+  })
+
+  it('describes each model with its hosting, tasks, and runtime state, and ignores Auto when nothing is chosen', async () => {
+    const state = createSnapshotStore(fixtureState())
+    const runtime = (patch: Partial<NonNullable<WireModelEntry['runtime']>>) => ({ installed: true, loaded: false, loading: false, busy: false, ...patch })
+    const catalog = createSnapshotStore<readonly WireModelEntry[] | null>([
+      { ...model('a'), hosting: 'managed', runtime: runtime({ busy: true }) },
+      { ...model('b'), hosting: 'self-hosted', runtime: runtime({ loading: true }) },
+      { ...model('c'), runtime: runtime({ loaded: true }) },
+      { ...model('d'), runtime: runtime({}) },
+      { ...model('e'), runtime: null },
+    ])
+    const save = vi.fn(async () => {})
+    const view = render(<ModelPickers sessionId="s1" state={state} models={catalog} reloadModels={() => {}} save={save} />)
+    fireEvent.click(view.getByRole('button', { name: 'Generation model: Auto' }))
+    const dialog = within(document.body).getByRole('dialog', { name: 'Generation model' })
+    const facts = () => within(dialog).getByRole('complementary').textContent ?? ''
+    const options = within(dialog).getAllByRole('option')
+    const hover = (index: number) => { fireEvent.mouseEnter(options[index]!) }
+    hover(1)
+    expect(facts()).toContain('Cloud')
+    expect(facts()).toContain('Generating')
+    hover(2)
+    expect(facts()).toContain('Self-hosted')
+    expect(facts()).toContain('Loading')
+    hover(3)
+    expect(facts()).toContain('Loaded')
+    hover(4)
+    expect(facts()).toContain('Installed')
+    hover(5)
+    expect(facts()).toContain('Available')
+    fireEvent.click(options[0]!)
+    expect(save).not.toHaveBeenCalled()
   })
 
   it('lists only the models of its modality', () => {

@@ -40,7 +40,7 @@ The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts this pack
   name: '@dv/models'
 ```
 
-The plugin has no configuration fields.
+The plugin has two configuration fields. `defaults` maps a modality to the `{ provider, model }` that a new conversation starts on, such as `defaults.video`. A change applies without reloading the plugin. The DreamVerse composer reads it from Settings and, when a conversation without choices opens in the client UI, records each default once as that conversation's `models.select` choice; an absent modality starts on Auto. The catalog itself does not read `defaults`, so sessions created through the SDK or a headless run do not apply it. `catalogSchemaTimeoutMs` (default 5000) is how long `catalog()` waits for one entry's `schema()` before it lists the entry with a null schema.
 
 <a id="model-keys"></a>
 ### Model keys
@@ -312,6 +312,8 @@ Mounting or removing this package changes the skill list. Then `dsh-tool-skill` 
 ## Known Limitations and Deferred Work
 
 <a id="known-limitations-and-deferred-work"></a>
+
+- **Defaults apply in the client UI only** — `defaults` is applied when the DreamVerse composer opens a conversation without choices in the client UI. Sessions created through the SDK or a headless run start on Auto. Seeding on the host, when a conversation is created, is deferred.
 
 These limits apply to the catalog, its two tools, and its selection skill.
 

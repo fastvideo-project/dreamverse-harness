@@ -2,11 +2,11 @@
 
 English | [中文](README.zh.md)
 
-Adds Hardware and Generation models pages to the existing Harness settings shell. The existing Models page continues to own operator LLM providers and credentials.
+Adds a Hardware page to Settings. Expand a device to manage the generation models installed on it. Hosted model APIs are managed under **Settings → Models**, not here.
 
 Hardware settings saves worker coordinates through revision-fenced Harness settings. API keys are written through the existing credential service; saved values are never read back into the editor. Adding hardware starts with a display name and a local FastVideo server, an existing SSH alias, or a compatible API endpoint, including hosted GPU services. The address is resolved from the Harness host, not from the browser. The stable worker ID is generated from the name. Advanced fields expose the ID, credential reference, and remote API host/port.
 
-Generation models reads the selected worker's native catalog and exposes explicit load/unload controls. It also lists the five FastVideo NVFP4 kit variants. The model library describes the variants and links their source cards; it does not show a working download action because no worker installation API is implemented. Custom weights must be registered with FastVideo on the target worker. API credentials require a compatible model endpoint; generic provider protocols need an appropriate generation adapter. This page does not download weights into the browser or promise arbitrary model compatibility.
+Device models reads the expanded device's native catalog and exposes explicit Load and Unload controls, disabled while that device is busy or the model is not installed. A catalog that fails to load keeps its own Try again, and refreshing re-reads only the device that is open. Custom weights must be registered with FastVideo on the target worker. API credentials require a compatible model endpoint; generic provider protocols need an appropriate generation adapter. This page does not download weights into the browser or promise arbitrary model compatibility.
 
 ## Composition
 
@@ -32,6 +32,6 @@ No direct effect.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- **No weight download or installation**: the model library has no download action because no worker installation API exists; custom weights must be registered with FastVideo on the target worker.
+- **No weight download or installation**: the device model panel has no download action because no worker installation API exists; custom weights must be registered with FastVideo on the target worker.
 - **No arbitrary provider protocols**: API credentials require a compatible model endpoint, and a generic provider protocol needs its own generation adapter.
 - **No provisioning**: the RunPod flow lists existing Pods and does not provision or start a paid Pod.

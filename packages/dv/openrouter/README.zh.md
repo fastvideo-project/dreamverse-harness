@@ -23,7 +23,7 @@ kind: "package-reference"
 <a id="use-this-package"></a>
 ## 使用本包
 
-DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在“视频、图片和音频 API”设置中保存密钥并启用模型。操作员 LLM 继续使用现有“模型”设置和 pi-ai OpenRouter 适配器。
+DreamVerse 套件默认挂载 `dv-openrouter`，不配置任何模型。在 **设置 → 模型** 中保存密钥（**管理 OpenRouter**），并在 **模型目录** 表中开启模型。操作员 LLM 继续使用现有“模型”设置和 pi-ai OpenRouter 适配器。
 
 `models` 将本地别名映射到 OpenRouter 视频模型 ID，`imageModels` 将本地别名映射到 OpenRouter 图片模型 ID，`audioModels` 将本地别名映射到 OpenRouter 语音模型 ID；别名使用小写字母、数字和连字符。`credentialRef` 默认为 `OPENROUTER_API_KEY`，引用现有凭据存储。`baseUrl` 默认为 `https://openrouter.ai/api/v1/`。`pollIntervalMs` 默认为 5000。`catalogTimeoutSeconds`（1 到 300 的整数，默认 10）是每次向 OpenRouter 发出目录或账户请求的时限。
 

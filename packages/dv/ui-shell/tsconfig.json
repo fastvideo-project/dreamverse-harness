@@ -9,6 +9,9 @@
   ],
   "references": [
     {
+      "path": "../../api/remotes/tsconfig.client.json"
+    },
+    {
       "path": "../../../vendor/cordis"
     },
     {
@@ -40,6 +43,12 @@
     },
     {
       "path": "../../client/ui-sidebar-right"
+    },
+    {
+      "path": "../../client/ui-settings-models"
+    },
+    {
+      "path": "../../client/ui-settings/tsconfig.client.json"
     },
     {
       "path": "../../client/ui-slots"

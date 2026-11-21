@@ -33,7 +33,13 @@ import { pickText } from '@dv/ui-kit/locale.ts'
 import { createRegistry, type MentionKind } from '@dv/ui-kit/registries.ts'
 import type {} from '@dv/ui-canvas/contract'
 import type {} from '@dv/ui-media/contract'
+import type {} from '@deepseek-ai/dsh-client-ui-model-selection/client'
+import type {} from '@deepseek-ai/dsh-api-remotes/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@dv/ui-kit/cloud-model-settings.ts'
 import { askAgentAction, UseAssetAction } from './actions.tsx'
+import { LlmPicker, type LlmPickerInjected } from './LlmPicker.tsx'
+import { readRoutableProviders } from './routable.ts'
 import { registerChatMedia } from './chat-media.ts'
 import { applyPrompt } from './prompt.ts'
 import { deliverCompose, mountComposer } from './compose.ts'
@@ -79,6 +85,22 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.inputTriggers.registerSource(projectMentionSource(mentions, mediaTypes)), 'dv-composer: @ source')
   applyPrompt(ctx)
   registerChatMedia(ctx)
+  ctx.inject(['modelDirectories', 'remote', 'remote.session', 'remote.llm', 'remote.credentials'], (scope) => {
+    scope.effect(() => scope.slots.inject('conversation.input.model', () => scope.slots.register({
+      name: 'conversation.input.model', priority: -1,
+      inject: (sessionId): LlmPickerInjected => {
+        const directory = scope.modelDirectories.directoryFor(sessionId)
+        const available = scope.sessions.subagentAddress(sessionId) === undefined
+        return {
+          available, directory: directory.store,
+          load: () => { if (available) directory.load().catch((_failed: unknown) => undefined) },
+          select: selection => available ? directory.select(selection) : Promise.resolve(undefined),
+          routable: async () => await readRoutableProviders(scope),
+          logoOf: provider => scope.get('dvCloudModels')?.getSnapshot().find(entry => entry.id === provider)?.logo,
+        }
+      },
+    }, LlmPicker)), 'dv-composer: language model picker')
+  })
   ctx.inject(['dvCanvas'], (scope) => {
     scope.effect(() => scope.dvCanvas.actions.register(askAgentAction), 'dv-composer: ask the agent')
   })

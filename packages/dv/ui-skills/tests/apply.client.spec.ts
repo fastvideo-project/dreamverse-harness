@@ -3,15 +3,13 @@
  * The plugin's page, navigator entry, and 探索 tab, the skill list read through the chat session, 使用, and removal on
  * dispose.
  */
-import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { SkillsInjected } from '../src/client/SkillsPage.tsx'
-import { SkillsLauncher, SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
+import { SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
 import { apply, inject, SKILLS_PANEL_ID } from '../src/client/index.ts'
-import { SessionInputShell } from '../../../client/ui-conversation/src/client/input/facade.ts'
-import { render, fireEvent, screen, waitFor } from '@testing-library/react'
+import type { SessionInputShell } from '../../../client/ui-conversation/src/client/input/facade.ts'
 import { apply as hostApply } from '../src/index.ts'
 
 interface Recorded {
@@ -92,13 +90,12 @@ describe('ui-skills apply', () => {
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.component])).toEqual([
       ['main', SKILLS_PANEL_ID, SkillsPage],
       ['sidebar.panellist', SKILLS_PANEL_ID, SkillsPanelIcon],
-      ['conversation.input.left', 'dv.skills.library', SkillsLauncher],
       ['dv.explore', 'skills', SkillsShelf],
     ])
     expect(registered[1]?.order).toBe(2)
     expect(registered[1]?.label?.()).toMatch(/^(技能|Skills)$/)
-    expect(registered[3]?.order).toBe(1)
-    expect(registered[3]?.label?.()).toMatch(/^(技能|Skills)$/)
+    expect(registered[2]?.order).toBe(1)
+    expect(registered[2]?.label?.()).toMatch(/^(技能|Skills)$/)
   })
 
   it('lists the skills of the chat session, else of the newest session', async () => {
@@ -108,6 +105,16 @@ describe('ui-skills apply', () => {
     const second = await boot(undefined)
     await second.registered[0]?.inject?.().list()
     expect(second.calls).toEqual([{ sessionId: 's2' }])
+  })
+
+  it('reads and uploads the saved skills through the DreamVerse routes', async () => {
+    const answers = vi.fn(async (url: string) => Response.json(url.includes('upload') ? { name: 'mine', description: '', modelInvocable: true } : []))
+    vi.stubGlobal('fetch', answers)
+    const { registered } = await boot('s1')
+    const injected = registered[0]?.inject?.()
+    await expect(injected?.listMine?.()).resolves.toEqual([])
+    await expect(injected?.upload?.(new File(['x'], 'mine.md'))).resolves.toMatchObject({ name: 'mine' })
+    vi.unstubAllGlobals()
   })
 
   it('lists no skill before any session exists, and rejects with the code and message of a failed read', async () => {
@@ -130,67 +137,6 @@ describe('ui-skills apply', () => {
     expect(inputs).toEqual(['session s1', 'draft /storyboard ', 'focus'])
   })
 
-  it.each([undefined, 'other-session'])('returns the selected skill to the launching composer when the right seat is %s', async (seat) => {
-    const { registered, selected, inputs, fiber } = await boot(seat)
-    const launcher = registered[2]?.inject?.('prompt-session') as unknown as { open: () => void }
-    const view = render(createElement(SkillsLauncher, launcher))
-    fireEvent.click(screen.getByRole('button', { name: 'Skills' }))
-    view.unmount()
-    registered[0]?.inject?.().use('my-trailer')
-    expect(selected).toEqual([SKILLS_PANEL_ID, null])
-    expect(inputs).toEqual(['session prompt-session', 'draft /my-trailer ', 'focus'])
-    // A later visit through the sidebar must not reuse the previous launching session.
-    inputs.length = 0
-    if (seat !== undefined) {
-      registered[0]?.inject?.().use('storyboard')
-      expect(inputs).toEqual([`session ${seat}`, 'draft /storyboard ', 'focus'])
-    }
-    await fiber.dispose()
-  })
-
-  it('targets the right seat after a launcher-opened page is left and the page is reopened from the navigator', async () => {
-    const { registered, inputs, layout, fiber } = await boot('other-session')
-    const launcher = registered[2]?.inject?.('prompt-session') as unknown as { open: () => void }
-    const view = render(createElement(SkillsLauncher, launcher))
-    fireEvent.click(screen.getByRole('button', { name: 'Skills' }))
-    view.unmount()
-    layout.selectPanel(SKILLS_PANEL_ID)
-    registered[0]?.inject?.().use('my-trailer')
-    expect(inputs).toEqual(['session other-session', 'draft /my-trailer ', 'focus'])
-    await fiber.dispose()
-  })
-
-  it('keeps the uploaded skill invocation visible when the conversation editor mounts after closing Skills', async () => {
-    const actx = new Context()
-    const input = new SessionInputShell({ actx, defaultSink: vi.fn(), commandAttachments: {
-      serialize: async () => [], release: () => {}, unsupportedNotice: () => '',
-    } })
-    const editor = document.createElement('div')
-    document.body.append(editor)
-    try {
-      const { registered, fiber } = await boot(undefined, SESSIONS, undefined, input)
-      const launcher = registered[2]?.inject?.('prompt-session') as unknown as { open: () => void }
-      const shortcut = render(createElement(SkillsLauncher, launcher))
-      fireEvent.click(screen.getByRole('button', { name: 'Skills' }))
-      shortcut.unmount()
-      const use = registered[0]?.inject?.().use
-      if (use === undefined) throw new Error('Missing skill action')
-      const uploaded = { name: 'my-trailer', description: 'My trailer', modelInvocable: true }
-      const view = render(createElement(SkillsPage, { list: () => Promise.resolve([]), listMine: () => Promise.resolve([uploaded]), use }))
-      fireEvent.click(await screen.findByRole('button', { name: 'Use my-trailer' }))
-      view.unmount()
-      input.editor.setRootElement(editor)
-      await waitFor(() => { expect(editor.textContent).toBe('/my-trailer ') })
-      expect(input.state.getSnapshot().draft).toBe('/my-trailer ')
-      await fiber.dispose()
-    } finally {
-      input.editor.setRootElement(null)
-      input.dispose()
-      editor.remove()
-      await actx.fiber.dispose()
-    }
-  })
-
   it('uses the existing compose event when no session input is ready yet', async () => {
     const { registered, selected, fiber } = await boot(undefined, {})
     const composed: DvComposeDetail[] = []
@@ -208,7 +154,7 @@ describe('ui-skills apply', () => {
     const composed: DvComposeDetail[] = []
     const listen = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
     window.addEventListener(DV_COMPOSE_EVENT, listen)
-    registered[3]?.inject?.().use('storyboard')
+    registered[2]?.inject?.().use('storyboard')
     window.removeEventListener(DV_COMPOSE_EVENT, listen)
     expect(inputs).toEqual(['session s1', 'draft /storyboard ', 'focus'])
     expect(selected).toEqual([])
@@ -218,7 +164,7 @@ describe('ui-skills apply', () => {
   it('writes no draft on 使用 in the 探索 tab while the right panel shows no session or a session without a scope', async () => {
     for (const mounted of [undefined, 'closed']) {
       const { registered, inputs } = await boot(mounted)
-      registered[3]?.inject?.().use('storyboard')
+      registered[2]?.inject?.().use('storyboard')
       expect(inputs).toEqual([])
     }
   })

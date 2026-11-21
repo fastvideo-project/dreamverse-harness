@@ -44,14 +44,6 @@ export function SkillsPanelIcon(): ReactNode {
   )
 }
 
-/** @param props - opens the persistent skill library from the chat composer.
- * @returns the composer's Skills shortcut.
- */
-export function SkillsLauncher({ open }: { open: () => void }): ReactNode {
-  const t = useText()
-  return <button type="button" className={css.launcher} onClick={open}><SkillsPanelIcon />{t('技能', 'Skills')}</button>
-}
-
 /**
  * The Skills page: a heading and an introduction, then the skill list.
  * @param props - the injected list read and use action.

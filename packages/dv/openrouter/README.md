@@ -23,7 +23,7 @@ Configure OpenRouter cloud video, image and speech models for the DreamVerse cat
 <a id="use-this-package"></a>
 ## Use this package
 
-The DreamVerse bundle mounts `dv-openrouter` with no configured models. Use Video, image & audio APIs settings to save a key and enable models. The operator LLM continues to use the existing Models settings and pi-ai OpenRouter adapter.
+The DreamVerse bundle mounts `dv-openrouter` with no configured models. Use **Settings → Models** to save a key (**Manage OpenRouter**) and turn models on in the **Model catalog** table. The operator LLM continues to use the existing Models settings and pi-ai OpenRouter adapter.
 
 `models` maps a local alias to an OpenRouter video model ID, `imageModels` maps a local alias to an OpenRouter image model ID, and `audioModels` maps a local alias to an OpenRouter speech model ID; aliases use lowercase letters, numbers and hyphens. `credentialRef` defaults to `OPENROUTER_API_KEY`; it names the existing credential store. `baseUrl` defaults to `https://openrouter.ai/api/v1/`. `pollIntervalMs` defaults to 5000. `catalogTimeoutSeconds` (integer from 1 to 300, default 10) is the deadline for each catalog or account request to OpenRouter.
 

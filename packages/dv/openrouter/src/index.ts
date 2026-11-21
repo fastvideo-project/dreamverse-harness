@@ -128,7 +128,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   const catalogTimeoutMs = config.catalogTimeoutSeconds * 1000
   const client = new OpenRouterApi(config.baseUrl, async () => {
     const key = await savedKey()
-    if (key === undefined) throw new Error('Save an OpenRouter API key in Video APIs settings.')
+    if (key === undefined) throw new Error('Save an OpenRouter API key in Settings → Models.')
     return key
   }, config.pollIntervalMs, undefined, catalogTimeoutMs)
   let registrationError: string | null = null
@@ -384,7 +384,7 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
     settled: (outcome) => {
       registrationError = !outcome.ok ? 'Could not register OpenRouter models. Check the saved key and catalog.'
         : outcome.unavailable.length === 0 ? null
-          : `${outcome.unavailable.join(' ')} Remove unavailable models in Video, image & audio APIs settings.`
+          : `${outcome.unavailable.join(' ')} Remove unavailable models in Settings → Models.`
     },
   })
   ctx.inject(['connection'], scope => scope.effect(() => scope.connection.fetch.register({

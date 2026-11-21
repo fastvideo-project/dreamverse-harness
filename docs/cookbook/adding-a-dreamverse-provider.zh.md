@@ -75,6 +75,11 @@
 - 在 `tsconfig.base.json` 的 paths 中添加 `@dv/<provider>` 条目，并在 `tsconfig.host.json` 中添加引用。
 - 把插件加入 [bundle.ts](../../packages/bundle/dv/tests/bundle.ts) 的 `PLUGINS`，并在 `composition.spec.ts` 中覆盖该行。
 
+<a id="settings-card"></a>
+### 设置卡片
+
+需要 API 密钥的官方内置提供商要提供一个客户端包 `@dv/ui-<provider>`，在 `ctx.dvCloudModels` 上注册一个 `CloudModelSettings` 条目（[`@dv/ui-kit/cloud-model-settings.ts`](../../packages/dv/ui-kit/src/client/cloud-model-settings.ts)）。条目给出提供商的 `id`、`name`、`domain`、`keyUrl`、`logo`、`media`，以及各项操作：`account` 读取 `GET /api/dv/<provider>/account`，`verify` 把候选密钥 POST 到同一路由而不保存，`load` 保存已验证的密钥并读取 `GET /api/dv/<provider>/catalog`，`removeKey` 删除密钥。`@dv/ui-shell` 把该条目显示在 **设置 → 模型** 中，所以提供商不需要自己的页面，共享界面中也不写死提供商名称：显示名称来自该条目。像 [cordis.patch.yml](../../packages/bundle/dv/cordis.patch.yml) 中的 `dv-ui-reactor` 那样把该包挂载到套件中。[`@dv/ui-reactor`](../../packages/dv/ui-reactor/README.zh.md) 是模板。
+
 <a id="8-maintain-first-party-support"></a>
 ## 8. 维护官方内置支持
 

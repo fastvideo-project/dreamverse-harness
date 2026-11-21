@@ -2,8 +2,8 @@
  * Browser half of the Skills page: the 技能 / Skills entry in the left navigator (a DSH `sidebar.panellist` entry that
  * `@dv/ui-shell` lists below 首页), the page it opens in the main column, and the 技能 / Skills tab of the entry page's
  * 探索 / Explore section (a `dv.explore` entry). The page and the tab read the skills a creator can start with `/name`
- * through DSH's `skills` Remote. 使用 / Use on the page writes `/name` into the draft of the launching composer's session
- * (else the right panel's session) before closing the page; without a ready session input, the `dv:compose` queue
+ * through DSH's `skills` Remote. 使用 / Use on the page writes `/name` into the draft of the right panel's session
+ * before closing the page; without a ready session input, the `dv:compose` queue
  * handles the first composer mount. 使用 in the tab writes `/name` into the draft of the session that the entry page
  * shows.
  *
@@ -22,7 +22,7 @@ import { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose } from '@dv/ui-kit/compose.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import type {} from '@dv/ui-shell/contract'
-import { SkillsLauncher, SkillsPage, SkillsPanelIcon, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
+import { SkillsPage, SkillsPanelIcon, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
 
 export { SkillsPage, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
 
@@ -61,8 +61,6 @@ export function apply(ctx: ClientContext): void {
     const scope = sessionId === undefined ? undefined : ctx.sessions.scope(sessionId)
     return scope?.get('conversation')?.input.for(scope)
   }
-  // The launching composer's session, valid until the next navigation aborts its signal.
-  let source: { sessionId: SessionId; signal: AbortSignal } | undefined
   const api = new DvClient()
   const library = {
     listMine: () => api.listUserSkills(),
@@ -71,10 +69,7 @@ export function apply(ctx: ClientContext): void {
   const injected: SkillsInjected = {
     list, ...library,
     use: (name) => {
-      // The launcher belongs to a session-scoped composer, which need not be the right panel.
-      const sessionId = source !== undefined && !source.signal.aborted ? source.sessionId : ctx.sidebarRight.mounted.getSnapshot()
-      source = undefined
-      const input = sessionInput(sessionId)
+      const input = sessionInput(ctx.sidebarRight.mounted.getSnapshot())
       // Persist before navigation: mounted editors can change while the Skills page closes.
       input?.setDraft(`/${name} `)
       ctx.get('layout')?.selectPanel(null)
@@ -99,15 +94,6 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register(
     { name: 'sidebar.panellist', id: SKILLS_PANEL_ID, order: 2, label: () => pickText('技能', 'Skills') }, SkillsPanelIcon,
   )), 'ui-skills: navigator entry')
-  ctx.effect(() => ctx.slots.inject('conversation.input.left', () => ctx.slots.register(
-    { name: 'conversation.input.left', id: 'dv.skills.library',
-      inject: sessionId => ({ open: () => {
-        const layout = ctx.get('layout')
-        layout?.selectPanel(SKILLS_PANEL_ID)
-        const signal = layout?.beginNavigation()
-        source = signal === undefined ? undefined : { sessionId, signal }
-      } }) }, SkillsLauncher,
-  )), 'ui-skills: composer shortcut')
   // The 探索 tab waits for `@dv/ui-shell` to declare `dv.explore`; MCP (order 0) stays before it.
   ctx.effect(() => ctx.slots.inject('dv.explore', () => ctx.slots.register(
     { name: 'dv.explore', id: 'skills', order: 1, label: () => pickText('技能', 'Skills'), inject: () => shelfInjected }, SkillsShelf,

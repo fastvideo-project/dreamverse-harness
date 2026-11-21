@@ -60,7 +60,8 @@
     "@dv/ui-hardware": "workspace:*",
     "@dv/openrouter": "workspace:*",
     "@dv/reactor": "workspace:*",
-    "@dv/ui-openrouter": "workspace:*"
+    "@dv/ui-openrouter": "workspace:*",
+    "@dv/ui-reactor": "workspace:*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "workspace:~",

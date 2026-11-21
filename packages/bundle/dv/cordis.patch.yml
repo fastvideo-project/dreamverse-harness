@@ -26,6 +26,9 @@
       config:
         models: {}
 
+    - id: dv-ui-reactor
+      name: '@dv/ui-reactor'
+
     - id: dv-ui-openrouter
       name: '@dv/ui-openrouter'
 

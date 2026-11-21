@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { SkillEntry } from '@deepseek-ai/dsh-api-remotes/client'
-import { SkillsPage, SkillsShelf } from '../src/client/SkillsPage.tsx'
+import { SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
 
 afterEach(() => { cleanup(); document.documentElement.lang = '' })
 
@@ -45,6 +45,25 @@ describe('SkillsPage', () => {
     expect(commands.map(node => node.textContent)).toEqual(['/storyboard', '/trailer'])
     fireEvent.click(screen.getByRole('button', { name: /storyboard/ }))
     expect(use).toHaveBeenCalledWith('storyboard')
+  })
+})
+
+describe('SkillsPanelIcon', () => {
+  it('draws the navigator icon without exposing it to assistive technology', () => {
+    const { container } = render(<SkillsPanelIcon />)
+    expect(container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true')
+  })
+})
+
+describe('Skill library tabs', () => {
+  it('switches between the saved skills and the available skills', async () => {
+    const saved = { name: 'my-trailer', description: 'Mine', modelInvocable: true }
+    render(<SkillsPage list={() => Promise.resolve(SKILLS)} listMine={() => Promise.resolve([saved])} upload={vi.fn()} use={vi.fn()} />)
+    expect(await screen.findByText('/my-trailer')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /可用技能|Available skills/ }))
+    expect(await screen.findByText('/storyboard')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: /我的 Skills|My Skills/ }))
+    expect(await screen.findByText('/my-trailer')).toBeTruthy()
   })
 })
 

@@ -75,6 +75,11 @@ Follow [adding a package](adding-a-package.md) for the manifest, `tsconfig`, and
 - Add the `@dv/<provider>` entries to `tsconfig.base.json` paths and a reference to `tsconfig.host.json`.
 - Add the plugin to `PLUGINS` in [bundle.ts](../../packages/bundle/dv/tests/bundle.ts) and cover the row in `composition.spec.ts`.
 
+<a id="settings-card"></a>
+### Settings card
+
+A first-party provider that needs an API key contributes a client package, `@dv/ui-<provider>`, that registers a `CloudModelSettings` entry on `ctx.dvCloudModels` ([`@dv/ui-kit/cloud-model-settings.ts`](../../packages/dv/ui-kit/src/client/cloud-model-settings.ts)). The entry names the provider (`id`, `name`, `domain`, `keyUrl`, `logo`, `media`) and gives its operations: `account` reads `GET /api/dv/<provider>/account`, `verify` posts a candidate key to the same route without storing it, `load` stores a verified key and reads `GET /api/dv/<provider>/catalog`, and `removeKey` deletes the key. `@dv/ui-shell` draws the entry on **Settings → Models**, so the provider needs no page of its own and no provider name in shared UI: display names come from the entry. Mount the package in the bundle like `dv-ui-reactor` in [cordis.patch.yml](../../packages/bundle/dv/cordis.patch.yml). [`@dv/ui-reactor`](../../packages/dv/ui-reactor/README.md) is the template.
+
 ## 8. Maintain first-party support
 
 The contributor, or the vendor the contributor represents, owns the provider after it merges: name a contact in the PR and keep the maintenance guide current. The repository has no code owners file, so reviewers rely on that contact for provider questions. Update the provider in the same PR as the change that triggers it:

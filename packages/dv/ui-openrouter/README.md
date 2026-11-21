@@ -23,7 +23,7 @@ Set up OpenRouter video, image and speech models in the existing DreamVerse Sett
 <a id="use-this-package"></a>
 ## Use this package
 
-The DreamVerse bundle mounts this browser contribution beside `@dv/openrouter`. Open Settings → Video, image & audio APIs, save the key, load the catalogs, and choose Add to chat for a video, image or speech model; the page lists the three catalogs separately and writes video choices to `models`, image choices to `imageModels` and speech choices to `audioModels`. Enable OpenRouter for operator LLM reuses the existing pi-ai adapter and saved key reference; choose the operator model in chat. The existing Models settings page still manages its routes.
+In **Settings → Models**, choose **Manage OpenRouter** under **Your connections**, or pick OpenRouter in **Add a connection**, to save its key. OpenRouter checks the key before it is stored, and **Remove key** deletes it. The **Model catalog** table turns video, image, and audio models on in the picker through the existing `models`, `imageModels`, and `audioModels` fields. **Also use for chat LLMs** reuses the pi-ai adapter and the saved credential reference, and removing the key turns that route off first. A rejected key shows as Key rejected and a missing key as Not connected.
 
 A blank key keeps the saved credential. Model enable/disable writes only aliases and model IDs through revision-fenced settings; keys use the existing credential service. Removing a model affects future choices and does not remove completed videos, images or audio. A configured model that its catalog no longer offers appears in its list as unavailable with a Remove action, and the page shows the registration error that the catalog route answers.
 
