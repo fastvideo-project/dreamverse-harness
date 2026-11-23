@@ -2209,6 +2209,9 @@ importers:
       '@dv/ui-composer':
         specifier: workspace:*
         version: link:../../dv/ui-composer
+      '@dv/ui-hardware':
+        specifier: workspace:*
+        version: link:../../dv/ui-hardware
       '@dv/ui-history':
         specifier: workspace:*
         version: link:../../dv/ui-history
@@ -2230,9 +2233,6 @@ importers:
       '@dv/ui-openrouter':
         specifier: workspace:*
         version: link:../../dv/ui-openrouter
-      '@dv/ui-hardware':
-        specifier: workspace:*
-        version: link:../../dv/ui-hardware
       '@dv/ui-shell':
         specifier: workspace:*
         version: link:../../dv/ui-shell
@@ -8496,6 +8496,48 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
+  packages/dv/ui-hardware:
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/dsh-api-remotes':
+        specifier: workspace:*
+        version: link:../../api/remotes
+      '@deepseek-ai/dsh-client-locale':
+        specifier: workspace:*
+        version: link:../../client/locale
+      '@deepseek-ai/dsh-client-test-runtime':
+        specifier: workspace:*
+        version: link:../../test-support/client-runtime
+      '@deepseek-ai/dsh-client-ui-primitives':
+        specifier: workspace:*
+        version: link:../../client/ui-primitives
+      '@deepseek-ai/dsh-client-ui-renderer':
+        specifier: workspace:*
+        version: link:../../client/ui-renderer
+      '@deepseek-ai/dsh-client-ui-settings':
+        specifier: workspace:*
+        version: link:../../client/ui-settings
+      '@deepseek-ai/dsh-client-ui-slots':
+        specifier: workspace:*
+        version: link:../../client/ui-slots
+      '@deepseek-ai/dsh-util-crypto':
+        specifier: workspace:*
+        version: link:../../util/crypto
+      '@dv/hardware':
+        specifier: workspace:*
+        version: link:../hardware
+      '@dv/ui-kit':
+        specifier: workspace:*
+        version: link:../ui-kit
+      '@types/react':
+        specifier: ~18.3.1
+        version: 18.3.31
+      react:
+        specifier: ^18.2.0
+        version: 18.3.1
+
   packages/dv/ui-history:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -8666,9 +8708,9 @@ importers:
       '@deepseek-ai/dsh-api-remotes':
         specifier: workspace:*
         version: link:../../api/remotes
-      '@deepseek-ai/dsh-client-ui-layout':
+      '@deepseek-ai/dsh-client-ui-mcp-servers':
         specifier: workspace:*
-        version: link:../../client/ui-layout
+        version: link:../../client/ui-mcp-servers
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: workspace:*
         version: link:../../client/ui-renderer
@@ -8681,9 +8723,6 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
-      '@dv/ui-shell':
-        specifier: workspace:*
-        version: link:../ui-shell
       '@types/react':
         specifier: ~18.3.1
         version: 18.3.31
@@ -8853,48 +8892,6 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1(react@18.3.1)
 
-  packages/dv/ui-hardware:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:~
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-api-remotes':
-        specifier: workspace:*
-        version: link:../../api/remotes
-      '@deepseek-ai/dsh-client-locale':
-        specifier: workspace:*
-        version: link:../../client/locale
-      '@deepseek-ai/dsh-client-test-runtime':
-        specifier: workspace:*
-        version: link:../../test-support/client-runtime
-      '@deepseek-ai/dsh-client-ui-primitives':
-        specifier: workspace:*
-        version: link:../../client/ui-primitives
-      '@deepseek-ai/dsh-client-ui-renderer':
-        specifier: workspace:*
-        version: link:../../client/ui-renderer
-      '@deepseek-ai/dsh-client-ui-settings':
-        specifier: workspace:*
-        version: link:../../client/ui-settings
-      '@deepseek-ai/dsh-client-ui-slots':
-        specifier: workspace:*
-        version: link:../../client/ui-slots
-      '@deepseek-ai/dsh-util-crypto':
-        specifier: workspace:*
-        version: link:../../util/crypto
-      '@dv/hardware':
-        specifier: workspace:*
-        version: link:../hardware
-      '@dv/ui-kit':
-        specifier: workspace:*
-        version: link:../ui-kit
-      '@types/react':
-        specifier: ~18.3.1
-        version: 18.3.31
-      react:
-        specifier: ^18.2.0
-        version: 18.3.1
-
   packages/dv/ui-shell:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -9050,9 +9047,6 @@ importers:
       '@dv/ui-kit':
         specifier: workspace:*
         version: link:../ui-kit
-      '@dv/ui-shell':
-        specifier: workspace:*
-        version: link:../ui-shell
       '@testing-library/react':
         specifier: ^16.1.0
         version: 16.3.2(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)

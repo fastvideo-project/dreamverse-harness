@@ -40,9 +40,6 @@
     },
     {
       "path": "../ui-kit"
-    },
-    {
-      "path": "../ui-shell"
     }
   ]
 }

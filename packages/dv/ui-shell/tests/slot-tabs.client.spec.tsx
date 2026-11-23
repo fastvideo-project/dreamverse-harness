@@ -24,14 +24,13 @@ function Tabs({ slot }: { slot: TabSlot }): ReactNode {
 }
 
 describe('followSlotTabs', () => {
-  it('lists the entries of each slot apart, in order, and follows registrations and the language', async () => {
+  it('lists the entries of the slot in order, and follows registrations and the language', async () => {
     let language = 'zh'
     const entries: Record<TabSlot, Options[]> = {
       'dv.center.view': [
         { id: 'timeline', order: 1, label: () => (language === 'zh' ? '时间线' : 'Timeline') },
         { id: 'canvas', order: 0, label: () => (language === 'zh' ? '画布' : 'Canvas') },
       ],
-      'dv.explore': [{ id: 'mcp', order: 0, label: () => 'MCP' }],
     }
     const slotListeners = new Map<string, Set<() => void>>()
     const localeListeners = new Set<() => void>()
@@ -49,23 +48,20 @@ describe('followSlotTabs', () => {
     } as never)
     const fiber = ctx.plugin({
       inject: ['slots'],
-      apply: (scope: Context) => {
-        followSlotTabs(scope, 'dv.explore')
-        followSlotTabs(scope, 'dv.center.view')
-      },
+      apply: (scope: Context) => { followSlotTabs(scope, 'dv.center.view') },
     })
     await fiber.await()
 
     const host = document.createElement('div')
     const root = createRoot(host)
-    act(() => { root.render(<><Tabs slot="dv.center.view" /><Tabs slot="dv.explore" /></>) })
-    expect([...host.querySelectorAll('p')].map(row => row.textContent)).toEqual(['canvas:画布 timeline:时间线', 'mcp:MCP'])
+    act(() => { root.render(<Tabs slot="dv.center.view" />) })
+    expect([...host.querySelectorAll('p')].map(row => row.textContent)).toEqual(['canvas:画布 timeline:时间线'])
 
-    // A plugin that unloads removes its view from the center tabs only.
+    // A plugin that unloads removes its view from the tabs.
     entries['dv.center.view'] = entries['dv.center.view'].filter(entry => entry.id !== 'timeline')
     act(() => { for (const listener of slotListeners.get('dv.center.view') ?? []) listener() })
     act(() => { language = 'en'; for (const listener of localeListeners) listener() })
-    expect([...host.querySelectorAll('p')].map(row => row.textContent)).toEqual(['canvas:Canvas', 'mcp:MCP'])
+    expect([...host.querySelectorAll('p')].map(row => row.textContent)).toEqual(['canvas:Canvas'])
 
     act(() => { root.unmount() })
     await fiber.dispose()
@@ -86,12 +82,12 @@ describe('followSlotTabs', () => {
       entriesOfSlot: () => entries.map(entry => ({ options: entry })),
       subscribe: () => () => {},
     } as never)
-    const fiber = ctx.plugin({ inject: ['slots'], apply: (scope: Context) => { followSlotTabs(scope, 'dv.explore') } })
+    const fiber = ctx.plugin({ inject: ['slots'], apply: (scope: Context) => { followSlotTabs(scope, 'dv.center.view') } })
     await fiber.await()
 
     const host = document.createElement('div')
     const root = createRoot(host)
-    act(() => { root.render(<Tabs slot="dv.explore" />) })
+    act(() => { root.render(<Tabs slot="dv.center.view" />) })
     expect(host.textContent).toBe('early:Early plain:plain late:Late')
 
     act(() => { root.unmount() })

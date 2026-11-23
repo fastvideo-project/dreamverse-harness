@@ -1,7 +1,6 @@
 /**
- * The Skills page in the main column, the 技能 / Skills tab of the entry page's 探索 / Explore section, and the navigator
- * icon that opens the page. The page and the tab list the skills a creator can start with `/name`: one card per skill
- * with its name, its description, and 使用 / Use.
+ * The Skills page in the main column and the navigator icon that opens it. The page lists the skills a creator can start
+ * with `/name`: one card per skill with its name, its description, and 使用 / Use.
  *
  * @module @dv/ui-skills/SkillsPage
  */
@@ -72,21 +71,6 @@ export function SkillsPage(props: InjectFace<SkillsInjected>): ReactNode {
       </header>
       <SkillList {...props} />
     </section>
-  )
-}
-
-/**
- * The 技能 / Skills tab of 探索 / Explore on the entry page: an introduction line, then the skill list.
- * @param props - the injected list read and use action.
- * @returns the tab body.
- */
-export function SkillsShelf(props: InjectFace<SkillsInjected>): ReactNode {
-  const t = useText()
-  return (
-    <div className={css.shelf} data-dv-skills-shelf="">
-      <p className={css.intro}>{t('点「使用」把 /技能名 放进对话框，补充需求后发送。', 'Choose “Use” to put /name in the chat box, then add what you want and send.')}</p>
-      <SkillList {...props} />
-    </div>
   )
 }
 

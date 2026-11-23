@@ -1,7 +1,7 @@
 /**
- * The tabs that the shell draws from the entries of its two list slots, both declared in `./contract`: the entry page's
- * 探索 section (`dv.explore`) and the workspace's view toggle (`dv.center.view`). Each entry is one tab, labeled
- * and ordered by its registration; the selected tab's body is the entry's component.
+ * The tabs that the shell draws from the entries of its list slot `dv.center.view`, declared in `./contract`: the
+ * workspace's view toggle. Each entry is one tab, labeled and ordered by its registration; the selected tab's body is
+ * the entry's component.
  *
  * @module @dv/ui-shell/slot-tabs
  */
@@ -13,7 +13,7 @@ import type {} from './contract/index.ts'
 import type {} from '../index.ts'
 
 /** The list slots whose entries the shell draws as tabs. */
-export type TabSlot = 'dv.explore' | 'dv.center.view'
+export type TabSlot = 'dv.center.view'
 
 /** One tab: an entry of a list slot. */
 export interface SlotTab {
@@ -23,7 +23,7 @@ export interface SlotTab {
   readonly label: string
 }
 
-const tabs: Record<TabSlot, readonly SlotTab[]> = { 'dv.explore': [], 'dv.center.view': [] }
+const tabs: Record<TabSlot, readonly SlotTab[]> = { 'dv.center.view': [] }
 const listeners = new Set<() => void>()
 
 /**

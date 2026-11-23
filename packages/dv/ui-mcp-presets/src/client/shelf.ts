@@ -1,58 +1,44 @@
 /**
- * State of the MCP tools in the entry page's 探索 section: whether the MCP plugin is on, the connection phase of each
- * added server, and the switch and add requests in flight. The `mcpServers` Remote is mounted only while the MCP plugin
- * is on; the `pluginManager` Remote switches the plugin's bundle on.
+ * State of the servers DreamVerse suggests on the MCP page: the connection phase of each added server and the add
+ * requests in flight, read from the `mcpServers` Remote, which is mounted while the MCP plugin is on (the only time the
+ * MCP page exists).
  *
  * @module @dv/ui-mcp-presets/shelf
  */
 import { useSyncExternalStore } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-remotes/client'
-import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type { McpServerPhase, McpServersSnapshot } from '@deepseek-ai/dsh-mcp-servers/types'
 import type {} from '@deepseek-ai/dsh-mcp-servers/remote'
 
-/** The bundle that carries the MCP plugin. */
-export const MCP_BUNDLE = '@deepseek-ai/dsh-mcp-bundle'
-
-/** How long a switch or an add may wait for the Host before the shelf reports a timeout. */
+/** How long an add may wait for the Host before the shelf reports a timeout. */
 const HOST_TIMEOUT_MS = 30_000
 
-/** The state of one tool card: `locked` while the MCP plugin is off, `adding` until the Host saves the server. */
-export type McpToolState = 'locked' | 'available' | 'adding' | McpServerPhase
+/** The state of one tool card: `loading` until the first roster arrives, `adding` until the Host saves the server. */
+export type McpToolState = 'loading' | 'available' | 'adding' | McpServerPhase
 
-/** What the MCP tools show. */
+/** What the suggested servers show. */
 export interface McpShelf {
-  /** Whether the MCP plugin is on (its Remote is mounted). */
-  readonly on: boolean
-  /** Whether the shelf asked the Host to switch the MCP plugin on and waits for it. */
-  readonly enabling: boolean
+  /** Whether the roster of the `mcpServers` Remote has arrived. */
+  readonly ready: boolean
   /** The connection phase of each added server, by server name. */
   readonly phases: Readonly<Record<string, McpServerPhase>>
   /** The tools whose add request is in flight. */
   readonly adding: ReadonlySet<string>
-  /** The last failure, with the tool it concerns (null for the switch). */
-  readonly error: { readonly tool: string | null; readonly message: string } | null
-}
-
-/** The shelf's actions, bound to the plugin's context while it is mounted. */
-interface ShelfActions {
-  switchOn(): Promise<void>
-  addPreset(name: string): Promise<void>
+  /** The last failed add, with the tool it concerns. */
+  readonly error: { readonly tool: string; readonly message: string } | null
 }
 
 let snapshot: McpServersSnapshot | null = null
-let enabling = false
 const adding = new Set<string>()
 let error: McpShelf['error'] = null
-let shelf: McpShelf = { on: false, enabling: false, phases: {}, adding: new Set(), error: null }
+let shelf: McpShelf = { ready: false, phases: {}, adding: new Set(), error: null }
 const listeners = new Set<() => void>()
-const actions: Partial<ShelfActions> = {}
-let openPanel: (id: MainPanelId) => void = () => {}
+let addPreset: ((name: string) => Promise<void>) | undefined
 
 function publish(): void {
   const phases = Object.fromEntries((snapshot?.servers ?? []).map(server => [server.name, server.phase]))
-  shelf = { on: snapshot !== null, enabling, phases, adding: new Set(adding), error }
+  shelf = { ready: snapshot !== null, phases, adding: new Set(adding), error }
   for (const listener of listeners) listener()
 }
 
@@ -91,35 +77,21 @@ export function useMcpShelf(): McpShelf {
  * @returns the card state.
  */
 export function toolState(state: McpShelf, name: string): McpToolState {
-  if (!state.on) return 'locked'
+  if (!state.ready) return 'loading'
   return state.phases[name] ?? (state.adding.has(name) ? 'adding' : 'available')
 }
 
-/** Switch the MCP plugin on; the shelf unlocks when the `mcpServers` Remote appears. */
-export function switchMcpOn(): void {
-  const switchOn = actions.switchOn
-  if (switchOn === undefined || enabling) return
-  enabling = true
-  error = null
-  publish()
-  withTimeout(switchOn()).catch((failure: unknown) => {
-    enabling = false
-    error = { tool: null, message: message(failure) }
-    publish()
-  })
-}
-
 /**
- * Add one preset while the MCP plugin is on.
+ * Add one preset to the MCP roster.
  * @param name - preset name.
  */
 export function addMcpPreset(name: string): void {
-  const addPreset = actions.addPreset
-  if (addPreset === undefined || adding.has(name)) return
+  const add = addPreset
+  if (add === undefined || adding.has(name)) return
   adding.add(name)
   error = null
   publish()
-  withTimeout(addPreset(name)).then(() => { adding.delete(name); publish() }, (failure: unknown) => {
+  withTimeout(add(name)).then(() => { adding.delete(name); publish() }, (failure: unknown) => {
     adding.delete(name)
     error = { tool: name, message: message(failure) }
     publish()
@@ -127,31 +99,12 @@ export function addMcpPreset(name: string): void {
 }
 
 /**
- * Open a DSH sidebar page, such as `plugins` or `mcp`.
- * @param id - the main panel id.
- */
-export function openMcpPage(id: 'plugins' | 'mcp'): void {
-  openPanel(id as MainPanelId)
-}
-
-/**
- * Wire the plugin switch and the page links, and follow the MCP roster while the `mcpServers` Remote is mounted.
+ * Follow the MCP roster and offer adding presets while the `mcpServers` Remote is mounted.
  * @param ctx - the plugin's client context.
  */
 export function followMcpShelf(ctx: Context): void {
-  ctx.inject(['layout'], (scope) => {
-    openPanel = (id) => { scope.layout.selectPanel(id) }
-    scope.effect(() => () => { openPanel = () => {} }, 'ui-mcp-presets: page links')
-  })
-  ctx.inject(['remote', 'remote.pluginManager'], (scope) => {
-    actions.switchOn = async () => {
-      const result = await scope.remote.pluginManager.setBundleEnabled(MCP_BUNDLE, true)
-      if (!result.ok) throw result.error
-    }
-    scope.effect(() => () => { delete actions.switchOn }, 'ui-mcp-presets: MCP switch')
-  })
   ctx.inject(['remote', 'remote.mcpServers'], (scope) => {
-    actions.addPreset = async (name) => {
+    addPreset = async (name) => {
       const result = await scope.remote.mcpServers.addPreset(name)
       if (!result.ok) throw result.error
     }
@@ -165,7 +118,6 @@ export function followMcpShelf(ctx: Context): void {
       try {
         for await (const item of stream) {
           snapshot = item.value
-          enabling = false
           item.accept()
           publish()
         }
@@ -173,9 +125,10 @@ export function followMcpShelf(ctx: Context): void {
     })()
     scope.effect(() => async () => {
       stopped = true
-      delete actions.addPreset
+      addPreset = undefined
       snapshot = null
       adding.clear()
+      error = null
       publish()
       await stream.dispose()
       await observing

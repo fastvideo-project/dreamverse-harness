@@ -25,7 +25,7 @@ This Client plugin adds an **MCP** entry to the sidebar below **Plugins**; it op
 <a id="use-this-package"></a>
 ## Use this package
 
-Switch on **MCP** in Plugins; the **MCP** entry appears in the sidebar at once and disappears when MCP is switched off. Select it to open the MCP page. Each server row shows the name, the launch command or URL, the connection state, and a **Tools** toggle that lists the server's model-facing tool names and descriptions. **Add server** opens a dialog for a stdio server (command, arguments, environment variables) or an HTTP server (URL, headers). A failed server shows its startup error and **Reconnect**.
+Switch on **MCP** in Plugins; the **MCP** entry appears in the sidebar at once and disappears when MCP is switched off. Select it to open the MCP page. Each server row shows the name, the launch command or URL, the connection state, and a **Tools** toggle that lists the server's model-facing tool names and descriptions. **Add server** opens a dialog for a stdio server (command, arguments, environment variables) or an HTTP server (URL, headers). A failed server shows its startup error and **Reconnect**. Other plugins can add sections to the MCP page between its heading and the roster, such as the servers DreamVerse suggests.
 
 -----
 
@@ -35,7 +35,7 @@ Switch on **MCP** in Plugins; the **MCP** entry appears in the sidebar at once a
 <details>
 <summary>Maintainer details — click to expand</summary>
 
-The plugin registers a `sidebar.panellist` entry and a `main` page under the panel id `mcp` (order 1, after Plugins), and a `plugins.bundle.config` entry keyed by `@deepseek-ai/dsh-mcp-bundle`; all three render the same dashboard. One `follow()` stream per Client plugin feeds a snapshot store that every rendered dashboard reads; a carrier failure keeps the last roster and shows the error. The Remote mount and the UI registration share one disposer, as in the voice input plugin. The Host half is an empty marker.
+The plugin registers a `sidebar.panellist` entry and a `main` page under the panel id `mcp` (order 1, after Plugins), and a `plugins.bundle.config` entry keyed by `@deepseek-ai/dsh-mcp-bundle`; all three render the same dashboard. The `main` page also declares the list slot `mcp.page.section` and draws its entries, in order, between the heading and the dashboard; the Plugins page's dashboard does not draw them. One `follow()` stream per Client plugin feeds a snapshot store that every rendered dashboard reads; a carrier failure keeps the last roster and shows the error. The Remote mount and the UI registration share one disposer, as in the voice input plugin. The Host half is an empty marker.
 
 </details>
 

@@ -1,8 +1,22 @@
-/* MCP tools in 探索: an optional notice row, then 16:9 tool cards in the recent-projects column. */
+/* The servers DreamVerse suggests on the MCP page: a heading and an introduction line, then 16:9 tool cards. */
+/* The slot wraps the section in a box-less element, so the MCP page's column rules (`.page > *`) do not reach it;
+   the section takes the same column width and centering itself. */
 .shelf {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  align-self: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 960px;
+}
+
+.heading {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  color: var(--dv-text);
 }
 
 .intro {
@@ -11,97 +25,6 @@
   line-height: 20px;
   color: var(--dv-text-2);
   text-wrap: pretty;
-}
-
-/* The notice row while the MCP plugin is off. */
-.notice {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: 12px;
-  row-gap: 8px;
-  padding: 12px 16px;
-  border: 1px solid var(--dv-line);
-  border-radius: var(--dv-radius-lg);
-  background: var(--dv-surface-1);
-}
-
-.noticeIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--dv-radius-md);
-  background: var(--dv-accent-soft);
-  color: var(--dv-accent-text);
-}
-
-.noticeText {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.noticeTitle {
-  font-size: 14px;
-  line-height: 20px;
-  font-weight: 500;
-}
-
-.noticeBody {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dv-text-2);
-  text-wrap: pretty;
-}
-
-.noticeButton {
-  align-self: center;
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--dv-line-strong);
-  border-radius: var(--dv-radius-md);
-  background: var(--dv-surface-3);
-  color: var(--dv-text);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background-color 120ms var(--dv-ease);
-}
-
-@media (hover: hover) {
-  .noticeButton:hover:not(:disabled) {
-    background: var(--dv-surface-4);
-  }
-}
-
-.noticeButton:disabled {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-.noticeError {
-  grid-column: 2 / -1;
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: var(--dv-radius-md);
-  background: var(--dv-danger-soft);
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dv-danger);
-}
-
-.link {
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--dv-accent-text);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .cards {
@@ -124,12 +47,12 @@
   cursor: pointer;
 }
 
-.card[data-state='adding'] {
-  cursor: progress;
+.card:disabled {
+  cursor: default;
 }
 
-.card[data-state='locked'] {
-  cursor: default;
+.card[data-state='adding'] {
+  cursor: progress;
 }
 
 .tile {
@@ -156,7 +79,7 @@
   background: linear-gradient(135deg, #7a5cff, #1d2440 70%);
 }
 
-.card[data-state='locked'] .tile {
+.card[data-state='loading'] .tile {
   opacity: 0.5;
   filter: saturate(0.6);
 }
@@ -232,36 +155,24 @@
   color: var(--dv-danger);
 }
 
-.status[data-state='locked'],
+.status[data-state='loading'],
 .status[data-state='adding'],
 .status[data-state='connecting'] {
   color: var(--dv-text-2);
 }
 
-.noticeButton:focus-visible,
-.link:focus-visible,
 .card:focus-visible {
   outline: 2px solid var(--dv-accent);
   outline-offset: 2px;
 }
 
 @media (max-width: 720px) {
-  .notice {
-    grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .noticeButton {
-    grid-column: 2;
-    justify-self: start;
-  }
-
   .cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .noticeButton,
   .tile {
     transition: none;
   }

@@ -1,5 +1,5 @@
 ---
-description: "Browser half of the MiniMax skill set: nine template cards with preview GIFs on DreamVerse Home and in the Explore section; a card click puts /name into the chat composer."
+description: "Browser half of the MiniMax skill set: nine template cards with preview GIFs on DreamVerse Home; a card click puts /name into the chat composer."
 kind: "package-reference"
 ---
 
@@ -9,17 +9,17 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to start a MiniMax skill from a template card. It shows nine cards with preview GIFs on DreamVerse Home and in the Explore section. A card click puts `/<skill> ` into the chat composer; the user adds requirements and sends the message.
+Use this package to start a MiniMax skill from a template card. It shows nine cards with preview GIFs on DreamVerse Home. A card click puts `/<skill> ` into the chat composer; the user adds requirements and sends the message.
 
 ## Use this package
 
-The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts this package next to the Host plugin [`@dv/minimax-skills`](../minimax-skills/README.md), so every DreamVerse profile shows the cards. The package registers nine template cards in the `dv.templates` slot of the DreamVerse Home page and in a MiniMax templates tab of the `dv.explore` slot. Each card shows the preview GIF that `@dv/minimax-skills` serves at `GET /api/minimax/previews/<skill>.gif`.
+The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts this package next to the Host plugin [`@dv/minimax-skills`](../minimax-skills/README.md), so every DreamVerse profile shows the cards. The package registers nine template cards in the `dv.templates` slot of the DreamVerse Home page. Each card shows the preview GIF that `@dv/minimax-skills` serves at `GET /api/minimax/previews/<skill>.gif`.
 
 A card click puts `/<skill> ` into the draft of the current conversation and focuses the composer. The click neither creates a project nor sends a message; the user adds requirements and sends the message to invoke the skill.
 
 ## Understand the implementation
 
-`src/client/index.ts` registers the two slot entries and writes the draft through the `conversation` input of the mounted session. `src/client/labels.ts` holds the card labels in card order, keyed by the `MiniMaxSkill` type of `@dv/minimax-skills/types`, so the compiler rejects a missing or unknown skill. `src/index.ts` is an empty Host entry.
+`src/client/index.ts` registers the slot entry and writes the draft through the `conversation` input of the mounted session. `src/client/labels.ts` holds the card labels in card order, keyed by the `MiniMaxSkill` type of `@dv/minimax-skills/types`, so the compiler rejects a missing or unknown skill. `src/index.ts` is an empty Host entry.
 
 ## Model Experience
 

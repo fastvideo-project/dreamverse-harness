@@ -292,6 +292,7 @@
       "@deepseek-ai/dsh-client-ui-settings-models": ["./packages/client/ui-settings-models/src"],
       "@deepseek-ai/dsh-client-ui-plugin-manager": ["./packages/client/ui-plugin-manager/src"],
       "@deepseek-ai/dsh-client-ui-mcp-servers": ["./packages/client/ui-mcp-servers/src"],
+      "@deepseek-ai/dsh-client-ui-mcp-servers/client": ["./packages/client/ui-mcp-servers/src/client"],
       "@deepseek-ai/dsh-client-ui-settings-plugin-inventory": ["./packages/client/ui-settings-plugin-inventory/src"],
       "@deepseek-ai/dsh-client-locale": ["./packages/client/locale/src"],
       "@deepseek-ai/dsh-client-web/injections": ["./packages/client/web/src/apply-injections.ts"],

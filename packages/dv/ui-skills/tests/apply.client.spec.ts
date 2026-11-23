@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 /**
- * The plugin's page, navigator entry, and 探索 tab, the skill list read through the chat session, 使用, and removal on
- * dispose.
+ * The plugin's page, navigator entry, and composer shortcut, the skill list read through the chat session, 使用, and
+ * removal on dispose.
  */
 import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { DV_COMPOSE_EVENT, type DvComposeDetail } from '@dv/ui-kit/compose.ts'
 import type { SkillsInjected } from '../src/client/SkillsPage.tsx'
-import { SkillsLauncher, SkillsPage, SkillsPanelIcon, SkillsShelf } from '../src/client/SkillsPage.tsx'
+import { SkillsLauncher, SkillsPage, SkillsPanelIcon } from '../src/client/SkillsPage.tsx'
 import { apply, inject, SKILLS_PANEL_ID } from '../src/client/index.ts'
 import { SessionInputShell } from '../../../client/ui-conversation/src/client/input/facade.ts'
 import { render, fireEvent, screen, waitFor } from '@testing-library/react'
@@ -87,18 +87,15 @@ describe('ui-skills apply', () => {
     expect(hostApply).not.toThrow()
   })
 
-  it('registers the page under the skills panel, the navigator entry after Plugins, and the 探索 tab after MCP', async () => {
+  it('registers the page under the skills panel, the navigator entry after Plugins, and the composer shortcut', async () => {
     const { registered } = await boot('s1')
     expect(registered.map(entry => [entry.name, entry.key ?? entry.id, entry.component])).toEqual([
       ['main', SKILLS_PANEL_ID, SkillsPage],
       ['sidebar.panellist', SKILLS_PANEL_ID, SkillsPanelIcon],
       ['conversation.input.left', 'dv.skills.library', SkillsLauncher],
-      ['dv.explore', 'skills', SkillsShelf],
     ])
     expect(registered[1]?.order).toBe(2)
     expect(registered[1]?.label?.()).toMatch(/^(技能|Skills)$/)
-    expect(registered[3]?.order).toBe(1)
-    expect(registered[3]?.label?.()).toMatch(/^(技能|Skills)$/)
   })
 
   it('lists the skills of the chat session, else of the newest session', async () => {
@@ -203,27 +200,7 @@ describe('ui-skills apply', () => {
     await fiber.dispose()
   })
 
-  it('writes /name into the entry page session on 使用 in the 探索 tab, without dv:compose', async () => {
-    const { registered, selected, inputs } = await boot('s1')
-    const composed: DvComposeDetail[] = []
-    const listen = (event: Event): void => { composed.push((event as CustomEvent<DvComposeDetail>).detail) }
-    window.addEventListener(DV_COMPOSE_EVENT, listen)
-    registered[3]?.inject?.().use('storyboard')
-    window.removeEventListener(DV_COMPOSE_EVENT, listen)
-    expect(inputs).toEqual(['session s1', 'draft /storyboard ', 'focus'])
-    expect(selected).toEqual([])
-    expect(composed).toEqual([])
-  })
-
-  it('writes no draft on 使用 in the 探索 tab while the right panel shows no session or a session without a scope', async () => {
-    for (const mounted of [undefined, 'closed']) {
-      const { registered, inputs } = await boot(mounted)
-      registered[3]?.inject?.().use('storyboard')
-      expect(inputs).toEqual([])
-    }
-  })
-
-  it('removes the page, the entry, and the tab when the plugin is disposed', async () => {
+  it('removes the page, the entry, and the shortcut when the plugin is disposed', async () => {
     const { registered, fiber } = await boot('s1')
     await fiber.dispose()
     expect(registered).toEqual([])
