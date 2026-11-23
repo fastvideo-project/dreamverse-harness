@@ -1,12 +1,12 @@
 /**
- * The MCP tools in the entry page's 探索 section. While the MCP plugin is off, a notice row offers to switch it on and
- * the tool cards are dimmed; while it is on, a card adds its preset, and an added card opens the MCP page.
+ * The servers DreamVerse suggests, as a section of the MCP page: a heading, an introduction line, and one card per tool;
+ * a card adds its preset to the MCP roster, and an added card shows its connection state.
  *
  * @module @dv/ui-mcp-presets/McpShelf
  */
 import type { ReactNode } from 'react'
 import { useText } from '@dv/ui-kit/locale.ts'
-import { addMcpPreset, openMcpPage, switchMcpOn, toolState, useMcpShelf, type McpToolState } from './shelf.ts'
+import { addMcpPreset, toolState, useMcpShelf, type McpToolState } from './shelf.ts'
 import css from './McpShelf.module.css'
 
 /** One tool card: the preset name `@dv/mcp-presets` offers to the MCP plugin, and its Chinese and English copy. */
@@ -43,56 +43,25 @@ function PlugIcon({ size }: { size: number }): ReactNode {
 }
 
 /**
- * The `dv.explore` entry: the notice row while the MCP plugin is off, or an intro line while it is on, and the cards.
- * @returns the MCP tools.
+ * The `mcp.page.section` entry: the heading, the introduction line, and the cards.
+ * @returns the section.
  */
 export function McpShelf(): ReactNode {
   const t = useText()
   const shelf = useMcpShelf()
   return (
-    <div className={css.shelf}>
-      {shelf.on
-        ? <p className={css.intro}>{t('点一下就能把工具接给 agent，之后在对话里直接让它用。', 'Add a tool in one click, then ask the agent to use it in chat.')}</p>
-        : <McpNotice />}
+    <section className={css.shelf} aria-labelledby="dv-mcp-presets">
+      <h2 id="dv-mcp-presets" className={css.heading}>{t('DreamVerse 推荐', 'Suggested by DreamVerse')}</h2>
+      <p className={css.intro}>{t('点一下就能把工具接给 agent，之后在对话里直接让它用。', 'Add a tool in one click, then ask the agent to use it in chat.')}</p>
       <div className={css.cards}>
         {TOOLS.map(tool => <ToolCard key={tool.name} tool={tool} state={toolState(shelf, tool.name)} />)}
       </div>
-    </div>
+    </section>
   )
 }
 
 /**
- * The notice row while the MCP plugin is off: what the tools need, the switch, and a failed switch with a link to the
- * Plugins page.
- * @returns the notice row.
- */
-function McpNotice(): ReactNode {
-  const t = useText()
-  const shelf = useMcpShelf()
-  const failure = shelf.error !== null && shelf.error.tool === null ? shelf.error.message : null
-  return (
-    <div className={css.notice} data-mcp-locked="">
-      <span className={css.noticeIcon}><PlugIcon size={16} /></span>
-      <span className={css.noticeText}>
-        <span className={css.noticeTitle}>{t('接入 Blender、ComfyUI 等工具', 'Connect Blender, ComfyUI, and more')}</span>
-        <span className={css.noticeBody}>{t('开启 MCP 插件后，agent 可以在对话里直接使用这些工具。', 'Turn on the MCP plugin so the agent can use these tools in chat.')}</span>
-      </span>
-      <button type="button" className={css.noticeButton} disabled={shelf.enabling} onClick={switchMcpOn}>
-        {shelf.enabling ? t('正在开启…', 'Turning on…') : t('开启 MCP', 'Turn on MCP')}
-      </button>
-      {failure !== null && (
-        <p className={css.noticeError} role="alert" title={failure}>
-          {t('MCP 开启失败。请重试，或到', 'Could not turn on MCP. Try again, or check the ')}
-          <button type="button" className={css.link} onClick={() => { openMcpPage('plugins') }}>{t('插件页', 'Plugins page')}</button>
-          {t('查看。', '.')}
-        </p>
-      )}
-    </div>
-  )
-}
-
-/**
- * One tool: a tile, its description, and its state; choosing an added tool opens the MCP page.
+ * One tool: a tile, its description, and its state; an available tool is added on click, and an added tool is inert.
  * @param props - the tool and its card state.
  * @returns the card.
  */
@@ -101,20 +70,19 @@ function ToolCard({ tool, state }: { tool: McpTool; state: McpToolState }): Reac
   const shelf = useMcpShelf()
   const failure = shelf.error?.tool === tool.name ? shelf.error.message : null
   const status: Record<McpToolState, string> = {
-    locked: t('开启 MCP 后可添加', 'Available once MCP is on'),
+    loading: t('正在读取…', 'Loading…'),
     available: failure === null ? t('添加', 'Add') : t('添加失败，点击重试', 'Could not add; click to retry'),
     adding: t('添加中…', 'Adding…'),
     connecting: t('已添加 · 连接中…', 'Added · Connecting…'),
     connected: t('已添加 · 已连接', 'Added · Connected'),
     failed: t('已添加 · 连接失败', 'Added · Connection failed'),
   }
-  const added = state === 'connecting' || state === 'connected' || state === 'failed'
   const shown = state === 'available' && failure !== null ? 'error' : state
   return (
     <button
       type="button" className={css.card} data-tool={tool.name} data-state={shown}
-      disabled={state === 'locked' || state === 'adding'} title={failure ?? undefined}
-      onClick={() => { if (added) openMcpPage('mcp'); else addMcpPreset(tool.name) }}
+      disabled={state !== 'available'} title={failure ?? undefined}
+      onClick={() => { addMcpPreset(tool.name) }}
     >
       <span className={css.tile} data-tool={tool.name}>
         <span className={css.badge}><PlugIcon size={12} />MCP</span>

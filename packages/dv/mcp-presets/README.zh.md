@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 摘要
 
-使用本包选择 DreamVerse 推荐哪些 MCP 服务器。MCP 插件开启时，它通过 `ctx.mcpServers.offerPresets()` 把配置好的预设提供给 [MCP 服务器列表](../../mcp/mcp-servers/README.zh.md)，首页的 探索 区把每个预设显示成一张卡片，一步添加对应的服务器。MCP 插件关闭时，这一行仍然处于激活状态，但不提供任何预设。
+使用本包选择 DreamVerse 推荐哪些 MCP 服务器。MCP 插件开启时，它通过 `ctx.mcpServers.offerPresets()` 把配置好的预设提供给 [MCP 服务器列表](../../mcp/mcp-servers/README.zh.md)，[`@dv/ui-mcp-presets`](../ui-mcp-presets/README.zh.md) 在 MCP 页面把每个预设显示成一张卡片，一步添加对应的服务器。MCP 插件关闭时，这一行仍然处于激活状态，但不提供任何预设。
 
 ## 目录
 
@@ -61,4 +61,4 @@ DreamVerse 提供 `blender`（`uvx mcp-for-blender@2.1.9`，需要一个开着 M
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- 预设的标题和描述是英文；首页卡片（[`@dv/ui-mcp-presets`](../ui-mcp-presets/README.zh.md)）为 `blender` 和 `comfyui` 显示自己的中英文文案。
+- 预设的标题和描述是英文；MCP 页面卡片（[`@dv/ui-mcp-presets`](../ui-mcp-presets/README.zh.md)）为 `blender` 和 `comfyui` 显示自己的中英文文案。

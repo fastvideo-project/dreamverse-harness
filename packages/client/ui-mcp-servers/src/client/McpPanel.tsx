@@ -1,6 +1,6 @@
 /** The sidebar's MCP entry and the MCP page it opens in the main column. */
 import type { ReactNode } from 'react'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import { McpServersPage, type McpServersInjected } from './McpServersPage.tsx'
 import type { NS } from './locales.ts'
@@ -21,17 +21,19 @@ export function McpPanelIcon({ size }: PropsRuntime<'sidebar.panellist'>): React
 }
 
 /**
- * The MCP page: a heading, then the server roster with its add, reconnect, and remove controls.
- * @param props - roster observation, Host actions, and the dashboard dictionary.
+ * The MCP page: a heading, the sections other plugins add in `mcp.page.section`, then the server roster with its add,
+ * reconnect, and remove controls.
+ * @param props - roster observation, Host actions, the dashboard dictionary, and the section slot.
  * @returns the page element.
  */
-export function McpPanelPage(props: InjectFace<McpServersInjected> & PropsLocale<typeof NS>): ReactNode {
+export function McpPanelPage(props: InjectFace<McpServersInjected> & PropsLocale<typeof NS> & PropsRenderSlots<'mcp.page.section'>): ReactNode {
   return (
     <section className={css.page} data-mcp-panel>
       <header className={css.pageHead}>
         <h1 className={css.pageTitle}>{props.t('pageTitle')}</h1>
         <p className={css.pageIntro}>{props.t('pageIntro')}</p>
       </header>
+      {props.renderSlot('mcp.page.section', {})}
       <McpServersPage {...props} />
     </section>
   )

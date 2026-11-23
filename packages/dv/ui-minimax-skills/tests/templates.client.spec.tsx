@@ -36,7 +36,7 @@ it('registers and removes its own template entry, writing only the current conve
   ctx.provide('sidebarRight', { mounted: { getSnapshot: () => 'current-chat' } } as never)
   const fiber = ctx.plugin({ inject, apply })
   await fiber.await()
-  expect(entries.map(entry => entry.id)).toEqual(['minimax-templates', 'minimax-skills'])
+  expect(entries.map(entry => entry.id)).toEqual(['minimax-templates'])
   entries[0]?.inject().use('h3-prompt-writing')
   expect(input.setDraft).toHaveBeenCalledWith('/h3-prompt-writing ')
   expect(input.focus).toHaveBeenCalledOnce()

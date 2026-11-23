@@ -1,11 +1,9 @@
 /**
  * Browser half of the Skills page: the 技能 / Skills entry in the left navigator (a DSH `sidebar.panellist` entry that
- * `@dv/ui-shell` lists below 首页), the page it opens in the main column, and the 技能 / Skills tab of the entry page's
- * 探索 / Explore section (a `dv.explore` entry). The page and the tab read the skills a creator can start with `/name`
- * through DSH's `skills` Remote. 使用 / Use on the page writes `/name` into the draft of the launching composer's session
- * (else the right panel's session) before closing the page; without a ready session input, the `dv:compose` queue
- * handles the first composer mount. 使用 in the tab writes `/name` into the draft of the session that the entry page
- * shows.
+ * `@dv/ui-shell` lists below 首页) and the page it opens in the main column. The page reads the skills a creator can
+ * start with `/name` through DSH's `skills` Remote. 使用 / Use writes `/name` into the draft of the launching composer's
+ * session (else the right panel's session) before closing the page; without a ready session input, the `dv:compose`
+ * queue handles the first composer mount.
  *
  * @module @dv/ui-skills/client
  */
@@ -21,10 +19,9 @@ import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { DvClient } from '@dv/ui-kit/api.ts'
 import { dispatchCompose } from '@dv/ui-kit/compose.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
-import type {} from '@dv/ui-shell/contract'
-import { SkillsLauncher, SkillsPage, SkillsPanelIcon, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
+import { SkillsLauncher, SkillsPage, SkillsPanelIcon, type SkillsInjected } from './SkillsPage.tsx'
 
-export { SkillsPage, SkillsShelf, type SkillsInjected } from './SkillsPage.tsx'
+export { SkillsPage, type SkillsInjected } from './SkillsPage.tsx'
 
 /** The id shared by the sidebar entry and the main panel it opens; Plugins (order 0) stays above it. */
 export const SKILLS_PANEL_ID = 'skills' as MainPanelId
@@ -46,7 +43,7 @@ function catalogSession(ctx: ClientContext): SessionId | undefined {
 }
 
 /**
- * Client plugin body: register the page, its navigator entry, and the 探索 / Explore tab.
+ * Client plugin body: register the page, its navigator entry, and the composer shortcut.
  * @param ctx - client root context.
  */
 export function apply(ctx: ClientContext): void {
@@ -82,17 +79,6 @@ export function apply(ctx: ClientContext): void {
       else dispatchCompose({ text: `/${name}`, refs: [] })
     },
   }
-  // The 探索 tab shows only on the entry page, whose center composer edits the draft of the session in the right
-  // panel's seat. `dv:compose` there would open the right panel's 对话 tab, so the tab writes the draft directly.
-  const shelfInjected: SkillsInjected = {
-    list, ...library,
-    use: (name) => {
-      const input = sessionInput(ctx.sidebarRight.mounted.getSnapshot())
-      if (input === undefined) return
-      input.setDraft(`/${name} `)
-      input.focus()
-    },
-  }
   ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register(
     { name: 'main', key: SKILLS_PANEL_ID, inject: () => injected }, SkillsPage,
   )), 'ui-skills: page')
@@ -108,8 +94,4 @@ export function apply(ctx: ClientContext): void {
         source = signal === undefined ? undefined : { sessionId, signal }
       } }) }, SkillsLauncher,
   )), 'ui-skills: composer shortcut')
-  // The 探索 tab waits for `@dv/ui-shell` to declare `dv.explore`; MCP (order 0) stays before it.
-  ctx.effect(() => ctx.slots.inject('dv.explore', () => ctx.slots.register(
-    { name: 'dv.explore', id: 'skills', order: 1, label: () => pickText('技能', 'Skills'), inject: () => shelfInjected }, SkillsShelf,
-  )), 'ui-skills: explore tab')
 }

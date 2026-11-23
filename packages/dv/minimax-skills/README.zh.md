@@ -22,7 +22,7 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 挂载本 Host �
 
 在本仓库先运行 `pnpm exec tsc -b packages/dv/minimax-skills packages/dv/ui-minimax-skills`，再运行 `pnpm --filter @dv/ui-minimax-skills run bundle` 构建。这些包不会发布到 npm。
 
-沿用 `tool-skill` 的目录与 `/name` 调用，例如发送 `/h3-prompt-writing 写一个产品视频提示词`。在首页或探索区的 MiniMax 标签选择模板，会把 `/name ` 填入当前草稿；补充需求并发送才调用技能。点击卡片不会创建项目或启动生成。单个 SKILL.md 的导入仍属于通用技能导入功能，不要求包装成插件。
+沿用 `tool-skill` 的目录与 `/name` 调用，例如发送 `/h3-prompt-writing 写一个产品视频提示词`。在首页选择模板，会把 `/name ` 填入当前草稿；补充需求并发送才调用技能。点击卡片不会创建项目或启动生成。单个 SKILL.md 的导入仍属于通用技能导入功能，不要求包装成插件。
 
 ## 加载与资源
 

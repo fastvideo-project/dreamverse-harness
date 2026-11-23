@@ -9,7 +9,7 @@ English | [中文](README.zh.md)
 
 ## Summary
 
-Use this package to choose which MCP servers DreamVerse suggests. While the MCP plugin is on, it offers its configured presets to the [MCP server roster](../../mcp/mcp-servers/README.md) through `ctx.mcpServers.offerPresets()`, and the entry page's 探索 / Explore section shows each one as a card that adds the server in one step. While the MCP plugin is off, the row stays active and offers nothing.
+Use this package to choose which MCP servers DreamVerse suggests. While the MCP plugin is on, it offers its configured presets to the [MCP server roster](../../mcp/mcp-servers/README.md) through `ctx.mcpServers.offerPresets()`, and [`@dv/ui-mcp-presets`](../ui-mcp-presets/README.md) shows each one on the MCP page as a card that adds the server in one step. While the MCP plugin is off, the row stays active and offers nothing.
 
 ## Table of Contents
 
@@ -61,4 +61,4 @@ No direct effect.
 
 <a id="known-limitations-and-deferred-work"></a>
 
-- The preset titles and descriptions are English; the entry page cards of [`@dv/ui-mcp-presets`](../ui-mcp-presets/README.md) carry their own Chinese and English copy for `blender` and `comfyui`.
+- The preset titles and descriptions are English; the MCP page cards of [`@dv/ui-mcp-presets`](../ui-mcp-presets/README.md) carry their own Chinese and English copy for `blender` and `comfyui`.
