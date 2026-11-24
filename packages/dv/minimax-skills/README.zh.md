@@ -52,4 +52,4 @@ DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.zh.md) 挂载本 Host �
 
 ## 已知限制与延期工作
 
-- **部署能力** — 技能涉及的部分 MiniMax Hub 能力可能不存在。适配器只映射已有 DreamVerse 工具，要求检查实际模型支持并披露缺失能力；安装本包不会安装、配置或授权媒体服务、独立音乐生成、字幕渲染或任意 Hub 编辑。可选 UI 使用通用 `dv.templates` 首页插槽与探索区插槽，无浏览器时仍可使用 Host 技能。无需单独 invariant 导出：实际 Loader 组合测试覆盖目录所有权、按需读取和卸载清理。
+- **部署能力** — 技能涉及的部分 MiniMax Hub 能力可能不存在。适配器只映射已有 DreamVerse 工具，要求检查实际模型支持并披露缺失能力；安装本包不会安装、配置或授权媒体服务、独立音乐生成、字幕渲染或任意 Hub 编辑。可选 UI 使用通用 `dv.templates` 首页插槽，无浏览器时仍可使用 Host 技能。无需单独 invariant 导出：实际 Loader 组合测试覆盖目录所有权、按需读取和卸载清理。
