@@ -55,7 +55,7 @@ kind: "package-reference"
 | `url(asset)` | `<publicBaseUrl>/dv/assets/<AssetId>` |
 | `grabStill(video, at, dir)` | 把视频的一帧写成 `dir` 中的 `still.png` 并返回其路径；由操作导入 |
 
-读取只需素材 ID，在持有这些字节的任一项目文件夹里找到它们。对没有任何项目文件夹持有的素材，`get`、`hasAudio`、`mediaType`、`path` 和 `read` 抛出代码为 `unknown_asset` 的 `ProjectError`。`GET /dv/assets/<AssetId>` 返回文件及其媒体类型、`Accept-Ranges: bytes`、作为强 ETag 的素材 ID，以及 `Cache-Control: public, max-age=31536000, immutable, no-transform`；`no-transform` 让 web server 不做 gzip，因此同一 ETag 下的每个响应都是文件本身的字节，字节范围也按这些字节计算。列出该 ETag 或 `*` 的 `If-None-Match` 得到 304。文件大小取自打开的文件；打不开或读不出大小的文件会写入日志并关闭，文件不存在时返回 404，其他情况返回 500。`range-parser` 读成一个字节范围的 `Range` 头（重叠或相邻的范围先合并）得到 206 和这些字节，因此浏览器可以从文件中间开始播放声音或视频；比文件更长的后缀表示整个文件。没有任何范围落在文件内的 `Range` 得到 416，包括末字节在首字节之前的范围。分开的多个范围、其他单位、格式错误的值、不等于该 ETag 的 `If-Range`，以及空文件的任何范围，都得到整个文件。`HEAD` 返回与整文件 `GET` 相同的头且没有正文。`/dv/assets` 下其他路径或方法返回 404。客户端在文件打开前取消请求时得不到响应，文件随即关闭。文件经 `stream.pipeline` 发出，客户端取消请求或读取失败时它会关闭文件；发出头之后读取失败会写入日志，正文在那里中断。
+读取只需素材 ID，在持有这些字节的任一项目文件夹里找到它们。对没有任何项目文件夹持有的素材，`get`、`hasAudio`、`mediaType`、`path` 和 `read` 抛出代码为 `unknown_asset` 的 `ProjectError`。`GET /dv/assets/<AssetId>` 返回文件及其媒体类型、`Accept-Ranges: bytes`、作为强 ETag 的素材 ID，以及 `Cache-Control: public, max-age=31536000, immutable, no-transform`；`no-transform` 让 web server 不做 gzip，因此同一 ETag 下的每个响应都是文件本身的字节，字节范围也按这些字节计算。列出该 ETag 或 `*` 的 `If-None-Match` 得到 304。文件大小取自打开的文件；打不开或读不出大小的文件会写入日志并关闭，文件不存在时返回 404，其他情况返回 500。`range-parser` 读成一个字节范围的 `Range` 头（重叠或相邻的范围先合并）得到 206 和这些字节，因此浏览器可以从文件中间开始播放声音或视频；比文件更长的后缀表示整个文件。没有任何范围落在文件内的 `Range` 得到 416，包括末字节在首字节之前的范围。分开的多个范围、其他单位、格式错误的值、不等于该 ETag 的 `If-Range`，以及空文件的任何范围，都得到整个文件。`HEAD` 返回与整文件 `GET` 相同的头且没有正文。`/dv/assets` 下其他路径或方法返回 404。客户端取消请求（无论在传输前还是传输中）或读取失败时，文件都会关闭；在文件打开前取消请求的客户端得不到响应，发出头之后读取失败会写入日志，正文在那里中断。
 
 -----
 
