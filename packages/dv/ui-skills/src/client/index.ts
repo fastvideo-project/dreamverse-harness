@@ -61,12 +61,10 @@ export function apply(ctx: ClientContext): void {
   // The launching composer's session, valid until the next navigation aborts its signal.
   let source: { sessionId: SessionId; signal: AbortSignal } | undefined
   const api = new DvClient()
-  const library = {
+  const injected: SkillsInjected = {
+    list,
     listMine: () => api.listUserSkills(),
     upload: (file: File) => api.uploadUserSkill(file),
-  }
-  const injected: SkillsInjected = {
-    list, ...library,
     use: (name) => {
       // The launcher belongs to a session-scoped composer, which need not be the right panel.
       const sessionId = source !== undefined && !source.signal.aborted ? source.sessionId : ctx.sidebarRight.mounted.getSnapshot()

@@ -91,7 +91,7 @@ export function addMcpPreset(name: string): void {
   adding.add(name)
   error = null
   publish()
-  // A request of an earlier mount settles after its dispose cleared the shelf, so only the current mount's add settles.
+  // An add from an earlier mount can settle after that mount's dispose cleared the shelf; it must not change the shelf.
   withTimeout(add(name)).then(() => { if (addPreset !== add) return; adding.delete(name); publish() }, (failure: unknown) => {
     if (addPreset !== add) return
     adding.delete(name)

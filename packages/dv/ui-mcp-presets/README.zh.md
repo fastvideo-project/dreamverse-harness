@@ -9,7 +9,7 @@ kind: "package-reference"
 
 ## 概述
 
-使用本包在 MCP 页面显示 DreamVerse 推荐的 MCP 服务器。它在 [MCP 页面](../../client/ui-mcp-servers/README.zh.md) 的 `mcp.page.section` 插槽里加入 DreamVerse 推荐 区块，位于服务器列表上方，有一张 Blender 卡片和一张 ComfyUI 卡片。点卡片会把对应预设加入 [MCP 服务器列表](../../mcp/mcp-servers/README.zh.md)，已添加的卡片显示服务器的连接状态。只有在插件页开启 MCP 插件时才有 MCP 页面，也才有这个区块。没有本包时，MCP 页面不推荐任何服务器。
+使用本包在 MCP 页面显示 DreamVerse 推荐的 MCP 服务器。它在 [MCP 页面](../../client/ui-mcp-servers/README.zh.md) 的 `mcp.page.section` 插槽里加入“DreamVerse 推荐”区块，位于服务器列表上方，有一张 Blender 卡片和一张 ComfyUI 卡片。点卡片会把对应预设加入 [MCP 服务器列表](../../mcp/mcp-servers/README.zh.md)，已添加的卡片显示服务器的连接状态。只有在插件页开启 MCP 插件时才有 MCP 页面，也才有这个区块。没有本包时，MCP 页面不推荐任何服务器。
 
 ## 目录
 
@@ -35,9 +35,9 @@ Host 端不注册任何内容。预设本身来自 [`@dv/mcp-presets`](../mcp-pr
 
 | 操作 | 请求 |
 | --- | --- |
-| 点未添加的卡片 | `mcpServers.addPreset(<name>)`；卡片显示 添加中…，之后显示服务器的连接状态。失败或 30 秒内没有结果时显示 添加失败，点击重试，错误原文在悬停提示里 |
+| 点未添加的卡片 | `mcpServers.addPreset(<name>)`；卡片显示“添加中…”，之后显示服务器的连接状态。失败或 30 秒内没有结果时显示“添加失败，点击重试”，错误原文在悬停提示里 |
 
-服务器列表到达前，卡片显示 正在读取…，不能点击；已添加的卡片不能点击。
+服务器列表到达前，卡片显示“正在读取…”，不能点击；已添加的卡片不能点击。
 
 -----
 
