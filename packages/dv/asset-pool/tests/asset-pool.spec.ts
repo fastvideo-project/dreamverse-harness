@@ -54,7 +54,7 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       const handle = await fs.open(...args)
       files.handles.push(handle)
       const statCode = [...files.failStat].find(([id]) => path.endsWith(id))?.[1]
-      if (statCode !== undefined) handle.stat = () => Promise.reject(failure(statCode))
+      if (statCode !== undefined) vi.spyOn(handle, 'stat').mockRejectedValue(failure(statCode))
       const createReadStream = handle.createReadStream.bind(handle)
       handle.createReadStream = (options) => {
         const stream = createReadStream(options)
