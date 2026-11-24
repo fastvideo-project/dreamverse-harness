@@ -605,11 +605,12 @@ export default class DvAssetPool extends Service {
   /**
    * Answer `GET` and `HEAD /dv/assets/<AssetId>` with the file, its media type and the asset ID as a strong ETag; other
    * paths and methods under the prefix are 404. An `If-None-Match` that lists the ETag or `*` gets 304 without opening
-   * the file. A file that cannot be opened is logged and gets 404 when it is missing and 500 otherwise. The size comes
-   * from the open file, and the byte ranges of a GET follow {@link requestedRange}: one range gets 206 with those bytes,
-   * an unsatisfiable `Range` gets 416, and every other request gets the whole file (200). A read that fails after the
-   * headers is logged and cuts the body off. `Cache-Control: no-transform` keeps the web server's compression off, so
-   * every answer under one ETag carries the file's own bytes.
+   * the file. A file that cannot be opened or whose size cannot be read is logged, closed, and gets 404 when it is
+   * missing and 500 otherwise. A client that goes away before the file opens gets no answer, and the file closes. The
+   * size comes from the open file, and the byte ranges of a GET follow {@link requestedRange}: one range gets 206 with
+   * those bytes, an unsatisfiable `Range` gets 416, and every other request gets the whole file (200). A read that
+   * fails after the headers is logged and cuts the body off. `Cache-Control: no-transform` keeps the web server's
+   * compression off, so every answer under one ETag carries the file's own bytes.
    */
   private async serveFile(request: IncomingMessage, response: ServerResponse): Promise<void> {
     /* v8 ignore next -- Node sets `url` on every request it parses. */
@@ -627,10 +628,13 @@ export default class DvAssetPool extends Service {
       return
     }
     const logger = this.ctx.logger('dvAssetPool')
-    let file: FileHandle
+    let file: FileHandle | undefined
+    let size: number
     try {
       file = await open(join(found.dir, OBJECTS_DIR, asset.id))
+      size = (await file.stat()).size
     } catch (error) {
+      await file?.close()
       logger.warn('could not open the file of asset %s: %s', asset.id, String(error))
       const missing = (error as NodeJS.ErrnoException).code === 'ENOENT'
       response.writeHead(missing ? 404 : 500, PLAIN_TEXT).end(missing ? 'Not found' : 'Could not read the file')
@@ -638,7 +642,8 @@ export default class DvAssetPool extends Service {
     }
     let streaming = false
     try {
-      const { size } = await file.stat()
+      // A client that went away while the file was opening gets nothing; pipeline throws on a destroyed response.
+      if (response.destroyed) return
       const range = requestedRange(request, etag, size)
       if (range === 'unsatisfiable') {
         response.writeHead(416, { 'content-range': `bytes */${String(size)}` }).end()

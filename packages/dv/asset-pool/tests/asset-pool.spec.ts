@@ -5,7 +5,7 @@
  */
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, type ReadStream } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
-import { createServer, type Server } from 'node:http'
+import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,10 +29,15 @@ import { chatProject, provideChatServices, type TestChatServices } from '../../p
 import DvAssetPool, { importedAssets, placeable } from '../src/index.ts'
 
 /**
- * The file streams the pool opens, and the files that fail on purpose: a file ID in `failOpen` throws that error code
- * from `open`, and a stream of a file ID in `failRead` fails after its first chunk.
+ * The file streams and handles the pool opens, and the files that fail on purpose: a file ID in `failOpen` throws that
+ * error code from `open`, a stream of a file ID in `failRead` fails after its first chunk, a stream of a file ID in
+ * `holdRead` reads no more after its first chunk, `stat` of a handle of a file ID in `failStat` throws that error code,
+ * and `open` of a file ID in `holdOpen` waits for that promise; `opening` lists the file IDs whose `open` started.
  */
-const files = vi.hoisted(() => ({ streams: [] as ReadStream[], failOpen: new Map<string, string>(), failRead: new Set<string>() }))
+const files = vi.hoisted(() => ({
+  streams: [] as ReadStream[], handles: [] as FileHandle[], failOpen: new Map<string, string>(), failRead: new Set<string>(),
+  holdRead: new Set<string>(), failStat: new Map<string, string>(), holdOpen: new Map<string, Promise<void>>(), opening: [] as string[],
+}))
 vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>()
   /** Make an error that carries a Node error code. */
@@ -41,14 +46,25 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ...fs,
     open: async (...args: Parameters<typeof fs.open>): Promise<FileHandle> => {
       const path = String(args[0])
+      files.opening.push(path)
+      const hold = [...files.holdOpen].find(([id]) => path.endsWith(id))?.[1]
+      if (hold !== undefined) await hold
       const code = [...files.failOpen].find(([id]) => path.endsWith(id))?.[1]
       if (code !== undefined) throw failure(code)
       const handle = await fs.open(...args)
+      files.handles.push(handle)
+      const statCode = [...files.failStat].find(([id]) => path.endsWith(id))?.[1]
+      if (statCode !== undefined) handle.stat = () => Promise.reject(failure(statCode))
       const createReadStream = handle.createReadStream.bind(handle)
       handle.createReadStream = (options) => {
         const stream = createReadStream(options)
         files.streams.push(stream)
         if ([...files.failRead].some(id => path.endsWith(id))) stream.once('data', () => { stream.destroy(failure('EIO')) })
+        if ([...files.holdRead].some(id => path.endsWith(id))) {
+          const read = stream._read.bind(stream)
+          let reads = 0
+          stream._read = (size) => { if (reads++ === 0) read(size) }
+        }
         return stream
       }
       return handle
@@ -62,6 +78,10 @@ const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
 /** A stand-in for the DSH web server that keeps the registered prefix routes and serves them on a local port. */
 class FakeWebServer {
   readonly routes = new Map<string, WebRoute>()
+  /** The responses of the requests the server received, in arrival order. */
+  readonly responses: ServerResponse[] = []
+  /** The errors that route handlers threw, which the real web server logs as warnings. */
+  readonly errors: unknown[] = []
   server: Server | null = null
 
   register(route: WebRoute): () => void {
@@ -71,9 +91,15 @@ class FakeWebServer {
 
   async listen(): Promise<string> {
     this.server = createServer((request, response) => {
+      this.responses.push(response)
       const route = [...this.routes.values()].find(candidate => (request.url ?? '').startsWith(candidate.path))
       if (route === undefined) response.writeHead(404).end()
-      else void route.handler(request, response)
+      // Like the real web server's catch-all: keep the error, then cut a started answer off or answer 400.
+      else void Promise.resolve(route.handler(request, response)).catch((error: unknown) => {
+        this.errors.push(error)
+        if (response.headersSent) response.destroy()
+        else response.writeHead(400).end()
+      })
     })
     await new Promise<void>((resolve) => { this.server?.listen(0, '127.0.0.1', resolve) })
     return `http://127.0.0.1:${(this.server?.address() as AddressInfo).port}`
@@ -434,6 +460,7 @@ describe('dvAssetPool', () => {
     fixture.ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { if (message.type === 'warn') warnings.push(message.args.map(String).join(' ')) } })
     files.failOpen.set(locked, 'EACCES')
     files.failRead.add(broken)
+    files.holdRead.add(big)
     try {
       files.streams.length = 0
       const cancel = new AbortController()
@@ -456,10 +483,59 @@ describe('dvAssetPool', () => {
       expect(warnings.filter(warning => warning.includes('could not open the file')).map(warning => warning.includes(gone) || warning.includes(locked)))
         .toEqual([true, true])
       expect(warnings.some(warning => warning.includes(big))).toBe(false)
+      files.holdRead.clear()
       expect((await fetch(`${base}/dv/assets/${big}`, { headers: { range: 'bytes=0-1' } })).status).toBe(206)
     } finally {
       files.failOpen.clear()
       files.failRead.clear()
+      files.holdRead.clear()
+      await fixture.web.close()
+    }
+  })
+
+  it('closes the file and logs nothing when the client cancels while the file is still opening', async () => {
+    const fixture = await start()
+    const asset = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.alloc(1024, 1), { mime: 'video/mp4', name: 'slow.mp4' }, null)
+    const base = await fixture.web.listen()
+    const warnings: string[] = []
+    fixture.ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { if (message.type === 'warn') warnings.push(message.args.map(String).join(' ')) } })
+    let release = (): void => {}
+    files.holdOpen.set(asset, new Promise<void>((resolve) => { release = resolve }))
+    files.handles.length = 0
+    files.opening.length = 0
+    try {
+      const cancel = new AbortController()
+      const pending = fetch(`${base}/dv/assets/${asset}`, { signal: cancel.signal }).catch((error: unknown) => error)
+      await vi.waitFor(() => { expect(files.opening.some(path => path.endsWith(asset))).toBe(true) })
+      cancel.abort()
+      await pending
+      await vi.waitFor(() => { expect(fixture.web.responses.at(-1)?.destroyed).toBe(true) })
+      release()
+      await vi.waitFor(() => { expect(files.handles).toHaveLength(1) })
+      await new Promise((resolve) => { setTimeout(resolve, 200) })
+      expect({ fd: files.handles[0]?.fd, errors: fixture.web.errors.map(String), warnings }).toEqual({ fd: -1, errors: [], warnings: [] })
+    } finally {
+      release()
+      files.holdOpen.clear()
+      await Promise.all(files.handles.filter(handle => handle.fd !== -1).map(handle => handle.close()))
+      await fixture.web.close()
+    }
+  })
+
+  it('answers 500 and closes the file when reading the size of an opened file fails', async () => {
+    const fixture = await start()
+    const asset = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('bad disk'), { mime: 'audio/mpeg', name: 'eio.mp3' }, null)
+    const base = await fixture.web.listen()
+    files.failStat.set(asset, 'EIO')
+    files.handles.length = 0
+    try {
+      const answer = await fetch(`${base}/dv/assets/${asset}`)
+      const body = await answer.text()
+      await vi.waitFor(() => { expect(files.handles).toHaveLength(1) })
+      expect({ status: answer.status, body, fd: files.handles[0]?.fd, errors: fixture.web.errors.map(String) })
+        .toEqual({ status: 500, body: 'Could not read the file', fd: -1, errors: [] })
+    } finally {
+      files.failStat.clear()
       await fixture.web.close()
     }
   })
