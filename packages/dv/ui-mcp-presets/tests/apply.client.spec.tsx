@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { SlotTestRuntime } from '@deepseek-ai/dsh-client-test-runtime'
 import type {} from '@deepseek-ai/dsh-client-ui-mcp-servers/client'
 import { apply, inject } from '../src/client/index.ts'
+import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => {
   cleanup()
@@ -39,5 +40,9 @@ describe('ui-mcp-presets apply', () => {
     const view = runtime.renderRoot()
     expect(view.getByRole('heading', { level: 2 }).textContent).toBe('DreamVerse 推荐')
     await runtime.dispose()
+  })
+
+  it('keeps the host Loader entry inert', () => {
+    expect(hostApply).not.toThrow()
   })
 })
