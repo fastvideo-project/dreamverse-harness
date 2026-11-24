@@ -91,7 +91,9 @@ export function addMcpPreset(name: string): void {
   adding.add(name)
   error = null
   publish()
-  withTimeout(add(name)).then(() => { adding.delete(name); publish() }, (failure: unknown) => {
+  // A request of an earlier mount settles after its dispose cleared the shelf, so only the current mount's add settles.
+  withTimeout(add(name)).then(() => { if (addPreset !== add) return; adding.delete(name); publish() }, (failure: unknown) => {
+    if (addPreset !== add) return
     adding.delete(name)
     error = { tool: name, message: message(failure) }
     publish()

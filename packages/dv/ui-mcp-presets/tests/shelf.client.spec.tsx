@@ -201,6 +201,28 @@ describe('ui-mcp-presets shelf', () => {
     await shelf.runtime.dispose()
   })
 
+  it('keeps a new add in flight when an add from before a remount settles', async () => {
+    const shelf = await mountShelf()
+    await shelf.send(roster())
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    await shelf.click('blender')
+    await shelf.click('comfyui')
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000) })
+    await shelf.unmount()
+    await shelf.remount()
+    await shelf.send(roster())
+    await shelf.click('blender')
+    await shelf.click('comfyui')
+    expect(shelf.requests.map(request => request.name)).toEqual(['blender', 'comfyui', 'blender', 'comfyui'])
+
+    shelf.requests[1]!.settle({ ok: true })
+    await shelf.flush()
+    expect([shelf.state('comfyui'), shelf.card('comfyui').disabled]).toEqual(['adding', true])
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000) })
+    expect([shelf.state('blender'), shelf.card('blender').disabled, shelf.card('blender').title]).toEqual(['adding', true, ''])
+    await shelf.runtime.dispose()
+  })
+
   it('opens the roster through mcpServers.follow and warns when the stream fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const shelf = await mountShelf()
