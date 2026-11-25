@@ -40,24 +40,31 @@
   cursor: pointer;
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
-  gap: 16px;
+/* One column of skill rows with a divider under each, as the MCP and Plugins pages list their entries. */
+.rows {
+  display: flex;
+  flex-direction: column;
   margin: 0;
   padding: 0;
+  border-top: 1px solid var(--dv-line);
   list-style: none;
 }
 
-.card {
+/* A row: the name and description on the left, the /command and 使用 / Use on the right. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--dv-line);
+}
+
+.rowText {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
   min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--dv-line);
-  border-radius: var(--dv-radius-lg);
-  background: var(--dv-surface-2);
 }
 
 .name {
@@ -69,28 +76,26 @@
   white-space: nowrap;
 }
 
-/* Three lines of the description; the full text is the title tooltip. */
+/* Two lines of the description; the full text is the title tooltip. */
 .description {
   display: -webkit-box;
-  flex: 1;
   overflow: hidden;
   color: var(--dv-text-2);
   font-size: 13px;
   line-height: 20px;
   text-wrap: pretty;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
 .foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 12px;
 }
 
 .command {
+  max-width: 220px;
   overflow: hidden;
   color: var(--dv-text-2);
   font-family: var(--dv-font-mono);
@@ -141,18 +146,6 @@
   gap: 12px;
   margin-bottom: 16px;
 }
-.tabs { display: flex; gap: 4px; }
-.tab {
-  padding: 6px 12px;
-  border: 1px solid transparent;
-  border-radius: var(--dv-radius-md);
-  background: transparent;
-  color: var(--dv-text-2);
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.tab[aria-pressed='true'] { background: var(--dv-accent-soft); color: var(--dv-accent-text); }
 .search {
   flex: 1;
   min-width: 160px;
@@ -164,11 +157,82 @@
   font: inherit;
   font-size: 13px;
 }
+/* 我的技能 / Your skills and 内置技能 / Built-in skills: a heading, then the section's controls, notes and cards. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.sectionTitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 500;
+}
+/* The section heading on the left and its buttons on the right, on one line. */
+.sectionHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; }
+/* A row that opens its skill in the panel: the name and description are one button. */
+.rowOpen {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+@media (hover: hover) {
+  .rowOpen:hover .name { color: var(--dv-accent-text); }
+}
+.rowOpen:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; border-radius: var(--dv-radius-md); }
+/* The skill editor: a full-height panel that slides in from the right edge over the shared Modal's mask. The class and
+   the dialog role together outrank the Modal's centered card rules. The fields scroll; the footer stays at the bottom. */
+.editor[role='dialog'] {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100vw);
+  max-height: none;
+  padding-bottom: 20px;
+  border-radius: 16px 0 0 16px;
+  animation: editorIn 200ms var(--dv-ease, ease-out);
+}
+.editorContent { flex: 1; min-height: 0; overflow-y: auto; }
+/* Where a saved skill's SKILL.md lives, at the bottom of its panel. */
+.savedPath { margin: 0; color: var(--dv-text-2); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+.savedPath code { font-family: var(--dv-font-mono, ui-monospace, monospace); color: var(--dv-text); }
+/* 删除 / Delete in the panel and in its confirmation: the danger color. */
+.deleteButton { color: var(--dv-danger); }
+@keyframes editorIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor[role='dialog'] { animation: none; }
+}
+.editorForm { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; }
+.fieldLabel { font-weight: 500; color: var(--dv-text); }
+.fieldHint { color: var(--dv-text-2); font-size: 12px; line-height: 18px; }
+.instructions {
+  min-height: 320px;
+  padding: 8px 12px;
+  border: 1px solid var(--dv-line);
+  border-radius: var(--dv-radius-md);
+  background: var(--dv-surface-2);
+  color: var(--dv-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  resize: vertical;
+}
+.instructions:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
 .upload {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 20px;
   padding: 16px;
   border: 1px dashed var(--dv-line);
   border-radius: var(--dv-radius-md);
@@ -180,10 +244,8 @@
 .format { color: var(--dv-text-2); font-size: 13px; }
 .format summary { cursor: pointer; }
 .format pre { overflow-x: auto; padding: 12px; background: var(--dv-surface-3); border-radius: var(--dv-radius-md); }
-.tab:focus-visible,
 .search:focus-visible,
 .uploadLabel input:focus-visible { outline: 2px solid var(--dv-accent); outline-offset: 2px; }
-.tab:disabled { cursor: wait; }
 
 .launcher {
   display: inline-flex;

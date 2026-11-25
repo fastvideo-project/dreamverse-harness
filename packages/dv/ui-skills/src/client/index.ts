@@ -16,7 +16,7 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import { DvClient } from '@dv/ui-kit/api.ts'
+import { DvApiError, DvClient, type UserSkillText } from '@dv/ui-kit/api.ts'
 import { dispatchCompose } from '@dv/ui-kit/compose.ts'
 import { pickText } from '@dv/ui-kit/locale.ts'
 import { SkillsLauncher, SkillsPage, SkillsPanelIcon, type SkillsInjected } from './SkillsPage.tsx'
@@ -64,9 +64,24 @@ export function apply(ctx: ClientContext): void {
   const library = {
     listMine: () => api.listUserSkills(),
     upload: (file: File) => api.uploadUserSkill(file),
+    read: (name: string) => api.readUserSkill(name),
+    create: (text: UserSkillText) => api.createUserSkill(text),
+    update: (text: UserSkillText) => api.updateUserSkill(text),
+    remove: async (name: string) => { await api.deleteUserSkill(name) },
+  }
+  // A built-in skill is read from the catalog view of the chat the list comes from, so it is the skill the agent would load;
+  // a skill that left the catalog since the list read is null.
+  const readBuiltIn = async (name: string) => {
+    const sessionId = catalogSession(ctx)
+    if (sessionId === undefined) return null
+    try { return await api.readBuiltInSkill(sessionId, name) }
+    catch (error) {
+      if (error instanceof DvApiError && error.code === 'skill_not_found') return null
+      throw error
+    }
   }
   const injected: SkillsInjected = {
-    list, ...library,
+    list, ...library, readBuiltIn,
     use: (name) => {
       // The launcher belongs to a session-scoped composer, which need not be the right panel.
       const sessionId = source !== undefined && !source.signal.aborted ? source.sessionId : ctx.sidebarRight.mounted.getSnapshot()

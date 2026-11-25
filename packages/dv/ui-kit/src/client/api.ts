@@ -154,6 +154,18 @@ export interface UserSkillEntry {
   modelInvocable: boolean
 }
 
+/** The fields of a skill written or edited on the Skills page. */
+export interface UserSkillText {
+  name: string
+  description: string
+  instructions: string
+}
+
+/** A saved skill as the editor reads it: its fields and the path of its SKILL.md on the harness machine. */
+export interface SavedUserSkillText extends UserSkillText {
+  path: string
+}
+
 /** Every `/api/dv` call of the browser: projects, project state, operations, task labels, history, undo and redo, and asset imports. */
 export class DvClient {
   constructor(private readonly fetchImpl: typeof fetch = (input, init) => fetch(input, init)) {}
@@ -161,6 +173,42 @@ export class DvClient {
   /** @returns the saved user skill library, including before the first chat exists. */
   listUserSkills(): Promise<UserSkillEntry[]> {
     return this.get('/api/dv/skills', {})
+  }
+
+  /** @param name - a saved skill's name.
+   * @returns its name, description, instructions, and the path of its SKILL.md.
+   */
+  readUserSkill(name: string): Promise<SavedUserSkillText> {
+    return this.get('/api/dv/skills/read', { name })
+  }
+
+  /** @param text - the new skill's name, description and instructions.
+   * @returns saved metadata; a name already used is refused.
+   */
+  createUserSkill(text: UserSkillText): Promise<UserSkillEntry> {
+    return this.post('/api/dv/skills/create', text)
+  }
+
+  /** @param text - a saved skill's name, and its new description and instructions.
+   * @returns saved metadata.
+   */
+  updateUserSkill(text: UserSkillText): Promise<UserSkillEntry> {
+    return this.post('/api/dv/skills/update', text)
+  }
+
+  /** @param session - the chat whose skill catalog to read.
+   * @param name - a built-in skill's `/name`.
+   * @returns its name, description, instructions, and SKILL.md path ('' for a skill no file defines).
+   */
+  readBuiltInSkill(session: string, name: string): Promise<SavedUserSkillText> {
+    return this.get('/api/dv/skills/built-in', { session, name })
+  }
+
+  /** @param name - a saved skill's name; its folder and every bundle file are deleted.
+   * @returns the deleted skill's name.
+   */
+  deleteUserSkill(name: string): Promise<{ name: string }> {
+    return this.post('/api/dv/skills/delete', { name })
   }
 
   /** @param file - Markdown instructions or a ZIP bundle with one SKILL.md.
