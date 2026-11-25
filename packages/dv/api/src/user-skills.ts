@@ -2,7 +2,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { unzipSync } from 'fflate'
-import { parse } from 'yaml'
+import { parse, stringify } from 'yaml'
 import type { ConnectionFetchRoute } from '@deepseek-ai/dsh-client-connection'
 import { answer, ApiRequestError } from './api.ts'
 
@@ -14,6 +14,18 @@ export interface UserSkillLimits {
   extractedBytes: number
   /** Maximum number of archive entries. */
   files: number
+}
+
+/** The fields of a skill that the Skills page writes and edits: its frontmatter name and description, and its body. */
+export interface SkillText {
+  name: string
+  description: string
+  instructions: string
+}
+
+/** A saved skill as the editor reads it: its fields and the path of its SKILL.md on the harness machine. */
+export interface SavedSkillText extends SkillText {
+  path: string
 }
 
 /** Metadata of a saved, user-invocable skill. */
@@ -28,8 +40,11 @@ function invalid(message: string): never {
   throw new ApiRequestError(400, message, 'invalid_skill')
 }
 
-/** Validate SKILL.md: UTF-8, YAML frontmatter, name, description, invocation flags, and nonempty instructions. */
-function metadata(bytes: Uint8Array): SavedSkill {
+/** The pattern of a skill name, which is also its folder name and its `/name` command. */
+const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u
+
+/** Split SKILL.md into its YAML frontmatter object and its instruction body. */
+function split(bytes: Uint8Array): { fields: Record<string, unknown>; body: string } {
   let text: string
   try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes) }
   catch { return invalid('SKILL.md must be UTF-8 text') }
@@ -39,12 +54,22 @@ function metadata(bytes: Uint8Array): SavedSkill {
   try { data = parse(match[1] ?? '') }
   catch { return invalid('SKILL.md has invalid YAML frontmatter') }
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return invalid('Skill metadata must be a YAML object')
-  const fields = data as Record<string, unknown>
-  if (typeof fields['name'] !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/u.test(fields['name']) || fields['name'].length > 100) {
+  return { fields: data as Record<string, unknown>, body: match[2] ?? '' }
+}
+
+/** SKILL.md text from frontmatter fields and an instruction body. */
+function compose(fields: Record<string, unknown>, instructions: string): Uint8Array {
+  return new TextEncoder().encode(`---\n${stringify(fields)}---\n${instructions.trim()}\n`)
+}
+
+/** Validate SKILL.md: UTF-8, YAML frontmatter, name, description, invocation flags, and nonempty instructions. */
+function metadata(bytes: Uint8Array): SavedSkill {
+  const { fields, body } = split(bytes)
+  if (typeof fields['name'] !== 'string' || !SKILL_NAME.test(fields['name']) || fields['name'].length > 100) {
     return invalid('Skill name must use lowercase letters, numbers and hyphens (up to 100 characters)')
   }
   if (typeof fields['description'] !== 'string' || fields['description'].trim() === '') return invalid('Skill description is required')
-  if ((match[2] ?? '').trim() === '') return invalid('Skill instructions cannot be empty')
+  if (body.trim() === '') return invalid('Skill instructions cannot be empty')
   for (const key of ['user-invocable', 'disable-model-invocation']) {
     if (fields[key] !== undefined && typeof fields[key] !== 'boolean') return invalid(`${key} must be a boolean`)
   }
@@ -145,6 +170,79 @@ export class UserSkillStore {
     } finally { await rm(staging, { recursive: true, force: true }) }
     return skill
   }
+
+  /**
+   * Save a new skill written on the Skills page as its SKILL.md, through the same checks as an upload.
+   * @param text - the name, description and instructions.
+   * @returns saved metadata.
+   * @throws ApiRequestError for invalid fields or a name that is already used.
+   */
+  async create(text: SkillText): Promise<SavedSkill> {
+    return this.install('SKILL.md', compose({ name: text.name, description: text.description }, text.instructions))
+  }
+
+  /**
+   * Read the editable fields of one saved skill.
+   * @param name - the skill name.
+   * @returns its name, description, instructions, and the path of its SKILL.md.
+   * @throws ApiRequestError `404 skill_not_found` when the library has no such skill.
+   */
+  async read(name: string): Promise<SavedSkillText> {
+    const { fields, body } = split(await this.skillFile(name))
+    return {
+      name, description: typeof fields['description'] === 'string' ? fields['description'].trim() : '', instructions: body.trim(),
+      path: join(this.directory, name, 'SKILL.md'),
+    }
+  }
+
+  /**
+   * Delete one saved skill: its folder with SKILL.md and every bundle file.
+   * @param name - the skill name.
+   * @throws ApiRequestError `404 skill_not_found` when the library has no such skill.
+   */
+  async remove(name: string): Promise<void> {
+    await this.skillFile(name)
+    await rm(join(this.directory, name), { recursive: true, force: true })
+  }
+
+  /**
+   * Replace the description and instructions of one saved skill. The name stays, because it is the folder name and the
+   * `/name` command; the other frontmatter keys and the bundle's other files are kept. SKILL.md is replaced in one rename.
+   * @param text - the skill name, and its new description and instructions.
+   * @returns saved metadata.
+   * @throws ApiRequestError `404 skill_not_found` for an unknown skill, `400 invalid_skill` for invalid fields.
+   */
+  async update(text: SkillText): Promise<SavedSkill> {
+    const { fields } = split(await this.skillFile(text.name))
+    const bytes = compose({ ...fields, name: text.name, description: text.description }, text.instructions)
+    if (bytes.length > this.limits.uploadBytes) return invalid('Skill instructions are too large')
+    const skill = metadata(bytes)
+    const target = join(this.directory, text.name, 'SKILL.md')
+    const temporary = `${target}.${process.pid}.${Date.now()}.tmp`
+    try {
+      await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 })
+      await rename(temporary, target)
+    } finally { await rm(temporary, { force: true }) }
+    return skill
+  }
+
+  /** The SKILL.md bytes of one saved skill; refuses names that are not skill names, so no path leaves the library. */
+  private async skillFile(name: string): Promise<Uint8Array> {
+    if (!SKILL_NAME.test(name)) throw new ApiRequestError(404, 'No saved skill uses this name', 'skill_not_found')
+    try { return await readFile(join(this.directory, name, 'SKILL.md')) }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ApiRequestError(404, 'No saved skill uses this name', 'skill_not_found')
+      throw error
+    }
+  }
+}
+
+/** The `{name, description, instructions}` body of a create, update or delete request, as strings; missing fields are empty. */
+function skillText(body: unknown): SkillText {
+  if (typeof body !== 'object' || body === null) return invalid('Send the skill name, description and instructions')
+  const fields = body as Record<string, unknown>
+  const text = (key: string): string => (typeof fields[key] === 'string' ? fields[key] : '')
+  return { name: text('name'), description: text('description'), instructions: text('instructions') }
 }
 
 /** @param store - persistent library.
@@ -154,6 +252,22 @@ export function userSkillRoutes(store: UserSkillStore): ConnectionFetchRoute[] {
   return [{
     path: '/api/dv/skills', methods: ['GET'], requestBody: 'buffered',
     fetch: () => answer(() => store.list()),
+  }, {
+    path: '/api/dv/skills/read', methods: ['GET'], requestBody: 'buffered',
+    fetch: request => answer(() => store.read(new URL(request.url).searchParams.get('name') ?? '')),
+  }, {
+    path: '/api/dv/skills/create', methods: ['POST'], requestBody: 'buffered',
+    fetch: request => answer(async () => store.create(skillText(await request.json()))),
+  }, {
+    path: '/api/dv/skills/update', methods: ['POST'], requestBody: 'buffered',
+    fetch: request => answer(async () => store.update(skillText(await request.json()))),
+  }, {
+    path: '/api/dv/skills/delete', methods: ['POST'], requestBody: 'buffered',
+    fetch: request => answer(async () => {
+      const { name } = skillText(await request.json())
+      await store.remove(name)
+      return { name }
+    }),
   }, {
     path: '/api/dv/skills/upload', methods: ['POST'], requestBody: 'streaming',
     fetch: request => answer(async () => {

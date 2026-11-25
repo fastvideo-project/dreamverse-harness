@@ -39,7 +39,7 @@ kind: "package-reference"
 | --- | --- | --- |
 | `keepaliveMs` | `15000` | 空闲事件流多久发一行注释，让代理保持连接 |
 
-用户技能通过认证的 `GET /api/dv/skills` 读取已保存列表，通过 `POST /api/dv/skills/upload?filename=...` 上传 Markdown 或 ZIP 原始请求体。必填配置 `skillLibraryDir` 指定技能库目录；DreamVerse bundle 将其设为 `$DSH_HOME/dreamverse-skills`（默认 `~/.dsh/dreamverse-skills`）。安装前校验 UTF-8 指令、元数据、归档路径和解压限制，保留附带文件，并原子发布完整目录。重名返回 `409 skill_exists`；无效上传返回 `400 invalid_skill`，不影响已有技能。配置 `skillUploadBytes`、`skillExtractedBytes`、`skillArchiveFiles` 分别默认为 8388608、33554432、256。DreamVerse 预设通过 YAML 别名扫描同一目录；使用其他预设时需将它加入文件系统技能提供方的扫描目录。
+用户技能通过认证的 `GET /api/dv/skills` 读取已保存列表，通过 `POST /api/dv/skills/upload?filename=...` 上传 Markdown 或 ZIP 原始请求体，通过 `POST /api/dv/skills/create`（JSON `{name, description, instructions}`，写成 SKILL.md，并按上传同样的规则检查）新建技能，通过 `GET /api/dv/skills/read?name=...` 读取已保存技能的 `{name, description, instructions, path}`（`path` 是其 SKILL.md），通过 `POST /api/dv/skills/delete`（JSON `{name}`）删除技能文件夹及其中所有文件，通过 `GET /api/dv/skills/built-in?session=...&name=...` 读取对话目录中一个面向用户调用的技能及其正文，读取视图与 DSH `skills/list` Remote 相同：对话的项目文件夹及其预设的技能注册表；返回 `{name, description, instructions, path}`，没有对应文件的技能 `path` 为 `''`；对话或技能未知，或技能仅供智能体加载时返回 `404 skill_not_found`，通过 `POST /api/dv/skills/update`（同样的 JSON）替换已保存技能的描述和指令：一次重命名替换其 SKILL.md，保留名称、其他 frontmatter 键和技能包中的其他文件；未知名称返回 `404 skill_not_found`。必填配置 `skillLibraryDir` 指定技能库目录；DreamVerse bundle 将其设为 `$DSH_HOME/dreamverse-skills`（默认 `~/.dsh/dreamverse-skills`）。安装前校验 UTF-8 指令、元数据、归档路径和解压限制，保留附带文件，并原子发布完整目录。重名返回 `409 skill_exists`；无效上传返回 `400 invalid_skill`，不影响已有技能。配置 `skillUploadBytes`、`skillExtractedBytes`、`skillArchiveFiles` 分别默认为 8388608、33554432、256。DreamVerse 预设通过 YAML 别名扫描同一目录；使用其他预设时需将它加入文件系统技能提供方的扫描目录。
 
 | 路由 | 方法 | 请求 | 响应 |
 | --- | --- | --- | --- |

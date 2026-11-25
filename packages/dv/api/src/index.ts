@@ -20,6 +20,7 @@ import { answer, ApiHandlers, ApiRequestError, type ApiServices, requireProject 
 import { assetImportRoutes } from './asset-import.ts'
 import { serveEventStream } from './events.ts'
 import { projectAdminRoutes } from './projects-admin.ts'
+import { builtInSkillRoutes } from './built-in-skills.ts'
 import { UserSkillStore, userSkillRoutes } from './user-skills.ts'
 
 export { answer, ApiHandlers, ApiRequestError, messageOf, type ApiServices, type OperationRequest, type WireProject } from './api.ts'
@@ -134,6 +135,7 @@ export default class DvApi extends Service {
       return answer(() => run(body))
     }
     return [
+      ...builtInSkillRoutes(this.ctx),
       ...userSkillRoutes(new UserSkillStore(this.config.skillLibraryDir, {
         uploadBytes: this.config.skillUploadBytes,
         extractedBytes: this.config.skillExtractedBytes,
