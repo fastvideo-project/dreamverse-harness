@@ -73,6 +73,47 @@ beforeEach(() => {
 })
 
 describe('PiAiAdapter provider routing', () => {
+  it('reports an exhausted estimated context budget as a context-window failure instead of silently requesting one token', async () => {
+    const server = await mockServer([{ events: textEvents }])
+    const ctx = await harness(server.url, {
+      api: 'openai-completions',
+      models: [{ id: 'budget-test', contextWindow: 8192, maxTokens: 128 }],
+    })
+    const messages = [createUserMessage({
+      content: [{ type: 'text', text: 'word '.repeat(10000) }],
+      source: { kind: 'model', provider: 'deepseek', model: 'budget-test' },
+    })]
+    const failed = await assemble(ctx, { model: 'budget-test', messages })
+    expect(failed.finish).toMatchObject({ kind: 'error', failure: { code: CONTEXT_WINDOW_EXCEEDED_CODE } })
+    if (failed.finish.kind !== 'error') throw new Error('expected an error finish')
+    expect(failed.finish.failure.message).toMatch(/8192-token context window.*compact the conversation/)
+    expect(server.requests).toHaveLength(0)
+
+    const explicit = await assemble(ctx, { model: 'budget-test', messages, maxTokens: 64 })
+    expect(explicit.finish).toMatchObject({ kind: 'error', failure: { code: CONTEXT_WINDOW_EXCEEDED_CODE } })
+    expect(server.requests).toHaveLength(0)
+
+    await assemble(ctx, { model: 'budget-test', messages, maxTokens: 1 })
+    expect(server.requests).toHaveLength(1)
+  })
+
+  it.each(['openai-responses', 'anthropic-messages'])('reports an exhausted estimated context budget on %s before sending', async (api) => {
+    const server = await mockServer([])
+    const ctx = await harness(server.url, {
+      api,
+      models: [{ id: 'budget-test', contextWindow: 8192, maxTokens: 128 }],
+    })
+    const failed = await assemble(ctx, {
+      model: 'budget-test',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'word '.repeat(10000) }],
+        source: { kind: 'model', provider: 'deepseek', model: 'budget-test' },
+      })],
+    })
+    expect(failed.finish).toMatchObject({ kind: 'error', failure: { code: CONTEXT_WINDOW_EXCEEDED_CODE } })
+    expect(server.requests).toHaveLength(0)
+  })
+
   it('resolves a catalog model dynamically and uses a private endpoint', async () => {
     const server = await mockServer([{ events: textEvents }])
     const ctx = await harness(server.url)
