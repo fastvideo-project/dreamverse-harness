@@ -80,8 +80,6 @@ CUDA_VISIBLE_DEVICES=0,1 fastvideo serve --config examples/serving/openai_fasth3
 
 ### 2. 安装 DreamVerse Harness
 
-仓库目前是私有的；克隆它需要一个能访问 `fastvideo-project/dreamverse-harness` 的 GitHub 账号。
-
 ```sh
 git clone https://github.com/fastvideo-project/dreamverse-harness
 cd dreamverse-harness
