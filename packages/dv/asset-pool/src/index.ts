@@ -23,15 +23,17 @@
  * `dvProject` turns each operation into its agent tool (`dv_asset_import`, `dv_asset_grab_still`,
  * `dv_asset_cut_segment`, `dv_asset_place`). The service registers with `dvCanvasNodes` that a finished import with
  * `place` and each placement make `asset` nodes; the `proj` slice's `created_by` names the record that created each
- * asset. While the DSH web server is mounted, the service serves `GET /dv/assets/<AssetId>`.
+ * asset. While the DSH web server is mounted, the service serves `GET` and `HEAD /dv/assets/<AssetId>`, with byte ranges.
  *
  * @module @dv/asset-pool
  */
 import { createHash } from 'node:crypto'
-import { appendFileSync, createReadStream, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { open, type FileHandle } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
+import { pipeline } from 'node:stream'
 import { Service, type Context } from '@deepseek-ai/cordis'
 import { brandString } from '@deepseek-ai/dsh-brand'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -41,6 +43,7 @@ import { FfmpegError } from '@dv/ffmpeg'
 import type {} from '@dv/ffmpeg'
 import { ProjectError, type AssetId, type OperationContext, type OperationResult, type OperationSpec, type ProjectId, type RecordId } from '@dv/project'
 import { PROJECT_DIR } from '@dv/project/folder'
+import parseRange from 'range-parser'
 import { importedAssets, placeable } from './imports.ts'
 import type { Asset, StillAt } from './types.ts'
 
@@ -72,6 +75,12 @@ const INDEX_FILE = 'index.jsonl'
 const OBJECTS_DIR = 'objects'
 const ROUTE_PREFIX = '/dv/assets'
 const FILE_ROUTE = /^\/dv\/assets\/([0-9a-f]{64})$/
+/** The `Cache-Control` of an asset file: its bytes never change under its ID, and no proxy or server may encode them. */
+const ASSET_CACHE_CONTROL = 'public, max-age=31536000, immutable, no-transform'
+/** The headers of a plain-text error answer. */
+const PLAIN_TEXT = { 'content-type': 'text/plain; charset=utf-8' }
+/** One suffix range (`-<length>`) of a `bytes=` value, with the `bytes=` or comma before it. */
+const SUFFIX_RANGE = /(^bytes=|,)\s*-\s*(\d+)\s*(?=,|$)/gi
 /** The file name of a grabbed still inside the operation's scratch directory. */
 const STILL_FILE = 'still.png'
 /** The file name of a cut segment inside the operation's scratch directory. */
@@ -159,7 +168,7 @@ export default class DvAssetPool extends Service {
       webCtx.effect(() => webCtx.webServer.register({
         kind: 'prefix',
         path: ROUTE_PREFIX,
-        handler: (request, response) => { this.serveFile(request, response) },
+        handler: (request, response) => this.serveFile(request, response),
       }), 'dvAssetPool /dv/assets route')
     })
   }
@@ -593,22 +602,113 @@ export default class DvAssetPool extends Service {
     }
   }
 
-  /** Answer `GET /dv/assets/<AssetId>` with the whole file and its media type; other paths under the prefix are 404. */
-  private serveFile(request: IncomingMessage, response: ServerResponse): void {
+  /**
+   * Answer `GET` and `HEAD /dv/assets/<AssetId>` with the file, its media type and the asset ID as a strong ETag; other
+   * paths and methods under the prefix are 404. An `If-None-Match` that lists the ETag or `*` gets 304 without opening
+   * the file. A file that cannot be opened or whose size cannot be read is logged, closed, and gets 404 when it is
+   * missing and 500 otherwise. A client that goes away before the file opens gets no answer, and the file closes. The
+   * size comes from the open file, and the byte ranges of a GET follow {@link requestedRange}: one range gets 206 with
+   * those bytes, an unsatisfiable `Range` gets 416, and every other request gets the whole file (200). A read that
+   * fails after the headers is logged and cuts the body off. `Cache-Control: no-transform` keeps the web server's
+   * compression off, so every answer under one ETag carries the file's own bytes.
+   */
+  private async serveFile(request: IncomingMessage, response: ServerResponse): Promise<void> {
     /* v8 ignore next -- Node sets `url` on every request it parses. */
     const url = new URL(request.url ?? '/', 'http://localhost')
     const match = FILE_ROUTE.exec(url.pathname)
     const found = match === null ? undefined : this.locate(brandString<AssetId>(String(match[1])))
-    if (request.method !== 'GET' || found === undefined) {
-      response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not found')
+    if ((request.method !== 'GET' && request.method !== 'HEAD') || found === undefined) {
+      response.writeHead(404, PLAIN_TEXT).end('Not found')
       return
     }
-    const filePath = join(found.dir, OBJECTS_DIR, found.asset.id)
-    response.writeHead(200, {
-      'content-type': found.asset.mime,
-      'content-length': String(statSync(filePath).size),
-      'cache-control': 'public, max-age=31536000, immutable',
-    })
-    createReadStream(filePath).pipe(response)
+    const { asset } = found
+    const etag = `"${asset.id}"`
+    if (listsEtag(request.headers['if-none-match'], etag)) {
+      response.writeHead(304, { etag, 'cache-control': ASSET_CACHE_CONTROL }).end()
+      return
+    }
+    const logger = this.ctx.logger('dvAssetPool')
+    let file: FileHandle | undefined
+    let size: number
+    try {
+      file = await open(join(found.dir, OBJECTS_DIR, asset.id))
+      size = (await file.stat()).size
+    } catch (error) {
+      await file?.close()
+      logger.warn('could not open the file of asset %s: %s', asset.id, String(error))
+      const missing = (error as NodeJS.ErrnoException).code === 'ENOENT'
+      response.writeHead(missing ? 404 : 500, PLAIN_TEXT).end(missing ? 'Not found' : 'Could not read the file')
+      return
+    }
+    let streaming = false
+    try {
+      // A client that went away while the file was opening gets nothing; pipeline throws on a destroyed response.
+      if (response.destroyed) return
+      const range = requestedRange(request, etag, size)
+      if (range === 'unsatisfiable') {
+        response.writeHead(416, { 'content-range': `bytes */${String(size)}` }).end()
+        return
+      }
+      const { start, end } = range ?? { start: 0, end: size - 1 }
+      response.writeHead(range === null ? 200 : 206, {
+        'content-type': asset.mime,
+        'content-length': String(end - start + 1),
+        ...range === null ? {} : { 'content-range': `bytes ${String(start)}-${String(end)}/${String(size)}` },
+        'accept-ranges': 'bytes',
+        etag,
+        'cache-control': ASSET_CACHE_CONTROL,
+      })
+      if (request.method === 'HEAD' || size === 0) {
+        response.end()
+        return
+      }
+      streaming = true
+      // The stream closes the file when it ends or when pipeline destroys it.
+      pipeline(file.createReadStream({ start, end }), response, (error) => {
+        // A premature close is the client going away; other errors are reads that failed after the headers.
+        if (error instanceof Error && error.code !== 'ERR_STREAM_PREMATURE_CLOSE') {
+          logger.warn('could not read the file of asset %s: %s', asset.id, String(error))
+        }
+      })
+    } finally {
+      if (!streaming) await file.close()
+    }
   }
+}
+
+/**
+ * Whether an `If-None-Match` value lists an ETag or `*`, compared weakly as RFC 9110 section 13.1.3 asks.
+ * @param header - the `If-None-Match` value, if the request has one.
+ * @param etag - the file's ETag.
+ * @returns true when the client already holds the file.
+ */
+function listsEtag(header: string | undefined, etag: string): boolean {
+  return header !== undefined && header.split(',').some((tag) => {
+    const trimmed = tag.trim()
+    return trimmed === '*' || trimmed.replace(/^W\//, '') === etag
+  })
+}
+
+/**
+ * The one byte range of a file that a request asks for, read with `range-parser`; overlapping or adjacent ranges merge
+ * into one, and a suffix longer than the file asks for the whole file, as RFC 9110 section 14.1.2 says.
+ * @param request - the request, with its method and its `Range` and `If-Range` headers.
+ * @param etag - the file's ETag.
+ * @param size - the file's size in bytes.
+ * @returns the first and last byte, the last one cut to the file's end; `'unsatisfiable'` when no range lies inside the
+ *   file, which `range-parser` also says of a range whose last byte comes before its first; null for the whole file: a
+ *   HEAD, no `Range` header, a unit other than `bytes` (in any case), a malformed value, ranges that stay apart after
+ *   merging, an `If-Range` other than `etag`, or an empty file.
+ */
+function requestedRange(request: IncomingMessage, etag: string, size: number): parseRange.Range | 'unsatisfiable' | null {
+  const header = request.headers.range
+  const ifRange = request.headers['if-range']
+  if (request.method !== 'GET' || header === undefined || !/^bytes=/i.test(header) || (ifRange !== undefined && ifRange !== etag) || size === 0) {
+    return null
+  }
+  // range-parser refuses a suffix longer than the file, so such a suffix is rewritten to start at byte 0.
+  const clamped = header.replace(SUFFIX_RANGE, (part: string, lead: string, length: string) => Number(length) > size ? `${lead}0-` : part)
+  const ranges = parseRange(size, clamped, { combine: true })
+  if (ranges === -1) return 'unsatisfiable'
+  return ranges === -2 || ranges.length !== 1 ? null : ranges[0] as parseRange.Range
 }

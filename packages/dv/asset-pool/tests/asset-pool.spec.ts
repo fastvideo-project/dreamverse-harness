@@ -3,8 +3,9 @@
  * `dvFfmpeg` and `dvAssetPool` through the Loader, with a stand-in web server as the only fake. The agent's
  * `dv_asset_*` calls and the human's `dvProject.run` calls write records whose outputs the pool holds.
  */
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server } from 'node:http'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, type ReadStream } from 'node:fs'
+import type { FileHandle } from 'node:fs/promises'
+import { createServer, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,12 +28,60 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { chatProject, provideChatServices, type TestChatServices } from '../../project/tests/workspaces.ts'
 import DvAssetPool, { importedAssets, placeable } from '../src/index.ts'
 
+/**
+ * The file streams and handles the pool opens, and the files that fail on purpose: a file ID in `failOpen` throws that
+ * error code from `open`, a stream of a file ID in `failRead` fails after its first chunk, a stream of a file ID in
+ * `holdRead` reads no more after its first chunk, `stat` of a handle of a file ID in `failStat` throws that error code,
+ * and `open` of a file ID in `holdOpen` waits for that promise; `opening` lists the file IDs whose `open` started.
+ */
+const files = vi.hoisted(() => ({
+  streams: [] as ReadStream[], handles: [] as FileHandle[], failOpen: new Map<string, string>(), failRead: new Set<string>(),
+  holdRead: new Set<string>(), failStat: new Map<string, string>(), holdOpen: new Map<string, Promise<void>>(), opening: [] as string[],
+}))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>()
+  /** Make an error that carries a Node error code. */
+  const failure = (code: string): NodeJS.ErrnoException => Object.assign(new Error(`${code}: failed on purpose`), { code })
+  return {
+    ...fs,
+    open: async (...args: Parameters<typeof fs.open>): Promise<FileHandle> => {
+      const path = String(args[0])
+      files.opening.push(path)
+      const hold = [...files.holdOpen].find(([id]) => path.endsWith(id))?.[1]
+      if (hold !== undefined) await hold
+      const code = [...files.failOpen].find(([id]) => path.endsWith(id))?.[1]
+      if (code !== undefined) throw failure(code)
+      const handle = await fs.open(...args)
+      files.handles.push(handle)
+      const statCode = [...files.failStat].find(([id]) => path.endsWith(id))?.[1]
+      if (statCode !== undefined) vi.spyOn(handle, 'stat').mockRejectedValue(failure(statCode))
+      const createReadStream = handle.createReadStream.bind(handle)
+      handle.createReadStream = (options) => {
+        const stream = createReadStream(options)
+        files.streams.push(stream)
+        if ([...files.failRead].some(id => path.endsWith(id))) stream.once('data', () => { stream.destroy(failure('EIO')) })
+        if ([...files.holdRead].some(id => path.endsWith(id))) {
+          const read = stream._read.bind(stream)
+          let reads = 0
+          stream._read = (size) => { if (reads++ === 0) read(size) }
+        }
+        return stream
+      }
+      return handle
+    },
+  }
+})
+
 const FFMPEG = process.env['DV_FFMPEG'] ?? '/mnt/lustre/vlm-d1su/opt/ffmpeg-native/bin/ffmpeg'
 const FFPROBE = process.env['DV_FFPROBE'] ?? 'ffprobe'
 
 /** A stand-in for the DSH web server that keeps the registered prefix routes and serves them on a local port. */
 class FakeWebServer {
   readonly routes = new Map<string, WebRoute>()
+  /** The responses of the requests the server received, in arrival order. */
+  readonly responses: ServerResponse[] = []
+  /** The errors that route handlers threw, which the real web server logs as warnings. */
+  readonly errors: unknown[] = []
   server: Server | null = null
 
   register(route: WebRoute): () => void {
@@ -42,9 +91,15 @@ class FakeWebServer {
 
   async listen(): Promise<string> {
     this.server = createServer((request, response) => {
+      this.responses.push(response)
       const route = [...this.routes.values()].find(candidate => (request.url ?? '').startsWith(candidate.path))
       if (route === undefined) response.writeHead(404).end()
-      else void route.handler(request, response)
+      // Like the real web server's catch-all: keep the error, then cut a started answer off or answer 400.
+      else void Promise.resolve(route.handler(request, response)).catch((error: unknown) => {
+        this.errors.push(error)
+        if (response.headersSent) response.destroy()
+        else response.writeHead(400).end()
+      })
     })
     await new Promise<void>((resolve) => { this.server?.listen(0, '127.0.0.1', resolve) })
     return `http://127.0.0.1:${(this.server?.address() as AddressInfo).port}`
@@ -343,6 +398,144 @@ describe('dvAssetPool', () => {
       expect((await fetch(`${base}/dv/assets/list`)).status).toBe(404)
       expect((await fetch(`${base}/dv/assets/${asset}`, { method: 'POST' })).status).toBe(404)
     } finally {
+      await fixture.web.close()
+    }
+  })
+
+  it('serves one byte range of a file, so a browser can start a sound or a video inside it', async () => {
+    const fixture = await start()
+    const asset = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('0123456789'), { mime: 'audio/mpeg', name: 'a.mp3' }, null)
+    const empty = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from(''), { mime: 'audio/mpeg', name: 'e.mp3' }, null)
+    const base = await fixture.web.listen()
+    type Answer = { status: number; range: string | null; length: string | null; body: string }
+    /** Fetch an asset with the given request headers and keep the status, the length headers and the body. */
+    const get = async (headers: Record<string, string>, of: AssetId = asset, method = 'GET'): Promise<Answer> => {
+      const response = await fetch(`${base}/dv/assets/${of}`, { method, headers })
+      return { status: response.status, range: response.headers.get('content-range'), length: response.headers.get('content-length'), body: await response.text() }
+    }
+    const all: Answer = { status: 200, range: null, length: '10', body: '0123456789' }
+    try {
+      const whole = await fetch(`${base}/dv/assets/${asset}`)
+      expect(Object.fromEntries(['accept-ranges', 'etag', 'cache-control'].map(name => [name, whole.headers.get(name)]))).toEqual({
+        'accept-ranges': 'bytes', 'etag': `"${asset}"`, 'cache-control': 'public, max-age=31536000, immutable, no-transform',
+      })
+      expect(await whole.text()).toBe('0123456789')
+      expect(await get({ range: 'bytes=2-4' })).toEqual({ status: 206, range: 'bytes 2-4/10', length: '3', body: '234' })
+      expect(await get({ range: 'Bytes=7-' })).toEqual({ status: 206, range: 'bytes 7-9/10', length: '3', body: '789' })
+      expect(await get({ range: 'bytes=8-100' })).toEqual({ status: 206, range: 'bytes 8-9/10', length: '2', body: '89' })
+      expect(await get({ range: 'bytes=-3' })).toEqual({ status: 206, range: 'bytes 7-9/10', length: '3', body: '789' })
+      expect(await get({ range: 'bytes=0-1,2-3' })).toEqual({ status: 206, range: 'bytes 0-3/10', length: '4', body: '0123' })
+      expect(await get({ 'range': 'bytes=2-4', 'if-range': `"${asset}"` })).toMatchObject({ status: 206, body: '234' })
+      expect(await get({ 'range': 'bytes=2-4', 'if-range': '"another"' })).toEqual(all)
+      expect(await get({ range: 'bytes=-30' })).toEqual({ ...all, status: 206, range: 'bytes 0-9/10' })
+      for (const unsatisfiable of ['bytes=10-', 'bytes=-0', 'bytes=4-2']) {
+        expect(await get({ range: unsatisfiable })).toMatchObject({ status: 416, range: 'bytes */10', body: '' })
+      }
+      for (const ignored of ['bytes=0-1,4-5', 'items=0-1', 'bytes=x']) {
+        expect(await get({ range: ignored })).toEqual(all)
+      }
+      expect(await get({ range: 'bytes=-1' }, empty)).toEqual({ status: 200, range: null, length: '0', body: '' })
+      expect(await get({}, asset, 'HEAD')).toEqual({ ...all, body: '' })
+      expect(await get({ range: 'bytes=2-4' }, asset, 'HEAD')).toEqual({ ...all, body: '' })
+      for (const held of [`"${asset}"`, `W/"${asset}"`, `"another", "${asset}"`, '*']) {
+        const fresh = await fetch(`${base}/dv/assets/${asset}`, { headers: { 'if-none-match': held } })
+        expect([fresh.status, fresh.headers.get('etag'), await fresh.text()]).toEqual([304, `"${asset}"`, ''])
+      }
+      expect(await get({ 'if-none-match': '"another"' })).toEqual(all)
+    } finally {
+      await fixture.web.close()
+    }
+  })
+
+  it('closes the file when the client cancels a request, and answers a file that cannot be read with an HTTP status', async () => {
+    const fixture = await start()
+    const pool = fixture.ctx.dvAssetPool
+    const size = 8 * 1024 * 1024
+    const big = pool.importAsset(fixture.project, Buffer.alloc(size, 1), { mime: 'video/mp4', name: 'big.mp4' }, null)
+    const gone = pool.importAsset(fixture.project, Buffer.from('gone'), { mime: 'audio/mpeg', name: 'gone.mp3' }, null)
+    const locked = pool.importAsset(fixture.project, Buffer.from('locked'), { mime: 'audio/mpeg', name: 'locked.mp3' }, null)
+    const broken = pool.importAsset(fixture.project, Buffer.alloc(size, 2), { mime: 'video/mp4', name: 'broken.mp4' }, null)
+    const base = await fixture.web.listen()
+    const warnings: string[] = []
+    fixture.ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { if (message.type === 'warn') warnings.push(message.args.map(String).join(' ')) } })
+    files.failOpen.set(locked, 'EACCES')
+    files.failRead.add(broken)
+    files.holdRead.add(big)
+    try {
+      files.streams.length = 0
+      const cancel = new AbortController()
+      const started = await fetch(`${base}/dv/assets/${big}`, { headers: { range: 'bytes=0-' }, signal: cancel.signal })
+      expect(started.status).toBe(206)
+      const [file] = files.streams
+      cancel.abort()
+      await vi.waitFor(() => { expect(file?.closed).toBe(true) })
+      expect([file?.readableEnded, (file?.bytesRead ?? size) < size]).toEqual([false, true])
+
+      rmSync(pool.path(gone))
+      const missing = await fetch(`${base}/dv/assets/${gone}`)
+      expect([missing.status, missing.headers.get('cache-control'), await missing.text()]).toEqual([404, null, 'Not found'])
+      const refused = await fetch(`${base}/dv/assets/${locked}`)
+      expect([refused.status, await refused.text()]).toEqual([500, 'Could not read the file'])
+      const cut = await fetch(`${base}/dv/assets/${broken}`)
+      expect(cut.status).toBe(200)
+      await expect(cut.text()).rejects.toThrow()
+      await vi.waitFor(() => { expect(warnings.some(warning => warning.includes('could not read the file') && warning.includes('EIO'))).toBe(true) })
+      expect(warnings.filter(warning => warning.includes('could not open the file')).map(warning => warning.includes(gone) || warning.includes(locked)))
+        .toEqual([true, true])
+      expect(warnings.some(warning => warning.includes(big))).toBe(false)
+      files.holdRead.clear()
+      expect((await fetch(`${base}/dv/assets/${big}`, { headers: { range: 'bytes=0-1' } })).status).toBe(206)
+    } finally {
+      files.failOpen.clear()
+      files.failRead.clear()
+      files.holdRead.clear()
+      await fixture.web.close()
+    }
+  })
+
+  it('closes the file and logs nothing when the client cancels while the file is still opening', async () => {
+    const fixture = await start()
+    const asset = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.alloc(1024, 1), { mime: 'video/mp4', name: 'slow.mp4' }, null)
+    const base = await fixture.web.listen()
+    const warnings: string[] = []
+    fixture.ctx.logger.exporter({ levels: { default: 3 }, export: (message) => { if (message.type === 'warn') warnings.push(message.args.map(String).join(' ')) } })
+    let release = (): void => {}
+    files.holdOpen.set(asset, new Promise<void>((resolve) => { release = resolve }))
+    files.handles.length = 0
+    files.opening.length = 0
+    try {
+      const cancel = new AbortController()
+      const pending = fetch(`${base}/dv/assets/${asset}`, { signal: cancel.signal }).catch((error: unknown) => error)
+      await vi.waitFor(() => { expect(files.opening.some(path => path.endsWith(asset))).toBe(true) })
+      cancel.abort()
+      await pending
+      await vi.waitFor(() => { expect(fixture.web.responses.at(-1)?.destroyed).toBe(true) })
+      release()
+      await vi.waitFor(() => { expect(files.handles).toHaveLength(1) })
+      await new Promise((resolve) => { setTimeout(resolve, 200) })
+      expect({ fd: files.handles[0]?.fd, errors: fixture.web.errors.map(String), warnings }).toEqual({ fd: -1, errors: [], warnings: [] })
+    } finally {
+      release()
+      files.holdOpen.clear()
+      await Promise.all(files.handles.filter(handle => handle.fd !== -1).map(handle => handle.close()))
+      await fixture.web.close()
+    }
+  })
+
+  it('answers 500 and closes the file when reading the size of an opened file fails', async () => {
+    const fixture = await start()
+    const asset = fixture.ctx.dvAssetPool.importAsset(fixture.project, Buffer.from('bad disk'), { mime: 'audio/mpeg', name: 'eio.mp3' }, null)
+    const base = await fixture.web.listen()
+    files.failStat.set(asset, 'EIO')
+    files.handles.length = 0
+    try {
+      const answer = await fetch(`${base}/dv/assets/${asset}`)
+      const body = await answer.text()
+      await vi.waitFor(() => { expect(files.handles).toHaveLength(1) })
+      expect({ status: answer.status, body, fd: files.handles[0]?.fd, errors: fixture.web.errors.map(String) })
+        .toEqual({ status: 500, body: 'Could not read the file', fd: -1, errors: [] })
+    } finally {
+      files.failStat.clear()
       await fixture.web.close()
     }
   })

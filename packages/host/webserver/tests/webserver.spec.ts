@@ -158,6 +158,14 @@ describe('real Loader composition', () => {
     })
     server.register({
       kind: 'exact',
+      path: '/no-transform',
+      handler: (_req, res) => {
+        res.writeHead(200, { 'content-type': 'text/plain', 'cache-control': 'public, immutable, no-transform' })
+        res.end(body)
+      },
+    })
+    server.register({
+      kind: 'exact',
       path: '/range',
       handler: (_req, res) => {
         res.writeHead(206, { 'content-type': 'text/plain', 'content-range': 'bytes 0-15/160' })
@@ -187,6 +195,8 @@ describe('real Loader composition', () => {
       .headers.get('content-encoding')).toBeNull()
     expect((await request(server.port, '/range', { headers: { 'accept-encoding': 'gzip' } }))
       .headers.get('content-encoding')).toBeNull()
+    const kept = await request(server.port, '/no-transform', { headers: { 'accept-encoding': 'gzip' } })
+    expect([kept.headers.get('content-encoding'), kept.body]).toEqual([null, body.slice(0, 80)])
   })
 
   // Real-Loader composition resolves workspace packages through tsx at test
