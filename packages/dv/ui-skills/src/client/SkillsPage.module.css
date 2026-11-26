@@ -15,13 +15,6 @@
   margin-bottom: 24px;
 }
 
-/* The 探索 / Explore tab: an introduction line above the cards, in the recent-projects column. */
-.shelf {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .title {
   margin: 0 0 8px;
   font-size: 20px;

@@ -2,7 +2,7 @@
   "name": "@dv/ui-minimax-skills",
   "version": "0.1.0",
   "type": "module",
-  "description": "Browser half of the MiniMax skill set: nine template cards with preview GIFs on DreamVerse Home and in the Explore section; a card click puts /name into the chat composer.",
+  "description": "Browser half of the MiniMax skill set: nine template cards with preview GIFs on DreamVerse Home; a card click puts /name into the chat composer.",
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",

@@ -4,7 +4,6 @@ import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar-right/client'
 import type {} from '@dv/ui-shell/contract'
-import { pickText } from '@dv/ui-kit/locale.ts'
 import { Templates, type TemplatesInjected } from './Templates.tsx'
 
 /** Existing browser services needed to prefill a conversation draft. */
@@ -26,7 +25,4 @@ export function apply(ctx: Context): void {
   ctx.effect(() => ctx.slots.inject('dv.templates', () => ctx.slots.register({
     name: 'dv.templates', id: 'minimax-templates', inject: () => props,
   }, Templates)), 'MiniMax Home templates')
-  ctx.effect(() => ctx.slots.inject('dv.explore', () => ctx.slots.register({
-    name: 'dv.explore', id: 'minimax-skills', order: 2, label: () => pickText('MiniMax 模板', 'MiniMax templates'), inject: () => props,
-  }, Templates)), 'MiniMax template cards')
 }

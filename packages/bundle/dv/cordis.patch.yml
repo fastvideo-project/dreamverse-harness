@@ -199,7 +199,7 @@
     - id: dv-ui-shell
       name: '@dv/ui-shell'
 
-    # The MCP tools in the entry page's 探索 section; their names match the presets of the dv-mcp-presets row.
+    # The servers DreamVerse suggests, as a section of the MCP page; their names match the presets of the dv-mcp-presets row.
     - id: dv-ui-mcp-presets
       name: '@dv/ui-mcp-presets'
 
@@ -338,7 +338,7 @@
   config:
     performanceUsage: compact
 
-# The MCP servers DreamVerse suggests on the entry page's 探索 section. The row offers them to the MCP plugin's roster
+# The MCP servers DreamVerse suggests on the MCP page. The row offers them to the MCP plugin's roster
 # while that plugin is on and offers nothing while it is off; adding one is the person's choice.
 - insert:
     - id: dv-mcp-presets

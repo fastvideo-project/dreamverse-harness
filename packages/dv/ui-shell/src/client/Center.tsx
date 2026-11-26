@@ -41,7 +41,7 @@ export interface ShellInjected {
 }
 
 /** Props of the center entry. */
-export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.templates' | 'dv.explore' | 'dv.center.view'>
+export type CenterProps = PropsRuntime<'main.conversation'> & PropsRenderFactories & PropsRenderSlots<'dv.templates' | 'dv.center.view'>
   & ShellInjected
 
 /** The one client the shell's own reads share. */
@@ -214,7 +214,6 @@ function EntryPage(props: CenterProps): ReactNode {
       </div>
       {blank && <div className={css.templates}>{props.renderSlot('dv.templates', {})}</div>}
       {blank && <RecentProjects shell={shell} renderFactorySlot={renderFactorySlot} />}
-      {blank && <Explore renderSlot={props.renderSlot} />}
     </div>
   )
 }
@@ -251,46 +250,6 @@ function RecentProjects({ shell, renderFactorySlot }: Pick<ShellInjected, 'shell
           />
         ))}
       </div>
-    </section>
-  )
-}
-
-/**
- * The 探索 section, expanded until 收起 folds it: a tab per `dv.explore` entry that other plugins register, such as MCP
- * tools, and the selected tab's body. The section is absent while no plugin registers an entry.
- * @param props - the center's slot props.
- * @returns the section, or nothing without entries.
- */
-function Explore({ renderSlot }: Pick<CenterProps, 'renderSlot'>): ReactNode {
-  const t = useText()
-  const tabs = useSlotTabs('dv.explore')
-  const [open, setOpen] = useState(true)
-  const [chosen, setChosen] = useState<string | null>(null)
-  if (tabs.length === 0) return null
-  const selected = tabs.find(tab => tab.id === chosen)?.id ?? tabs[0]?.id
-  return (
-    <section className={css.recent} aria-labelledby="dv-explore">
-      <div className={css.recentHeader}>
-        <h2 id="dv-explore" className={css.recentTitle}>{t('探索', 'Explore')}</h2>
-        <button type="button" className={css.textButton} aria-expanded={open} onClick={() => { setOpen(value => !value) }}>
-          {open ? t('收起', 'Show less') : t('展开', 'Show more')}
-        </button>
-      </div>
-      {open && (
-        <>
-          <div className={css.exploreTabs} role="tablist" aria-label={t('探索分类', 'Explore categories')}>
-            {tabs.map(tab => (
-              <button
-                key={tab.id} type="button" role="tab" className={css.exploreTab} aria-selected={tab.id === selected}
-                data-active={tab.id === selected ? '' : undefined} onClick={() => { setChosen(tab.id) }}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <div role="tabpanel">{selected !== undefined && renderSlot('dv.explore', {}, { only: selected })}</div>
-        </>
-      )}
     </section>
   )
 }

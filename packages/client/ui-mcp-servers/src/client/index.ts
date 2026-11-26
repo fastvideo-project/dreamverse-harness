@@ -10,10 +10,21 @@ import type {} from '@deepseek-ai/dsh-client-ui-renderer/client'
 import type {} from '@deepseek-ai/dsh-client-ui-plugin-manager/client'
 import type { MainPanelId } from '@deepseek-ai/dsh-client-ui-layout/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
+import type {} from '@deepseek-ai/dsh-client-ui-slots'
 import { McpServersPage, type McpServersInjected } from './McpServersPage.tsx'
 import { McpPanelIcon, McpPanelPage } from './McpPanel.tsx'
 import { en, NS, zh } from './locales.ts'
 import { observeRoster } from './roster.ts'
+
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+  interface SlotMap {
+    /**
+     * A section that another plugin adds to the MCP page, such as servers it suggests; drawn in order between the page
+     * heading and the server roster, while the MCP bundle is switched on. Declared by the MCP page's `main` entry below.
+     */
+    'mcp.page.section': { kind: 'list'; scope: 'root' }
+  }
+}
 
 /** Bundle whose plugin page shows the dashboard. */
 const MCP_BUNDLE = '@deepseek-ai/dsh-mcp-bundle'
@@ -42,6 +53,7 @@ function registerUi(ctx: Context): void {
   }, McpServersPage))
   ctx.slots.inject('main', () => ctx.slots.register({
     name: 'main', key: PANEL_ID, locale: NS, inject: () => actions,
+    children: { 'mcp.page.section': { kind: 'list', scope: 'root' } },
   }, McpPanelPage))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
     name: 'sidebar.panellist', id: PANEL_ID, order: 1, label: () => ctx.locale.bind(NS)('panel'), locale: NS,

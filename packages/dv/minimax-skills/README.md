@@ -22,7 +22,7 @@ The DreamVerse bundle [`@dv/bundle`](../../bundle/dv/README.md) mounts this Host
 
 In this workspace, run `pnpm exec tsc -b packages/dv/minimax-skills packages/dv/ui-minimax-skills` followed by `pnpm --filter @dv/ui-minimax-skills run bundle` before mounting the compiled plugins. The packages are not published to an npm registry.
 
-The normal `tool-skill` integration lists these skills for the model and handles explicit `/name` messages. For example, send `/h3-prompt-writing Write a product-video prompt`. Selecting a template on Home or in the MiniMax Explore tab puts the corresponding `/name ` in the current draft; add requirements and send to invoke it. Selecting a card neither creates a project nor starts generation. Individual SKILL.md imports remain a separate, generic skill-import concern and do not require this package.
+The normal `tool-skill` integration lists these skills for the model and handles explicit `/name` messages. For example, send `/h3-prompt-writing Write a product-video prompt`. Selecting a template on Home puts the corresponding `/name ` in the current draft; add requirements and send to invoke it. Selecting a card neither creates a project nor starts generation. Individual SKILL.md imports remain a separate, generic skill-import concern and do not require this package.
 
 ## Loading and resources
 
@@ -52,4 +52,4 @@ Catalog summaries use the existing skill-catalog lifecycle. Loaded instructions 
 
 ## Known Limitations and Deferred Work
 
-- **Deployment capabilities** — The skills reference MiniMax Hub capabilities that a deployment may not provide. The adapter maps existing DreamVerse tool names and requires the agent to check actual model support and disclose missing capabilities. Installing the package does not install, configure or authorize image/video/audio services, standalone music generation, subtitle rendering or arbitrary Hub edits. Optional template UI uses the generic `dv.templates` Home slot and the DreamVerse Explore slot; headless use needs no browser. No invariant companion is published because the package owns no independent runtime projection; catalog ownership, lazy reads and removal are verified through actual Loader composition tests.
+- **Deployment capabilities** — The skills reference MiniMax Hub capabilities that a deployment may not provide. The adapter maps existing DreamVerse tool names and requires the agent to check actual model support and disclose missing capabilities. Installing the package does not install, configure or authorize image/video/audio services, standalone music generation, subtitle rendering or arbitrary Hub edits. Optional template UI uses the generic `dv.templates` Home slot; headless use needs no browser. No invariant companion is published because the package owns no independent runtime projection; catalog ownership, lazy reads and removal are verified through actual Loader composition tests.

@@ -217,7 +217,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
   await runtime.mount({ inject: [...assetPoolInject], apply: assetPoolApply })
   await runtime.mount({
     inject: ['slots'],
-    /** Register the stand-in composer, chat body and center, and the center view and explore entries. */
+    /** Register the stand-in composer, chat body and center, and the template and center view entries. */
     apply(ctx: Context) {
       ctx.effect(() => ctx.slots.registerFactory({
         name: 'conversation.content',
@@ -240,7 +240,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
       )), 'test: chat')
       ctx.effect(() => ctx.slots.register({
         name: 'main.conversation', priority: -1, inject: () => ({ shell: stand.shell }),
-        children: { 'dv.templates': { kind: 'list', scope: 'root' }, 'dv.explore': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
+        children: { 'dv.templates': { kind: 'list', scope: 'root' }, 'dv.center.view': { kind: 'list', scope: 'root' } },
       }, CenterPanel), 'test: center')
       ctx.effect(() => ctx.slots.register({ name: 'shell.overlay', id: 'dv.shell.failure' }, ActionFailureToast), 'test: failure toast')
       if (options.entries !== false) {
@@ -251,12 +251,7 @@ async function mountCenter(options: MountOptions = {}): Promise<Bench> {
           yield ctx.slots.register({ name: 'dv.center.view', id: 'canvas', order: 0, label: () => 'Canvas' }, CenterViewStandIn)
           yield ctx.slots.register({ name: 'dv.center.view', id: 'timeline', order: 1, label: () => 'Timeline' }, CenterViewStandIn)
         }), 'test: center views')
-        ctx.effect(() => ctx.slots.inject('dv.explore', function* () {
-          yield ctx.slots.register({ name: 'dv.explore', id: 'mcp', order: 0, label: () => 'MCP tools' }, () => <p>mcp body</p>)
-          yield ctx.slots.register({ name: 'dv.explore', id: 'skills', order: 1, label: () => 'Skills' }, () => <p>skills body</p>)
-        }), 'test: explore tabs')
       }
-      followSlotTabs(ctx, 'dv.explore')
       followSlotTabs(ctx, 'dv.center.view')
     },
   })
@@ -331,7 +326,7 @@ describe('the entry page', () => {
     await waitFor(() => { expect(screen.queryByRole('alert')).toBeNull() })
   })
 
-  it('greets a blank chat with the headline, the template chips, the recent projects and the explore tabs', async () => {
+  it('greets a blank chat with the headline, the template chips and the recent projects, and no explore section', async () => {
     const bench = await mountCenter({
       main: 's0',
       summaries: [
@@ -373,16 +368,8 @@ describe('the entry page', () => {
     fireEvent.click(recent.getAllByRole('button')[1] as HTMLElement)
     await waitFor(() => { expect(bench.stand.calls).toContain('openProject(p3)') })
 
-    const explore = within(page.getByRole('region', { name: 'Explore' }))
-    expect(explore.getAllByRole('tab').map(tab => [tab.textContent, tab.getAttribute('aria-selected')]))
-      .toEqual([['MCP tools', 'true'], ['Skills', 'false']])
-    expect(explore.getByRole('tabpanel').textContent).toBe('mcp body')
-    fireEvent.click(explore.getByRole('tab', { name: 'Skills' }))
-    expect(explore.getByRole('tabpanel').textContent).toBe('skills body')
-    fireEvent.click(explore.getByRole('button', { name: 'Show less' }))
-    expect(explore.queryByRole('tablist')).toBeNull()
-    fireEvent.click(explore.getByRole('button', { name: 'Show more' }))
-    expect(explore.getByRole('tabpanel').textContent).toBe('skills body')
+    expect(page.queryByRole('region', { name: 'Explore' })).toBeNull()
+    expect(page.queryByRole('tablist')).toBeNull()
   })
 
   it('keeps the greeting until the chat runs, has a turn, or has an active target, and then shows the chat alone', async () => {
@@ -420,13 +407,11 @@ describe('the entry page', () => {
     expect(bench.view.view.queryByRole('heading', { level: 1 })).not.toBeNull()
   })
 
-  it('has no recent projects or explore section without projects and entries', async () => {
+  it('has no recent projects without projects', async () => {
     const bench = await mountCenter({ main: 's0', entries: false, projects: [] })
     expect(bench.view.view.queryByRole('region', { name: 'Recent projects' })).toBeNull()
-    expect(bench.view.view.queryByRole('region', { name: 'Explore' })).toBeNull()
     await bench.refreshProjects()
     expect(bench.view.view.queryByRole('region', { name: 'Recent projects' })).toBeNull()
-    expect(bench.view.view.queryByRole('region', { name: 'Explore' })).toBeNull()
     expect(bench.view.view.getByRole('heading', { level: 1 })).toBeDefined()
   })
 

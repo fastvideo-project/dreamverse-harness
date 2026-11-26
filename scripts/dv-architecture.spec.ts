@@ -162,7 +162,7 @@ describe('rule clauses', () => {
     ['R7a UI package imports host values', [source('ui-timeline', "import { clips } from '@dv/timeline/types'\n")], ['R7a']],
     ['R7a UI package imports the face of another host', [source('ui-timeline', "import type { Board } from '@dv/storyboard/types'\n")], ['R7a']],
     ['R7a UI package merges the slots of a slot owner', [
-      source('ui-shell', "declare module '@deepseek-ai/dsh-client-ui-slots' { interface SlotMap { 'dv.explore': Slot } }\n"),
+      source('ui-shell', "declare module '@deepseek-ai/dsh-client-ui-slots' { interface SlotMap { 'dv.templates': Slot } }\n"),
       source('ui-skills', "import type {} from '@dv/ui-shell/contract'\n", 'client/index.ts'),
     ], []],
     ['R7a UI package merges a UI core package without slots', [source('ui-skills', "import type {} from '@dv/ui-canvas'\n", 'client/index.ts')], ['R7a']],
