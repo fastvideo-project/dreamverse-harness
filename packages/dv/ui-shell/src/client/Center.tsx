@@ -19,6 +19,7 @@ import type { ConversationViewsProps } from '@deepseek-ai/dsh-client-ui-conversa
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
 import type { PropsRenderFactories, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { useText } from '@dv/ui-kit/locale.ts'
+import { dispatchWorkspaceEvent, DV_TRAJECTORY_FOCUS_EVENT } from '@dv/ui-kit/workspace-events.ts'
 import type {} from './contract/index.ts'
 import { useProjectState } from '@dv/ui-kit/useProject.ts'
 import type { WireProject, WireProjectSummary } from '@dv/ui-kit/types.ts'
@@ -64,9 +65,12 @@ function run(work: () => Promise<void>): void {
   work().catch((error: unknown) => { console.warn('ui-shell: navigation failed', error) })
 }
 
-/** The Chat view alone, for a Conversation occurrence that must not switch views. */
+/** Keep Chat visible and open inspected tool calls in the shell's Trajectory tab. */
 export function ChatOnlyView(props: ConversationViewsProps): ReactNode {
-  return <>{props.renderSlot('conversation.session', { view: 'chat' })}</>
+  return <>{props.renderSlot('conversation.session', {
+    view: 'chat',
+    inspectCall: toolCall => dispatchWorkspaceEvent(DV_TRAJECTORY_FOCUS_EVENT, { session: props.sessionId, toolCall }),
+  })}</>
 }
 
 /** No width handles for the shell's Conversation occurrences. */
