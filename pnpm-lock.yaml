@@ -2176,6 +2176,9 @@ importers:
       '@dv/project':
         specifier: workspace:*
         version: link:../../dv/project
+      '@dv/reactor':
+        specifier: workspace:*
+        version: link:../../dv/reactor
       '@dv/sglang-diffusion':
         specifier: workspace:*
         version: link:../../dv/sglang-diffusion
@@ -2276,6 +2279,9 @@ importers:
       '@deepseek-ai/dsh-agent-loop-testkit':
         specifier: workspace:*
         version: link:../../test-support/agent-loop-testkit
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:*
+        version: link:../../credentials/credentials
       '@deepseek-ai/dsh-llm':
         specifier: workspace:*
         version: link:../../llm/llm
@@ -7854,6 +7860,43 @@ importers:
       '@deepseek-ai/cordis':
         specifier: workspace:~
         version: link:../../../vendor/cordis
+      '@types/node':
+        specifier: ^22.20.0
+        version: 22.20.0
+
+  packages/dv/reactor:
+    dependencies:
+      '@deepseek-ai/dsh-credentials':
+        specifier: workspace:*
+        version: link:../../credentials/credentials
+      '@deepseek-ai/dsh-subprocess':
+        specifier: workspace:*
+        version: link:../../subprocess/subprocess
+      '@deepseek-ai/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+      '@dv/asset-pool':
+        specifier: workspace:*
+        version: link:../asset-pool
+      '@dv/ffmpeg':
+        specifier: workspace:*
+        version: link:../ffmpeg
+      '@dv/models':
+        specifier: workspace:*
+        version: link:../models
+      '@dv/project':
+        specifier: workspace:*
+        version: link:../project
+    devDependencies:
+      '@deepseek-ai/cordis':
+        specifier: workspace:~
+        version: link:../../../vendor/cordis
+      '@deepseek-ai/cordis-plugin-loader':
+        specifier: workspace:~
+        version: link:../../../vendor/loader
+      '@deepseek-ai/dsh-client-connection':
+        specifier: workspace:*
+        version: link:../../client/connection
       '@types/node':
         specifier: ^22.20.0
         version: 22.20.0

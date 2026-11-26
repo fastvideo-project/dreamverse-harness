@@ -408,7 +408,7 @@ describe.skipIf(!existsSync(FFMPEG))('dvShotRender', () => {
   it('lets an agent v2v render use a model other than the conversation choice and refuses other tasks', async () => {
     const fixture = await start({ tasks: ['t2v'] })
     fixture.ctx.effect(() => fixture.ctx.dvModels.register(fakeEntry('v2v', fixture.reference, 'upscaler')))
-    value(await fixture.call('dv_models_select', { provider: 'test', model: 'fake', reason: 'Draft with fake' }))
+    value(await fixture.call('dv_models_select', { modality: 'video', provider: 'test', model: 'fake', reason: 'Draft with fake' }))
     const take = value(await fixture.call('dv_shot_render', { ...TXT, reason: 'draft', prompt: 'A door opens', duration_sec: 1 }))
     const upscaled = value(await fixture.call('dv_shot_render', {
       ...TXT, task: 'v2v', model: 'upscaler', reason: 'upscale', prompt: 'A door opens', inputs: { reference: `${take.record}#0` },

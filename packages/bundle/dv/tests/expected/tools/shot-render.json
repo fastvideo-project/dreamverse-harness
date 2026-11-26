@@ -1,0 +1,88 @@
+[
+  {
+    "name": "dv_shot_render",
+    "description": "Render one take of a shot with a model from dv_models_list; modality, task, provider and model name it and are required. Task ref2v renders from reference media through the reference input: imported assets, or versions with reference assets (<id>@<version>, such as c1@1); the prompt cites each reference image as @[<label>](dv:asset/<asset ID>). dv_models_get lists the inputs, media types and counts each model accepts. Task i2v renders from one first_frame image, with no reference or last_frame input. Task l2v renders toward one last_frame image, with no reference or first_frame input. Task fl2v renders between image inputs first_frame and last_frame; both are required, with no reference input. Task v2v regenerates one existing take, passed as its one reference input (<record>#0, the take's video output), with no frame input, such as upscaling a draft to 2K; reuse that take's prompt unchanged. Pass continue_from to start from the last still of an earlier shot when the model takes a first frame. The model's own parameters go in extra (see dv_models_get). Outputs: the video, then its last still. Every call is a new take; a changed prompt for the same shot passes based_on. Uses the GPU.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "modality": {
+          "type": "string",
+          "description": "The modality of a model that dv_models_list lists."
+        },
+        "task": {
+          "type": "string",
+          "description": "The task of that model, as dv_models_list lists it."
+        },
+        "provider": {
+          "type": "string",
+          "description": "The provider of that model, as dv_models_list lists it."
+        },
+        "model": {
+          "type": "string",
+          "description": "The model name, as dv_models_list lists it."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The complete prompt; follow the prompt skill that dv_models_list names for the model, if any."
+        },
+        "worker": {
+          "type": "string",
+          "description": "The exact ID of an enabled worker. Omit for automatic placement. A pinned render never falls back to another worker."
+        },
+        "duration_sec": {
+          "type": "number",
+          "description": "Duration in seconds. Use a value the model supports. Defaults to the shortest."
+        },
+        "aspect_ratio": {
+          "type": "string",
+          "description": "One of the model aspect ratios; default the first."
+        },
+        "resolution": {
+          "type": "string",
+          "description": "One of the model resolutions; default the first."
+        },
+        "seed": {
+          "type": "integer",
+          "description": "Fixed seed; omitted, a random seed is drawn and recorded."
+        },
+        "extra": {
+          "type": "object",
+          "description": "The model's own parameters, as dv_models_get lists them; omit it when the model has none.",
+          "additionalProperties": true
+        },
+        "continue_from": {
+          "type": "string",
+          "description": "A render record whose last_still (output #1) this shot starts from; only when the model takes a first frame."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why you call this, in the user's words or your own summary; recorded as the intent of the record."
+        },
+        "inputs": {
+          "type": "object",
+          "description": "Input references by role: <asset> (an asset ID), <record>#<output> (an output of an earlier record), or <id>@<version> (a character, location or style version; dv_proj_state lists IDs); a list for roles marked []. Roles: reference?: any[] (<asset> or <id>@<version>); first_frame?: image; last_frame?: image.",
+          "additionalProperties": true
+        },
+        "supersedes": {
+          "type": "array",
+          "description": "Records whose outputs this call replaces, such as an earlier take; their consumers become stale.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "based_on": {
+          "type": "string",
+          "description": "The record this call is a changed copy of; the takes of one original share it."
+        }
+      },
+      "required": [
+        "modality",
+        "task",
+        "provider",
+        "model",
+        "prompt",
+        "reason"
+      ]
+    }
+  }
+]

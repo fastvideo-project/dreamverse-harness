@@ -21,6 +21,11 @@
     - id: dv-openrouter
       name: '@dv/openrouter'
 
+    - id: dv-reactor
+      name: '@dv/reactor'
+      config:
+        models: {}
+
     - id: dv-ui-openrouter
       name: '@dv/ui-openrouter'
 

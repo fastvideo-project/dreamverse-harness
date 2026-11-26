@@ -186,16 +186,19 @@ export default class DvFfmpeg extends Service {
    * Read the last frame of a video given as bytes. The video goes to a temporary directory that the method removes
    * before it settles, so the caller gives no directory and keeps no file.
    * @param video - the MP4 bytes.
+   * @param videoDurationSec - video stream duration for seeking. Pass null to decode from the start,
+   * or omit the duration to seek from the container end.
    * @returns the last frame as PNG bytes.
    * @throws FfmpegError when ffmpeg cannot read the video or writes no frame.
    */
-  async lastFrame(video: Buffer): Promise<Buffer> {
+  async lastFrame(video: Buffer, videoDurationSec?: number | null): Promise<Buffer> {
     const dir = await mkdtemp(join(tmpdir(), 'dv-ffmpeg-'))
     try {
       const input = join(dir, 'video.mp4')
       await writeFile(input, video)
-      // -sseof seeks into the final second, and -update keeps overwriting the one output frame until the last.
-      const argv = ['ffmpeg', '-y', '-loglevel', 'error', '-sseof', '-1', '-i', '{{in:0}}', '-update', '1', '{{out:last.png}}']
+      const seek = videoDurationSec === undefined ? ['-sseof', '-1']
+        : videoDurationSec === null ? [] : ['-ss', String(Math.max(0, videoDurationSec - 1))]
+      const argv = ['ffmpeg', '-y', '-loglevel', 'error', ...seek, '-i', '{{in:0}}', '-update', '1', '{{out:last.png}}']
       const [still] = (await this.run({ argv, inputs: [input], outputs: ['last.png'], dir })).outputs
       return await readFile(still as string)
     } finally {

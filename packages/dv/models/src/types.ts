@@ -123,9 +123,9 @@ export interface RenderModelFacts {
   resolutions: string[]
   /** `[width, height]` by aspect ratio and then by resolution, for every supported pair. */
   frameSizes?: Record<string, Record<string, [number, number]>>
-  /** The shortest shot in whole seconds. */
+  /** The shortest shot in seconds. */
   minDurationSec: number
-  /** The longest shot in whole seconds. */
+  /** The longest shot in seconds. */
   maxDurationSec: number
   /** The model's frame count by shot duration in whole seconds, for every duration from the minimum to the maximum. */
   numFramesByDurationSec?: Record<string, number>
@@ -167,7 +167,13 @@ export type RenderStreamEvent =
   | { kind: 'last_frame'; png: Buffer }
   | { kind: 'video_start'; mime: string }
   | { kind: 'chunk'; bytes: Buffer }
-  | { kind: 'done'; timings: Record<string, number>; worker?: { id: string; label: string } }
+  | {
+    kind: 'done'
+    timings: Record<string, number>
+    /** Delivered video duration when the provider measures the completed recording. */
+    durationSec?: number
+    worker?: { id: string; label: string }
+  }
 
 /**
  * One catalog entry, which a provider plugin implements and registers: one model of the provider serving one task. A
@@ -188,6 +194,8 @@ export type ModelEntry<T extends TaskId = TaskId> = ModelKey<T> & PrimitiveTypes
   concurrentRenders?: boolean
   /** Whether this provider honors explicit worker targets without fallback. */
   workerRouting?: boolean
+  /** Who operates the server that runs the model. */
+  hosting?: 'managed' | 'self-hosted'
   /** Creator-facing variant name; absent, use the model key. */
   displayName?: string
   /** Present when the provider supports native model loading and unloading. */

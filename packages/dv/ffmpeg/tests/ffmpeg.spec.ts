@@ -129,11 +129,13 @@ describe.skipIf(!hasFfmpeg)('dvFfmpeg with ffmpeg', () => {
       inputs: [], outputs: ['halves.mp4'], dir: fixture.dir,
     })
     const run = vi.spyOn(fixture.ffmpeg, 'run')
-    const png = await fixture.ffmpeg.lastFrame(readFileSync(halves.outputs[0] as string))
+    const video = readFileSync(halves.outputs[0] as string)
+    const png = await fixture.ffmpeg.lastFrame(video)
     expect(png.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
     const temporary = run.mock.calls[0]?.[0].dir as string
     expect(existsSync(temporary)).toBe(false)
     run.mockRestore()
+    expect(await fixture.ffmpeg.lastFrame(video, null)).toEqual(png)
     writeFileSync(join(fixture.dir, 'last.png'), png)
     const pixel = await fixture.ffmpeg.run({
       argv: ['ffmpeg', '-y', '-loglevel', 'error', '-i', '{{in:0}}', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '{{out:pixel.rgb}}'],

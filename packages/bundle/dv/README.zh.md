@@ -24,6 +24,8 @@ DreamVerse 预设还会扫描 `$DSH_HOME/dreamverse-skills`（默认 `~/.dsh/dre
 <a id="use-this-package"></a>
 ## 使用这个包
 
+在主机 profile 中配置 Reactor 模型别名和凭据，即可生成云端视频。参阅 [Reactor 配置](../../dv/reactor/README.zh.md)。
+
 ```sh
 scripts/video-harness/launch.sh web --trusted-host <public host>   # chat page on DV_PORT (default 8092)
 scripts/video-harness/launch.sh headless "给我一个这个人跳舞的视频" --session-id demo   # one task, printed result
